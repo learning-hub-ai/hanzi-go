@@ -542,16 +542,15 @@ const ModalUI = (() => {
       row('以后想做什么', '打算加一个后台存储：这样记录能跨设备跟着走，还能让几个小朋友看到彼此的进度、互相鼓劲。还在计划中，请再等等。')
     )}
 
-    ${block('版权', '可以自己用，但请不要搬走',
+    ${block('版权', '欢迎使用，尊重版权',
+      row('本项目的部分', '代码、界面文字、这份说明 —— <strong>版权归本项目作者所有，保留所有权利</strong>。完整说明见仓库里的 LICENSE。') +
       row('✅ 可以', '在线用、下载到自己电脑上用、打印、在课堂上用、分享网址 —— 都欢迎，不用告诉我。', 'help-row--ok') +
       row('🚫 请不要', '复制到别的网站、App、公众号重新发布（<strong>请改为放链接</strong>）；收费出售或放进付费产品；去掉出处当成自己写的。', 'help-row--no') +
-      row('教材部分', '生字、拼音、课文标题来自人教版语文教材，<strong>版权归教材编者及出版社所有</strong>；组词和例句是本项目写的。')
+      row('教材部分', '生字、拼音、组词、例句、课文标题都来自人教版语文教材 —— 例句是课文原句，不是自己造的。<strong>这部分版权归教材编者及出版社所有</strong>，本项目只是按课整理成练习数据。')
     )}
     </div>
 
-    <p class="help-foot">本项目版权归作者所有，保留所有权利 ——
-    公开出来是为了方便用，不等于放弃权利。完整说明见仓库里的 LICENSE。<br>
-    手机上可以「添加到主屏幕」，之后没网也能用。</p>`;
+    <p class="help-foot">手机上可以「添加到主屏幕」，之后没网也能用。</p>`;
   }
 
   return { show, close, renderFavorites, renderErrorBook, renderBadges, renderReport, renderCustomCards, renderCustomCardList, renderHelp };

@@ -2148,13 +2148,21 @@ async function runTests() {
     });
 
     it('Help: keeps textbook rights separate from the project\u2019s own', () => {
-      // Claiming the whole dataset would be wrong: the characters and pinyin
-      // belong to 人教社; only the words and sentences are this project's.
+      // The earlier version of this test asserted 组词和例句 were the project's
+      // own work. They are not: docs/data-generation-spec.md requires example
+      // sentences to be verbatim textbook text (不允许自行改写或造句) and the
+      // words to come from the textbook first. Getting this wrong in a
+      // copyright notice is the worst place to get it wrong.
       const html = app.ModalUI.renderHelp();
       assert(html.includes('\u6559\u6750\u7f16\u8005\u53ca\u51fa\u7248\u793e'),
         'textbook content belongs to its publisher');
-      assert(html.includes('\u7ec4\u8bcd\u548c\u4f8b\u53e5'),
-        'should name what the project did author');
+      assert(html.includes('\u8bfe\u6587\u539f\u53e5'),
+        'should say the example sentences are taken from the textbook, not written here');
+      assert(!/\u7ec4\u8bcd\u548c\u4f8b\u53e5\u662f\u672c\u9879\u76ee\u5199\u7684/.test(html),
+        'must not claim the words and sentences as original work');
+      // And it must still say what IS the project's
+      assert(html.includes('\u4ee3\u7801'), 'should name the code as the project\u2019s own');
+      assert(html.includes('\u4fdd\u7559\u6240\u6709\u6743\u5229'), 'should state rights reserved');
     });
 
     it('Help: explains where data is stored and that it does not sync', () => {
