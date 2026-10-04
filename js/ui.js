@@ -486,8 +486,8 @@ const ModalUI = (() => {
     const schedule = (typeof SpacedRepService !== 'undefined')
       ? SpacedRepService.getBoxIntervals().join('→') : '';
 
-    const row = (k, v) =>
-      `<div class="help-row"><div class="help-row-k">${k}</div><div class="help-row-v">${v}</div></div>`;
+    const row = (k, v, cls) =>
+      `<div class="help-row${cls ? ' ' + cls : ''}"><div class="help-row-k">${k}</div><div class="help-row-v">${v}</div></div>`;
     /** One section: a titled band over its own bordered box. */
     const block = (title, subtitle, body) =>
       `<div class="help-block">
@@ -543,7 +543,8 @@ const ModalUI = (() => {
     )}
 
     ${block('版权', '可以自己用，但请不要搬走',
-      row('可以 / 请不要', '在线用、下载自用、打印、课堂上用、分享网址 —— 都欢迎，不用告诉我。但请不要复制到别的网站、App、公众号重新发布（<strong>请改为放链接</strong>），不要收费出售或放进付费产品，不要去掉出处当成自己写的。') +
+      row('✅ 可以', '在线用、下载到自己电脑上用、打印、在课堂上用、分享网址 —— 都欢迎，不用告诉我。', 'help-row--ok') +
+      row('🚫 请不要', '复制到别的网站、App、公众号重新发布（<strong>请改为放链接</strong>）；收费出售或放进付费产品；去掉出处当成自己写的。', 'help-row--no') +
       row('教材部分', '生字、拼音、课文标题来自人教版语文教材，<strong>版权归教材编者及出版社所有</strong>；组词和例句是本项目写的。')
     )}
     </div>

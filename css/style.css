@@ -765,3 +765,8 @@ main{
   .help-step{padding:5px 6px}
   .help-foot{margin:9px 0 0}
 }
+
+/* 版权一节的允许/禁止两行：靠颜色区分，不只靠 emoji。
+   同 qinshihuang/how-to-use.html 的 .lic ok / .lic no 做法。 */
+.help-row--ok .help-row-k{color:#2f5c37}
+.help-row--no .help-row-k{color:#7a3b3b}

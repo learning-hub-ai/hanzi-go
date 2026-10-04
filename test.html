@@ -2126,6 +2126,27 @@ async function runTests() {
       assert(!/\bMIT\b/.test(html), 'MIT was dropped; it permits what this forbids');
     });
 
+    it('Help: permissions and prohibitions are separate, colour-coded rows', () => {
+      // They were once merged into one row to save vertical space, which made
+      // a wall of text where the reader has to find the "但请不要" pivot.
+      frame.contentDocument.getElementById('btnHelp').click();
+      const ok = frame.contentDocument.querySelector('.help-row--ok');
+      const no = frame.contentDocument.querySelector('.help-row--no');
+      assert(ok && no, 'expected separate ✅ and 🚫 rows');
+      assert(ok !== no, 'they must not be the same row');
+
+      const win = frame.contentWindow;
+      const okColor = win.getComputedStyle(ok.querySelector('.help-row-k')).color;
+      const noColor = win.getComputedStyle(no.querySelector('.help-row-k')).color;
+      assert(okColor !== noColor,
+        `both labels are ${okColor} — colour should carry the distinction, not just the emoji`);
+
+      // And the prohibition must still name the practical ask
+      assert(no.textContent.includes('\u8bf7\u6539\u4e3a\u653e\u94fe\u63a5'),
+        'the 🚫 row should say to link instead of copying');
+      app.ModalUI.close();
+    });
+
     it('Help: keeps textbook rights separate from the project\u2019s own', () => {
       // Claiming the whole dataset would be wrong: the characters and pinyin
       // belong to 人教社; only the words and sentences are this project's.
