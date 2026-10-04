@@ -7,6 +7,9 @@
  * - FavoriteService: character favorites CRUD
  * - ErrorBookService: wrong answers tracking
  * - StatsService: play statistics and streaks
+ * - SpacedRepService: Leitner box scheduling (which chars are due)
+ * - ReportService: read-only aggregation for 学习报告
+ * - CustomCardService: user-authored cards (自定义字卡)
  */
 
 /**
@@ -409,6 +412,63 @@ const StatsService = (() => {
   const PERFECT_MILESTONES = [3, 10, 30];
   const CORRECT_MILESTONES = [200, 500, 1000];
 
+  /**
+   * Advance the daily streak on `stats`, in place.
+   *
+   * R5 grace day: missing ONE day does not reset the streak. A child in Swedish
+   * school has höstlov, jullov, sportlov and sick days — a 40-day streak is
+   * almost certain to break, and a reset to 1 is where motivation dies.
+   *   Gap of 0 days (same day)  → no change, no double-count
+   *   Gap of 1 day (yesterday)  → +1, normal continuation
+   *   Gap of 2 days (grace day) → +1, the missed day is forgiven
+   *   Gap of 3+ days            → reset to 1
+   *
+   * Shared by recordRound and recordDailyTask. It lives in one place because it
+   * previously did not: R5 was applied to recordRound only, so a child who did
+   * just the daily task still lost the streak after one missed day.
+   *
+   * @param {Object} stats - the stats object, mutated in place
+   * @returns {Object|null} a milestone to celebrate, or null
+   */
+  function _advanceStreak(stats) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (stats.lastPlayDate === today) return null; // already counted today
+
+    const GRACE_DAYS = 1; // how many consecutive missed days are forgiven
+    let gapDays = Infinity;
+    if (stats.lastPlayDate) {
+      const lastMs = new Date(stats.lastPlayDate).getTime();
+      const todayMs = new Date(today).getTime();
+      // Unparseable stored date → leave gapDays at Infinity so the streak resets
+      if (!isNaN(lastMs)) gapDays = Math.round((todayMs - lastMs) / 86400000);
+    }
+    // gapDays compares calendar dates (both normalised to YYYY-MM-DD), so this
+    // is correct across month and year boundaries and unaffected by DST.
+    stats.consecutiveDays = (gapDays >= 1 && gapDays <= 1 + GRACE_DAYS)
+      ? (stats.consecutiveDays || 0) + 1
+      : 1;
+    stats.lastPlayDate = today;
+
+    // Keep a rolling history of active days so the report can show "this week".
+    // lastPlayDate alone cannot answer that — it is a single overwritten value.
+    // Capped at 400 entries (~13 months) to bound localStorage growth.
+    if (!Array.isArray(stats.playDates)) stats.playDates = [];
+    if (!stats.playDates.includes(today)) {
+      stats.playDates.push(today);
+      if (stats.playDates.length > 400) {
+        stats.playDates = stats.playDates.slice(-400);
+      }
+    }
+
+    if (!stats.bestStreak || stats.consecutiveDays > stats.bestStreak) {
+      stats.bestStreak = stats.consecutiveDays;
+    }
+
+    return STREAK_MILESTONES.includes(stats.consecutiveDays)
+      ? { emoji: '🔥', name: `连续${stats.consecutiveDays}天！`, desc: '坚持就是胜利，继续加油！' }
+      : null;
+  }
+
   function recordRound(score, total) {
     const stats = State.get('stats');
     stats.totalRounds++;
@@ -421,40 +481,8 @@ const StatsService = (() => {
     }
 
     // Update daily streak.
-    // R5 grace day: missing ONE day does not reset the streak. A child in Swedish
-    // school has höstlov, jullov, sportlov and sick days — a 40-day streak is
-    // almost certain to break, and a reset to 1 is where motivation dies.
-    // Gap of 0 days (same day)  → no change, no double-count
-    // Gap of 1 day (yesterday)  → +1, normal continuation
-    // Gap of 2 days (grace day) → +1, the missed day is forgiven
-    // Gap of 3+ days            → reset to 1
-    const today = new Date().toISOString().slice(0, 10);
-    let milestone = null;
-    if (stats.lastPlayDate !== today) {
-      const GRACE_DAYS = 1; // how many consecutive missed days are forgiven
-      let gapDays = Infinity;
-      if (stats.lastPlayDate) {
-        const lastMs = new Date(stats.lastPlayDate).getTime();
-        const todayMs = new Date(today).getTime();
-        if (!isNaN(lastMs)) gapDays = Math.round((todayMs - lastMs) / 86400000);
-      }
-      // gapDays uses calendar dates (both normalised to YYYY-MM-DD), so this is
-      // correct across month and year boundaries and unaffected by DST.
-      stats.consecutiveDays = (gapDays >= 1 && gapDays <= 1 + GRACE_DAYS)
-        ? (stats.consecutiveDays || 0) + 1
-        : 1;
-      stats.lastPlayDate = today;
-
-      // Check streak milestone
-      if (STREAK_MILESTONES.includes(stats.consecutiveDays)) {
-        milestone = { emoji: '🔥', name: `连续${stats.consecutiveDays}天！`, desc: '坚持就是胜利，继续加油！' };
-      }
-    }
-
-    // Track best streak ever
-    if (!stats.bestStreak || stats.consecutiveDays > stats.bestStreak) {
-      stats.bestStreak = stats.consecutiveDays;
-    }
+    // Update daily streak (shared with recordDailyTask — see _advanceStreak)
+    let milestone = _advanceStreak(stats);
 
     // Check other milestones
     if (!milestone) {
@@ -476,21 +504,19 @@ const StatsService = (() => {
   function get() { return State.get('stats'); }
 
   /** Record daily task completion (for streak tracking) */
+  /**
+   * Record that the daily task was completed today.
+   * Uses the same streak rules as recordRound, including the R5 grace day.
+   * @returns {Object|null} a milestone to celebrate, or null
+   */
   function recordDailyTask() {
     const stats = State.get('stats');
-    const today = new Date().toISOString().slice(0, 10);
-    if (stats.lastPlayDate !== today) {
-      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-      stats.consecutiveDays = (stats.lastPlayDate === yesterday)
-        ? stats.consecutiveDays + 1
-        : 1;
-      stats.lastPlayDate = today;
-      if (!stats.bestStreak || stats.consecutiveDays > stats.bestStreak) {
-        stats.bestStreak = stats.consecutiveDays;
-      }
-    }
+    const milestone = _advanceStreak(stats);
     State.set('stats', stats);
     State.persist('stats');
+    // Returned for parity with recordRound. The daily-task flow currently
+    // shows its own completion screen and ignores this.
+    return milestone;
   }
 
   return { recordRound, recordDailyTask, get };
@@ -679,4 +705,269 @@ const SpacedRepService = (() => {
     getBoxIntervals: () => [...BOX_INTERVALS],
     getMaxBox: () => MAX_BOX
   };
+})();
+
+/**
+ * Learning Report Service — 学习报告
+ *
+ * Read-only aggregation over data other services already persist. Adds no
+ * storage of its own except stats.playDates, which _advanceStreak maintains.
+ *
+ * Deliberately a service and not view code: the numbers are testable without
+ * a DOM, and 卡住的字 needs a real definition rather than an inline filter.
+ */
+const ReportService = (() => {
+  /** Characters whose wrongCount reaches this are considered genuinely hard */
+  const STUCK_WRONG_THRESHOLD = 3;
+  /** How many hard characters to list */
+  const TOP_HARD = 10;
+
+  const _today = () => new Date().toISOString().slice(0, 10);
+
+  /**
+   * Characters that are not sticking.
+   *
+   * Box level alone is not enough: box 0-1 also holds characters learned
+   * correctly today, which are not stuck at all and would dominate the list.
+   * The signal is crossing the two stores — low box AND repeatedly missed.
+   *
+   * @returns {Array} [{char, pinyin, box, wrongCount}] worst first
+   */
+  function getStuckChars() {
+    const srs = State.load('spacedRep', {});
+    const book = ErrorBookService.getAll();
+    const out = [];
+    for (const entry of book) {
+      const info = srs[entry.char];
+      const box = info ? info.box : 0;
+      if (box <= 1 && (entry.wrongCount || 0) >= STUCK_WRONG_THRESHOLD) {
+        out.push({ char: entry.char, pinyin: entry.pinyin, box, wrongCount: entry.wrongCount });
+      }
+    }
+    return out.sort((a, b) => b.wrongCount - a.wrongCount);
+  }
+
+  /**
+   * Hardest characters by error count, regardless of box.
+   * @returns {Array} [{char, pinyin, wrongCount}] worst first, capped
+   */
+  function getHardestChars() {
+    return ErrorBookService.getAll()
+      .slice()
+      .sort((a, b) => (b.wrongCount || 0) - (a.wrongCount || 0))
+      .slice(0, TOP_HARD);
+  }
+
+  /**
+   * Which of the last 7 calendar days had activity.
+   *
+   * Only answerable because stats.playDates exists. It starts empty for
+   * existing profiles, so early reports under-report rather than guess —
+   * there is no retroactive data to recover.
+   *
+   * @returns {Object} {days: [{date, active}] oldest first, activeCount}
+   */
+  function getWeekActivity() {
+    const stats = State.get('stats') || {};
+    const played = new Set(Array.isArray(stats.playDates) ? stats.playDates : []);
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      days.push({ date: d, active: played.has(d) });
+    }
+    return { days, activeCount: days.filter(d => d.active).length };
+  }
+
+  /**
+   * Mastery split, coarse on purpose.
+   *
+   * Per-box counts are already visible in the 智能复习 dropdown and are not
+   * actionable at that precision. Three buckets answer the only question a
+   * parent asks: how much is solid, how much is in flight, what needs help.
+   *
+   * Boundaries are derived from the interval schedule, not hardcoded box
+   * numbers: "needs work" is anything still reviewed within a couple of days,
+   * "mastered" is anything resting a fortnight or more. Change BOX_INTERVALS
+   * and the buckets follow instead of silently mis-classifying.
+   *
+   * @returns {Object} {mastered, learning, needsWork, total}
+   */
+  function getMasterySplit() {
+    const boxStats = SpacedRepService.getStats();
+    const intervals = SpacedRepService.getBoxIntervals();
+    const NEEDS_WORK_MAX_DAYS = 1;  // box interval <= 1 day: just met, or knocked back
+    const MASTERED_MIN_DAYS = 14;   // resting two weeks or longer
+    let mastered = 0, learning = 0, needsWork = 0;
+    intervals.forEach((days, i) => {
+      const n = boxStats[`box${i + 1}`] || 0;
+      if (days <= NEEDS_WORK_MAX_DAYS) needsWork += n;
+      else if (days < MASTERED_MIN_DAYS) learning += n;
+      else mastered += n;
+    });
+    return { mastered, learning, needsWork, total: mastered + learning + needsWork };
+  }
+
+  /** @returns {Object|null} current lesson position, or null before setup */
+  function getPosition() {
+    if (typeof DailyTaskService === 'undefined') return null;
+    const progress = DailyTaskService.getProgress();
+    if (!progress) return null;
+    return {
+      grade: progress.grade,
+      semester: progress.semester,
+      lessonIndex: progress.lessonIndex,
+      completedCount: (progress.completedLessons || []).length
+    };
+  }
+
+  /**
+   * Everything the report needs, in one call.
+   * @returns {Object} report data; all fields always present
+   */
+  function build() {
+    const stats = State.get('stats') || {};
+    const answered = stats.totalAnswered || 0;
+    return {
+      date: _today(),
+      mastery: getMasterySplit(),
+      dueToday: SpacedRepService.getDueCount(),
+      totalSeen: SpacedRepService.getTotalCount(),
+      week: getWeekActivity(),
+      streak: {
+        current: stats.consecutiveDays || 0,
+        best: stats.bestStreak || 0
+      },
+      totals: {
+        rounds: stats.totalRounds || 0,
+        correct: stats.totalCorrect || 0,
+        answered,
+        accuracy: answered ? Math.round((stats.totalCorrect || 0) / answered * 100) : null
+      },
+      stuck: getStuckChars(),
+      hardest: getHardestChars(),
+      errorBookCount: ErrorBookService.count(),
+      position: getPosition()
+    };
+  }
+
+  return { build, getStuckChars, getHardestChars, getWeekActivity, getMasterySplit, getPosition };
+})();
+
+/**
+ * Custom Card Service — 自定义字卡
+ *
+ * User-authored cards for anything the textbook data does not cover: a word
+ * from a story, a Swedish-class term, a name. Stored per-profile under its own
+ * key, deliberately NOT in data/*.json — those are generated from textbook
+ * PDFs and regenerating them would wipe user content.
+ *
+ * Cards are shaped exactly like textbook chars ({char, pinyin, words,
+ * sentence}) so they flow through the flashcard, SRS and quiz paths unchanged.
+ * The 反面 text lands in `sentence`, which is what the card back renders.
+ *
+ * Quiz support depends on which fields are filled:
+ *   pinyin given  → 字→音 and 音→字 work
+ *   back contains the front → 填空 works
+ *   words empty   → 字→词 skips this card (see DataService distractor filter)
+ */
+const CustomCardService = (() => {
+  const MAX_FRONT = 8;    // a card front is a char or short word, not a sentence
+  const MAX_BACK = 200;
+  const MAX_PINYIN = 60;
+  const MAX_CARDS = 500;  // bound localStorage; far above realistic use
+
+  /** @returns {Array} raw stored cards */
+  function _load() {
+    const cards = State.load('customCards', []);
+    return Array.isArray(cards) ? cards : [];
+  }
+
+  function _save(cards) {
+    State.save('customCards', cards);
+  }
+
+  /**
+   * Validate a would-be card without saving it.
+   * @returns {Object} {ok: boolean, error: string}
+   */
+  function validate(front, back, pinyin) {
+    const f = (front || '').trim();
+    const b = (back || '').trim();
+    const p = (pinyin || '').trim();
+    if (!f) return { ok: false, error: '正面不能为空' };
+    if (!b) return { ok: false, error: '反面不能为空' };
+    if (f.length > MAX_FRONT) return { ok: false, error: `正面最多 ${MAX_FRONT} 个字` };
+    if (b.length > MAX_BACK) return { ok: false, error: `反面最多 ${MAX_BACK} 个字` };
+    if (p.length > MAX_PINYIN) return { ok: false, error: `拼音最多 ${MAX_PINYIN} 个字符` };
+    if (_load().some(c => c.front === f)) return { ok: false, error: `「${f}」已经有卡片了` };
+    if (_load().length >= MAX_CARDS) return { ok: false, error: `最多 ${MAX_CARDS} 张卡片` };
+    return { ok: true, error: '' };
+  }
+
+  /**
+   * Add a card.
+   * @param {string} front - card front (the prompt)
+   * @param {string} back - card back (meaning, example, translation…)
+   * @param {string} [pinyin] - optional; enables the pinyin quiz types
+   * @returns {Object} {ok: boolean, error: string, card: Object|null}
+   */
+  function add(front, back, pinyin) {
+    const check = validate(front, back, pinyin);
+    if (!check.ok) return { ok: false, error: check.error, card: null };
+    const card = {
+      front: (front || '').trim(),
+      back: (back || '').trim(),
+      pinyin: (pinyin || '').trim(),
+      created: new Date().toISOString().slice(0, 10)
+    };
+    const cards = _load();
+    cards.push(card);
+    _save(cards);
+    return { ok: true, error: '', card };
+  }
+
+  /**
+   * Remove a card by its front text.
+   * @returns {boolean} whether a card was removed
+   */
+  function remove(front) {
+    const cards = _load();
+    const next = cards.filter(c => c.front !== front);
+    if (next.length === cards.length) return false;
+    _save(next);
+    return true;
+  }
+
+  /** @returns {Array} stored cards, newest first */
+  function getAll() {
+    return _load().slice().reverse();
+  }
+
+  /** @returns {number} how many custom cards exist */
+  function count() {
+    return _load().length;
+  }
+
+  /**
+   * Cards in the same shape as textbook characters, so every existing path
+   * (flashcards, SRS, quiz) consumes them without special-casing.
+   *
+   * grade/semester are 0 to mark "not from a textbook" — the same convention
+   * the error-book branch already uses for synthesised entries.
+   *
+   * @returns {Array} [{char, pinyin, words, sentence, grade, semester, isCustom}]
+   */
+  function asChars() {
+    return getAll().map(c => ({
+      char: c.front,
+      pinyin: c.pinyin || '',
+      words: [],
+      sentence: c.back,
+      grade: 0,
+      semester: 0,
+      isCustom: true
+    }));
+  }
+
+  return { add, remove, getAll, count, asChars, validate };
 })();
