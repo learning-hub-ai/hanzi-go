@@ -1023,6 +1023,10 @@ const AppController = (() => {
     selectSemester('custom', 'custom');
   }
 
+  function showHelp() {
+    ModalUI.show('❓ 使用说明', ModalUI.renderHelp());
+  }
+
   function showReport() {
     const html = ModalUI.renderReport(ReportService.build());
     ModalUI.show('📊 学习报告', html);
@@ -1272,6 +1276,7 @@ const AppController = (() => {
     document.getElementById('btnErrorBook').addEventListener('click', showErrorBook);
     document.getElementById('btnBadges').addEventListener('click', showBadges);
     document.getElementById('btnReport').addEventListener('click', showReport);
+    document.getElementById('btnHelp').addEventListener('click', showHelp);
 
     // --- Navigation: sidebar ---
     // Review group toggle (collapsible)
@@ -1435,5 +1440,5 @@ const AppController = (() => {
   }
 
   return { init, switchMode, selectSemester, selectLesson, showFavorites, showErrorBook,
-           showBadges, showReport, showCustomCards, addCustomCard, removeCustomCard };
+           showBadges, showReport, showHelp, showCustomCards, addCustomCard, removeCustomCard };
 })();

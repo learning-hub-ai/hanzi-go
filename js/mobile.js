@@ -120,6 +120,10 @@ const MobileUI = (() => {
       <span class="mobile-sheet-item-label">自定义</span>
       <span class="mobile-sheet-item-count">${typeof CustomCardService !== 'undefined' ? CustomCardService.count() : 0}</span>
     </div>`;
+    html += `<div class="mobile-sheet-item" data-action="help">
+      <span class="mobile-sheet-item-icon">❓</span>
+      <span class="mobile-sheet-item-label">使用说明</span>
+    </div>`;
     html += `<div class="mobile-sheet-item" data-action="report">
       <span class="mobile-sheet-item-icon">📊</span>
       <span class="mobile-sheet-item-label">学习报告</span>
@@ -173,6 +177,11 @@ const MobileUI = (() => {
         }
         if (action === 'report') {
           document.getElementById('btnReport').click();
+          _closeSheet();
+          return;
+        }
+        if (action === 'help') {
+          document.getElementById('btnHelp').click();
           _closeSheet();
           return;
         }

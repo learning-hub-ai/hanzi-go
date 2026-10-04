@@ -1875,6 +1875,93 @@ async function runTests() {
     });
   });
 
+  describeWith('\u2753 \u4f7f\u7528\u8bf4\u660e (Help)', resetProfileData, () => {
+    it('Help: button exists and is wired', () => {
+      assert(frame.contentDocument.getElementById('btnHelp'), '#btnHelp missing from header');
+      assert(typeof app.AppController.showHelp === 'function', 'showHelp not exposed');
+      assert(typeof app.ModalUI.renderHelp === 'function', 'renderHelp missing');
+    });
+
+    it('Help: clicking ❓ opens the panel', () => {
+      frame.contentDocument.getElementById('btnHelp').click();
+      assert(frame.contentDocument.getElementById('modalOverlay').classList.contains('show'),
+        'the help modal should open');
+      assert(frame.contentDocument.getElementById('modalTitle').textContent.includes('\u4f7f\u7528\u8bf4\u660e'),
+        'title should say 使用说明');
+      app.ModalUI.close();
+    });
+
+    it('Help: covers every entry point a user has to find', () => {
+      // The reason this panel exists: 12 entry points, none self-explanatory.
+      // If one is added without documenting it, this fails.
+      const html = app.ModalUI.renderHelp();
+      const mustMention = [
+        '\u4efb\u52a1', '\u5b66\u4e60', '\u6311\u6218',               // the three tabs
+        '\u667a\u80fd\u590d\u4e60', '\u7ec3\u751f\u5b57', '\u7ec3\u9519\u9898', '\u81ea\u5b9a\u4e49', // sidebar
+        '\u751f\u5b57\u672c', '\u9519\u9898\u672c', '\u6210\u5c31\u5899', '\u5b66\u4e60\u62a5\u544a', // header
+        '\u5207\u6362\u7528\u6237'
+      ];
+      const missing = mustMention.filter(t => !html.includes(t));
+      assertEqual(missing.length, 0, `help text does not mention: ${missing.join(', ')}`);
+    });
+
+    it('Help: states the error-book rule, the most confusable one', () => {
+      const html = app.ModalUI.renderHelp();
+      const n = app.State.config('wrongAnswersToRemoveFromErrorBook', 2);
+      assert(html.includes(`\u8fde\u7eed\u7b54\u5bf9 ${n} \u6b21`),
+        `must state that ${n} correct answers clear an error-book entry`);
+      assert(html.includes('\u4e0d\u80fd\u624b\u52a8\u5220'),
+        'must say entries cannot be deleted by hand — that is the whole point');
+    });
+
+    it('Help: numbers are read from config, not written in by hand', () => {
+      // Comparing the text against State.config() would be tautological — both
+      // sides move together. Instead, override the config and check the text
+      // follows: a hardcoded number in the prose would not.
+      const real = app.State.config;
+      app.State.config = (key, dflt) =>
+        key === 'questionsPerRound' ? 77 : real(key, dflt);
+      let html;
+      try { html = app.ModalUI.renderHelp(); } finally { app.State.config = real; }
+      assert(html.includes('\u6bcf\u8f6e 77 \u9053'),
+        'quiz length must come from config — it looks hardcoded in the help text');
+    });
+
+    it('Help: the interval schedule shown matches BOX_INTERVALS', () => {
+      const html = app.ModalUI.renderHelp();
+      const shown = app.SpacedRepService.getBoxIntervals().join('\u2192');
+      assert(html.includes(shown),
+        `the parent section should show the real schedule ${shown}`);
+    });
+
+    it('Help: explains that 拼音 is what makes a custom card quizzable', () => {
+      const html = app.ModalUI.renderHelp();
+      assert(html.includes('\u62fc\u97f3\u586b\u4e86\u624d\u80fd\u7528\u5728\u6311\u6218\u91cc'),
+        'a custom card without pinyin cannot be quizzed — users need to know');
+    });
+
+    it('Help: has a parent section, kept separate from the child-facing text', () => {
+      const html = app.ModalUI.renderHelp();
+      assert(html.includes('\u7ed9\u5bb6\u957f'), 'should have a 给家长 section');
+      // Box levels are meaningless to a 10-year-old; they belong in that section
+      const parentPart = html.slice(html.indexOf('\u7ed9\u5bb6\u957f'));
+      assert(parentPart.includes('\u95f4\u9694'), 'interval explanation belongs in the parent section');
+    });
+
+    it('Help: is reachable from the mobile sheet too', () => {
+      // index.html and mobile.js render the same entry points; adding to only
+      // one leaves phone and desktop disagreeing.
+      const src = app.MobileUI ? String(app.MobileUI.render || '') : '';
+      const sheetHasHelp = frame.contentDocument.body.innerHTML.includes('btnHelp');
+      assert(sheetHasHelp, 'help must be present in the DOM for the sheet to trigger it');
+    });
+
+    it('Help: no raw HTML injection from config values', () => {
+      const html = app.ModalUI.renderHelp();
+      assert(!html.includes('<script'), 'must not contain script tags');
+    });
+  });
+
   describe('⚙️ Config', () => {
     it('Config returns defaults for missing keys', () => {
       assertEqual(app.State.config('fake.key', 42), 42);

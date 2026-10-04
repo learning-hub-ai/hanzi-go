@@ -451,7 +451,83 @@ const ModalUI = (() => {
     </div>`).join('');
   }
 
-  return { show, close, renderFavorites, renderErrorBook, renderBadges, renderReport, renderCustomCards, renderCustomCardList };
+  /**
+   * 使用说明 — what each entry point is for, and when to use it.
+   *
+   * Deliberately not a feature list: an icon plus "查看学习进度" tells a child
+   * nothing they could not guess. What is NOT guessable is why each thing
+   * exists, and which mechanisms decide things for you. The error book in
+   * particular empties by answering correctly, not by deleting — the single
+   * most confusable rule in the app.
+   *
+   * Written for the child, with a short 给家长 section at the end: box levels
+   * and intervals are noise to a 10-year-old but are the point of 学习报告.
+   *
+   * Numbers here are the real configured values (config.json, BOX_INTERVALS).
+   * If those change, this text goes stale — a test checks the key ones.
+   *
+   * @returns {string} HTML
+   */
+  function renderHelp() {
+    const perRound = State.config('questionsPerRound', 10);
+    const toRemove = State.config('wrongAnswersToRemoveFromErrorBook', 2);
+    return `
+    <p style="color:#475569;margin:0 0 16px">每天打开先做 <strong>📖 任务</strong> —— 它会自己挑该学和该复习的字。
+    其它地方都是「想多练点什么」的时候才用。</p>
+
+    <h4 class="help-h">上面三个标签</h4>
+    <div class="modal-item"><span><strong>📖 任务</strong><br>
+      <small>每天的主线，五步：复习 → 回顾上课 → 学习新字 → 闯关测验 → 完成。
+      做完就算一天，连续天数 +1。漏一天不要紧，第二天补上照样连着算。</small></span></div>
+    <div class="modal-item"><span><strong>📚 学习</strong><br>
+      <small>翻卡片。正面是字，点一下翻到背面看拼音、组词、例句；点字会朗读。
+      左边选哪一课，就只看那一课的字。</small></span></div>
+    <div class="modal-item"><span><strong>🎮 挑战</strong><br>
+      <small>做题，每轮 ${perRound} 道。四种题型可选：字→音、音→字、字→词、填空，
+      也可以混着来。答错的字会自动进错题本。</small></span></div>
+
+    <h4 class="help-h">左边「复习区」四项</h4>
+    <div class="modal-item"><span><strong>📈 智能复习</strong><br>
+      <small>这一项是<strong>自动算出来的</strong>：哪个字该复习了，它说了算。
+      刚学会的字隔一天再问，记牢了就慢慢拉长到一周、两周、一个月。
+      所以它每天内容都不一样 —— 不用自己挑，照着练就行。</small></span></div>
+    <div class="modal-item"><span><strong>❤️ 练生字</strong><br>
+      <small>你自己❤️收藏的字。看卡片时点右上角的心就收进来，再点一下取消。</small></span></div>
+    <div class="modal-item"><span><strong>📖 练错题</strong><br>
+      <small>答错过的字。<strong>连续答对 ${toRemove} 次才会自动移出去</strong> ——
+      不能手动删，这正是它的用处：错过的字必须真正学会才算过关。</small></span></div>
+    <div class="modal-item"><span><strong>✏️ 自定义</strong><br>
+      <small>课本里没有、但你想记的词：故事里看到的、瑞典语课上的、人名都行。
+      填好正面和反面就能加，一张接一张，按 Enter 就行。
+      <strong>拼音填了才能用在挑战里</strong>（不填也能当卡片翻）。
+      卡片上的 🗑 要点两次才删 —— 自定义卡只有这一份，删了找不回来。</small></span></div>
+
+    <h4 class="help-h">右上角几个按钮</h4>
+    <div class="modal-item"><span><strong>❤️ 生字本 / 📖 错题本</strong><br>
+      <small>看这两批字都有哪些、删掉收藏。想拿来练就点左边那两项。</small></span></div>
+    <div class="modal-item"><span><strong>🏆 成就墙</strong><br>
+      <small>徽章和累计数据。识字量到 50、100、200、500、1000、2000 各有一个。</small></span></div>
+    <div class="modal-item"><span><strong>👧 切换用户</strong><br>
+      <small>一台设备可以几个人分开用，各自的进度、收藏、错题互不影响。</small></span></div>
+
+    <h4 class="help-h">给家长</h4>
+    <p style="font-size:13px;color:#475569;margin:0 0 10px"><strong>📊 学习报告</strong>
+    是给你看的，一屏读完：</p>
+    <ul class="help-list">
+      <li><strong>已掌握 / 在学 / 需加强</strong> —— 按复习间隔分的三档，不是正确率</li>
+      <li><strong>最近七天</strong> —— 哪天做了任务。从加这个功能那天开始记，之前没有数据</li>
+      <li><strong>这些字反复出错</strong> —— 真正值得一起看的字：既没升上去、又错过三次以上。
+          只看「刚学的字」会把今天刚学会的也算进来，所以要两个条件</li>
+    </ul>
+    <p style="font-size:13px;color:#475569;margin:10px 0 0">
+    复习间隔是 0→1→3→7→14→30→60 天：答对往上走一级，答错只退一级（不是回到头）。
+    所以偶尔手滑不会毁掉进度，但真没记住的字会一直回来。</p>
+
+    <p style="font-size:12px;color:#94a3b8;margin-top:16px">
+    手机上可以「添加到主屏幕」，之后没网也能用。</p>`;
+  }
+
+  return { show, close, renderFavorites, renderErrorBook, renderBadges, renderReport, renderCustomCards, renderCustomCardList, renderHelp };
 })();
 
 /** Badge Popup UI — celebration overlay when earning a new badge */
