@@ -88,6 +88,15 @@ function resetProfileData() {
     perfectRounds: 0, totalEverWrong: 0, playDates: []
   });
   app.State.persist('stats');
+  // Restore the study selection too. Tests that study a small collection (one
+  // custom card, say) leave filteredChars pointing at it, and the quiz draws
+  // its pool from there — so a later test asking for 10 mixed questions got
+  // one, from one character, and saw only one question type.
+  if (app.DataService) {
+    app.DataService.applyFilter('all');
+    app.State.set('selectedGrade', '1');
+    app.State.set('currentIndex', 0);
+  }
   if (app.FilterUI) {
     app.FilterUI.updateFavCount();
     app.FilterUI.updateErrCount();
@@ -313,10 +322,23 @@ async function runTests() {
     });
 
     it('Generates mixed questions', () => {
-      const q = app.DataService.generateQuizQuestions(false, 'mixed', 10);
-      assert(q !== null);
-      const types = new Set(q.map(x => x.type));
-      assertGreater(types.size, 1, 'Mixed should have multiple types');
+      // The generator picks a type at random per question, so a single run can
+      // legitimately draw one type when the pool is small. Assert over several
+      // runs and state the pool size, so a failure says which went wrong.
+      const pool = app.State.get('filteredChars');
+      assertGreater(pool.length, 10,
+        `需要足够大的题库才能验证混合出题，当前只有 ${pool.length} 个字`);
+
+      const seen = new Set();
+      for (let run = 0; run < 5; run++) {
+        const q = app.DataService.generateQuizQuestions(false, 'mixed', 10);
+        assert(q !== null, 'generator returned null');
+        assertEqual(q.length, 10, `expected 10 questions, got ${q.length}`);
+        q.forEach(x => seen.add(x.type));
+        if (seen.size > 1) break;
+      }
+      assertGreater(seen.size, 1,
+        `mixed mode should produce more than one type across 5 runs, saw: ${[...seen].join(',')}`);
     });
 
     it('Correct answer is always in options', () => {
@@ -1485,27 +1507,32 @@ async function runTests() {
     });
 
     it('R8: front length picks a CSS size class, not an inline style', () => {
-      const el = frame.contentDocument.getElementById('cardChar');
+      // Re-query after every render instead of caching the element: app startup
+      // replaces the whole main subtree via _getMainContentHTML(), so a cached
+      // reference can become a detached node and report no classes at all.
+      const cardChar = () => frame.contentDocument.getElementById('cardChar');
+      const render = (front) =>
+        app.CardUI.render({ char: front, pinyin: '', words: [], sentence: 'x' }, 0, 1);
 
-      app.CardUI.render({ char: '\u79e6', pinyin: '', words: [], sentence: 'x' }, 0, 1);
-      assertEqual(el.className.includes('card-char--'), false,
-        `a single character should use the default size, got "${el.className}"`);
+      render('\u79e6');
+      assertEqual(cardChar().className.includes('card-char--'), false,
+        `a single character should use the default size, got "${cardChar().className}"`);
 
-      app.CardUI.render({ char: '\u79e6\u59cb\u7687', pinyin: '', words: [], sentence: 'x' }, 0, 1);
-      assert(el.classList.contains('card-char--len4'),
-        `a 3-char front should get card-char--len4, got "${el.className}"`);
+      render('\u79e6\u59cb\u7687');
+      assert(cardChar().classList.contains('card-char--len4'),
+        `a 3-char front should get card-char--len4, got "${cardChar().className}"`);
 
-      app.CardUI.render({ char: '\u79e6\u59cb\u7687\u7edf\u4e00\u4e2d', pinyin: '', words: [], sentence: 'x' }, 0, 1);
-      assert(el.classList.contains('card-char--long'),
-        `a 6-char front should get card-char--long, got "${el.className}"`);
+      render('\u79e6\u59cb\u7687\u7edf\u4e00\u4e2d');
+      assert(cardChar().classList.contains('card-char--long'),
+        `a 6-char front should get card-char--long, got "${cardChar().className}"`);
 
       // Inline font-size would override the responsive clamp() in style.css
-      assertEqual(el.style.fontSize, '', 'sizing must come from CSS, not an inline style');
+      assertEqual(cardChar().style.fontSize, '', 'sizing must come from CSS, not an inline style');
 
       // And the classes must not accumulate across renders
-      app.CardUI.render({ char: '\u5929', pinyin: '', words: [], sentence: 'x' }, 0, 1);
-      assertEqual(el.className.includes('card-char--'), false,
-        `size classes must be cleared when going back to one char, got "${el.className}"`);
+      render('\u5929');
+      assertEqual(cardChar().className.includes('card-char--'), false,
+        `size classes must be cleared when going back to one char, got "${cardChar().className}"`);
     });
 
     it('R8: form renders with all three inputs', () => {
