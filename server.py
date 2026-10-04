@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple HTTP server for Hanzi Buddy that also serves TTS audio.
+Simple HTTP server for HanziGo that also serves TTS audio.
 GET /tts?text=天  → proxies to Baidu TTS and returns MP3 audio
 GET /*            → serves static files from current directory
 """
@@ -93,7 +93,7 @@ class TTSHandler(http.server.SimpleHTTPRequestHandler):
 if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     server = http.server.HTTPServer(('0.0.0.0', PORT), TTSHandler)
-    print(f'🔊 Hanzi Buddy server with TTS at http://localhost:{PORT}')
+    print(f'🔊 HanziGo server with TTS at http://localhost:{PORT}')
     try:
         server.serve_forever()
     except KeyboardInterrupt:

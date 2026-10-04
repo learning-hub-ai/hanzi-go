@@ -1,51 +1,70 @@
-# 小学语文生字学习伙伴 (Hanzi Buddy)
+# HanziGo — 汉字学习好伙伴
 
-Interactive Chinese character learning app for primary school students (Grades 1-6), covering the 人教版 (PEP) curriculum with ~2,864 characters.
+给小学到初中的孩子做的生字学习 PWA，照着人教版（部编版）课本的识字表走，
+一年级到九年级共 18 个学期、4014 个字，按课分组。
 
-## Features
+**在线使用**：https://learning-hub-ai.github.io/hanzi-go/
 
-- **Learning Mode**: 3D flip cards with pinyin, words, and example sentences
-- **Challenge Mode**: Pinyin quiz (看汉字选拼音) with scoring, streaks, and badges
-- **Error Book**: Auto-collects wrong answers, remove after 2 consecutive correct
-- **Favorites**: Heart-save characters for focused review
-- **Badges**: Achievement system (初次挑战, 百发百中, 识字达人)
-- **Speech**: Browser TTS reads characters aloud (Mandarin)
-- **Responsive**: Works on phone, tablet, and desktop
+手机上打开后可以「添加到主屏幕」，之后离线也能用。
 
-## Quick Start
+## 三种用法
+
+| 模式 | 做什么 |
+|---|---|
+| 📚 学习 | 3D 翻卡 —— 正面是字，翻过来是拼音、组词、例句，点字会朗读 |
+| 🎯 挑战 | 看汉字选拼音 —— 计分、连对加成、拿徽章 |
+| 📅 每日任务 | 四步流程：认字 → 测验 → 错题 → 收尾，做完算一天 |
+
+答错的字自动进**错题本**，连对两次才移出去。喜欢的字可以❤️收藏，单独复习。
+徽章三个：初次挑战、百发百中、识字达人。
+
+## 本地打开
+
+纯静态，没有构建步骤。双击 `index.html` 就能用。
+
+想用手机或平板在同一个局域网里看：
 
 ```bash
-# No build tools needed — just serve the files
-cd hanzi-buddy
 python3 -m http.server 8080
-# Open http://localhost:8080
+# 然后访问 http://<电脑的IP>:8080
 ```
 
-Or drag the folder to any static hosting (Netlify, GitHub Pages, Vercel).
+`server.py` 是可选的 —— 它多带一个 TTS 代理，发音比浏览器自带的自然些：
 
-## Project Structure
+```bash
+python3 server.py        # http://localhost:8000
+```
+
+朗读有四层回退：本地 `/tts` 代理 → Google → 百度 → 浏览器自带的
+Web Speech API。线上版本没有代理，用后三种；如果网络拦了前两个，
+就要靠浏览器里装的中文语音。
+
+## 结构
 
 ```
-hanzi-buddy/
-├── index.html         — HTML structure (no logic)
-├── config.json        — Tunable parameters (quiz length, timings, badges)
-├── css/style.css      — Design system (tokens, components, responsive)
+hanzi-go/
+├── index.html         页面结构，不含逻辑
+├── config.json        可调参数（题目数、时长、徽章、鼓励语）
+├── manifest.json      PWA 清单
+├── sw.js              service worker，离线缓存
+├── css/style.css      设计系统（CSS 变量 + 组件 + 响应式）
 ├── js/
-│   ├── state.js       — State management (single source of truth)
-│   ├── data.js        — Data loading, filtering, quiz generation
-│   ├── services.js    — Side effects (speech, badges, favorites, errors, stats)
-│   ├── ui.js          — UI rendering (DOM updates only, no logic)
-│   └── controllers.js — Event handling, connects state↔data↔UI
-└── data/
-    ├── grade1-semester1.json   (Grade 1 upper, 186 chars)
-    ├── grade1-semester2.json   (Grade 1 lower, 287 chars)
-    ├── ...                     (12 files total)
-    └── grade6-semester2.json   (Grade 6 lower, 115 chars)
+│   ├── state.js       状态，唯一源头
+│   ├── data.js        加载、筛选、出题
+│   ├── services.js    副作用（朗读、徽章、收藏、错题、统计）
+│   ├── ui.js          只改 DOM，不含逻辑
+│   ├── controllers.js 事件，把 state↔data↔UI 接起来
+│   ├── daily-task.js  每日任务四步流程
+│   ├── constants.js   常量
+│   └── mobile.js      移动端适配
+├── data/              18 个学期文件，grade{N}-semester{M}.json
+├── scripts/           从课本 PDF 生成数据的脚本
+└── docs/              数据生成规范、云同步方案（草案）
 ```
 
-## Adding Data
+## 加数据
 
-Drop a JSON file in `data/` with this format:
+往 `data/` 放一个 `grade{N}-semester{M}.json`，自动发现，不用改代码：
 
 ```json
 {
@@ -63,33 +82,34 @@ Drop a JSON file in `data/` with this format:
 }
 ```
 
-File naming: `grade{N}-semester{M}.json` (auto-discovered, no code changes needed).
+`scripts/gen_g2s1.py` 是从课本 PDF 生成这种 JSON 的例子。课本 PDF 有版权，
+不在仓库里；脚本默认去 `~/smilings/learning-buddy/keben/` 找，可用
+`KEBEN_DIR` 环境变量覆盖。
 
-## Configuration
+## 调参数
 
-Edit `config.json` to adjust:
-- `questionsPerRound` — Number of quiz questions (default: 10)
-- `quizFeedbackDelayMs` — Delay before next question (default: 1200ms)
-- `streakThresholdForFire` — Streak count for fire animation (default: 3)
-- `speech.rate` — TTS speed (default: 0.8)
-- `badges` — Badge definitions (id, emoji, name, condition)
-- `encourageMessages` — End-of-round messages by score
+改 `config.json`，不用动代码：
 
-## Browser Support
+- `questionsPerRound` 每轮题目数（默认 10）
+- `quizFeedbackDelayMs` 答完停留多久再出下一题（默认 1200ms）
+- `streakThresholdForFire` 连对几个出火焰动画（默认 3）
+- `wrongAnswersToRemoveFromErrorBook` 连对几次移出错题本（默认 2）
+- `speech.rate` 朗读速度（默认 0.8，比正常慢一点）
+- `badges` 徽章定义
+- `encourageMessages` 按得分给的鼓励语
 
-- Chrome / Edge 88+
-- Safari 14+ (iOS / macOS)
-- Firefox 85+
-- WeChat browser
+## 技术
 
-## Tech Stack
+原生 HTML / CSS / JavaScript，无框架、无构建工具。CSS 自定义属性做主题，
+localStorage 存进度，service worker 做离线。IIFE 模块模式以兼容旧浏览器。
 
-- Pure HTML / CSS / JavaScript (no frameworks, no build tools)
-- CSS Custom Properties for theming
-- Web Speech API for TTS
-- localStorage for persistence
-- ES Modules (IIFE pattern for browser compatibility)
+浏览器要求：Chrome / Edge 88+、Safari 14+（iOS / macOS）、Firefox 85+、微信内置浏览器。
 
-## License
+`pre-push.sh` 在推送前跑 15 项检查（service worker 合法性、可点元素可达性等）。
 
-MIT
+## 许可
+
+代码 MIT。
+
+识字表的字、拼音、课文标题来自人教版（部编版）语文教材，**版权归编者及出版社所有**，
+这里只按课整理成练习数据，供学习使用。组词和例句为本项目编写。
