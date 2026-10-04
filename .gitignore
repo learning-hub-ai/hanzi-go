@@ -12,3 +12,9 @@ debug.html
 
 # 测试用虚拟环境（headless runner 需要 websocket-client）
 .venv/
+
+# 教材 PDF —— 版权归人教社，绝不进仓库。
+# 2026-10-04 这些文件被放进了仓库目录，git add -A 会把 304MB 受版权的
+# 教科书一并提交到公开仓库。目录和扩展名都挡一道。
+keben/
+*.pdf
