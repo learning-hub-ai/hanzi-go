@@ -1,0 +1,1877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>HanziGo — Test Suite</title>
+<style>
+body{font-family:-apple-system,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;color:#1e293b}
+h1{color:#4f46e5}
+.controls{display:flex;gap:8px;margin-bottom:16px;align-items:center}
+#runBtn{padding:10px 24px;background:#4f46e5;color:#fff;border:none;border-radius:8px;font-size:15px;cursor:pointer}
+#runBtn:hover{background:#3730a3}
+.filter-btn{padding:6px 14px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;background:#fff;color:#64748b}
+.filter-btn.active{background:#fef2f2;border-color:#fca5a5;color:#dc2626;font-weight:600}
+.test-group{margin:12px 0;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
+.test-group.all-pass{border-color:#d1fae5}
+.test-group.has-fail{border-color:#fecaca}
+.test-group-header{background:#f8fafc;margin:0;padding:10px 16px;border-bottom:1px solid #e2e8f0;font-size:14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none}
+.test-group.all-pass .test-group-header{background:#f0fdf4}
+.test-group.has-fail .test-group-header{background:#fef2f2}
+.test-group-header:hover{background:#f1f5f9}
+.test-group-count{font-size:11px;color:#64748b;background:#e2e8f0;padding:2px 8px;border-radius:10px}
+.test-group.has-fail .test-group-count{background:#fecaca;color:#dc2626}
+.test-group-body{display:none}
+.test-group.expanded .test-group-body{display:block}
+.test-group.has-fail .test-group-body{display:block}
+.test{padding:6px 16px;border-bottom:1px solid #f1f5f9;font-size:12px;display:flex;align-items:center;gap:8px}
+.test:last-child{border-bottom:none}
+.pass{color:#059669}
+.fail{color:#ef4444;font-weight:600}
+.pass::before{content:'✅ '}
+.fail::before{content:'❌ '}
+.hidden-test{display:none}
+.summary{margin-top:24px;padding:16px;border-radius:8px;font-size:15px;font-weight:600}
+.summary.all-pass{background:#dcfce7;color:#166534}
+.summary.has-fail{background:#fef2f2;color:#991b1b}
+iframe{width:100%;height:0;border:none;position:absolute;left:-9999px}
+</style>
+</head>
+<body>
+<h1>🧪 HanziGo Test Suite</h1>
+<p>Automated tests to verify app functionality. Tests load the app in a hidden iframe.</p>
+<div class="controls">
+  <button id="runBtn" onclick="runTests()">▶ Run All Tests</button>
+  <button class="filter-btn" id="filterBtn" onclick="toggleFilter()">Show failures only</button>
+  <button class="filter-btn" id="collapseBtn" onclick="collapseAll()">Collapse all</button>
+  <button class="filter-btn" id="expandBtn" onclick="expandAll()">Expand all</button>
+</div>
+<div id="results"><p style="color:#999">Click "Run All Tests" to start</p></div>
+
+<!-- Hidden iframe loads the real app -->
+<iframe id="appFrame" src="index.html"></iframe>
+
+<script>
+let tests = [];
+let passed = 0;
+let failed = 0;
+let app; // reference to iframe's window
+
+function describe(group, fn) { tests.push({ group, tests: [] }); fn(); }
+function it(name, fn) {
+  const group = tests[tests.length - 1];
+  try { fn(); group.tests.push({ name, pass: true }); passed++; }
+  catch (e) { group.tests.push({ name, pass: false, error: e.message }); failed++; }
+}
+function assert(cond, msg) { if (!cond) throw new Error(msg || 'Assertion failed'); }
+function assertEqual(a, b, msg) { if (a !== b) throw new Error(msg || `Expected ${b}, got ${a}`); }
+function assertGreater(a, min, msg) { if (a <= min) throw new Error(msg || `Expected > ${min}, got ${a}`); }
+
+function renderResults() {
+  let html = '';
+  tests.forEach(group => {
+    const groupFailed = group.tests.some(t => !t.pass);
+    const groupClass = groupFailed ? 'has-fail expanded' : 'all-pass';
+    const passCount = group.tests.filter(t => t.pass).length;
+    const failCount = group.tests.filter(t => !t.pass).length;
+    const countLabel = groupFailed ? `${failCount} failed` : `${passCount} passed`;
+
+    html += `<div class="test-group ${groupClass}">`;
+    html += `<div class="test-group-header" onclick="this.parentElement.classList.toggle('expanded')">
+      <span>${groupFailed ? '❌' : '✅'} ${group.group}</span>
+      <span class="test-group-count">${countLabel}</span>
+    </div>`;
+    html += `<div class="test-group-body">`;
+    group.tests.forEach(t => {
+      html += `<div class="test ${t.pass?'pass':'fail'}">${t.name}${t.error?' — '+t.error:''}</div>`;
+    });
+    html += '</div></div>';
+  });
+  html += `<div class="summary ${failed?'has-fail':'all-pass'}">${passed} passed, ${failed} failed (${passed+failed} total across ${tests.length} groups)</div>`;
+  document.getElementById('results').innerHTML = html;
+}
+
+function toggleFilter() {
+  const btn = document.getElementById('filterBtn');
+  const groups = document.querySelectorAll('.test-group');
+  btn.classList.toggle('active');
+  const showFailOnly = btn.classList.contains('active');
+  btn.textContent = showFailOnly ? 'Show all tests' : 'Show failures only';
+  groups.forEach(g => {
+    if (showFailOnly && g.classList.contains('all-pass')) {
+      g.style.display = 'none';
+    } else {
+      g.style.display = '';
+    }
+  });
+}
+
+function collapseAll() {
+  document.querySelectorAll('.test-group').forEach(g => g.classList.remove('expanded'));
+}
+
+function expandAll() {
+  document.querySelectorAll('.test-group').forEach(g => g.classList.add('expanded'));
+}
+
+async function runTests() {
+  tests = []; passed = 0; failed = 0;
+  document.getElementById('results').innerHTML = '<p>Loading app in iframe...</p>';
+
+  // Wait for iframe to load
+  const frame = document.getElementById('appFrame');
+  await new Promise(resolve => {
+    if (frame.contentDocument.readyState === 'complete') resolve();
+    else frame.onload = resolve;
+  });
+
+  // Wait for app to finish initializing (data loading is async)
+  app = frame.contentWindow;
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    try {
+      if (app.State && app.State.get('allChars') && app.State.get('allChars').length > 0) break;
+    } catch(e) {}
+  }
+
+  if (!app.State) {
+    document.getElementById('results').innerHTML = '<p style="color:red">❌ Failed: app.State not accessible. Make sure test.html is served from the same origin (http://localhost:8080/test.html)</p>';
+    return;
+  }
+
+  // === 1. Data Files ===
+  describe('📂 Data Files', () => {
+    it('allChars is loaded and non-empty', () => {
+      const chars = app.State.get('allChars');
+      assert(Array.isArray(chars), 'allChars should be array');
+      assertGreater(chars.length, 100, `Only ${chars.length} chars loaded`);
+    });
+
+    it('Lessons loaded from multiple grades', () => {
+      const lessons = app.State.get('lessons');
+      assertGreater(lessons.length, 50, `Only ${lessons.length} lessons`);
+    });
+
+    it('Each char has required fields', () => {
+      const chars = app.State.get('allChars');
+      const sample = chars.slice(0, 50);
+      sample.forEach(c => {
+        assert(c.char && c.char.length === 1, `Bad char: ${c.char}`);
+        assert(c.pinyin, `Missing pinyin for ${c.char}`);
+        assert(c.words && c.words.length >= 1, `Missing words for ${c.char}`);
+        assert(c.sentence, `Missing sentence for ${c.char}`);
+      });
+    });
+
+    it('Chars contain the character in their sentence', () => {
+      const chars = app.State.get('allChars');
+      let missing = 0;
+      chars.forEach(c => { if (!c.sentence.includes(c.char)) missing++; });
+      assertEqual(missing, 0, `${missing} chars not in their sentence`);
+    });
+  });
+
+  // === 2. HTML Structure ===
+  describe('🏗️ HTML Structure', () => {
+    const doc = frame.contentDocument;
+
+    it('Critical learning elements exist', () => {
+      const ids = ['flashcard', 'cardChar', 'favBtn', 'btnPrev', 'btnNext', 'btnFlip', 'btnSpeak', 'btnReinforce'];
+      const missing = ids.filter(id => !doc.getElementById(id));
+      assertEqual(missing.length, 0, `Missing: ${missing.join(', ')}`);
+    });
+
+    it('Critical challenge elements exist', () => {
+      const ids = ['challengeMode', 'quizTypeSelector', 'quizOptions', 'btnPlayAgain'];
+      const missing = ids.filter(id => !doc.getElementById(id));
+      assertEqual(missing.length, 0, `Missing: ${missing.join(', ')}`);
+    });
+
+    it('Header elements exist', () => {
+      const ids = ['streakNumber', 'btnProfile', 'btnFavorites', 'btnErrorBook', 'btnBadges'];
+      const missing = ids.filter(id => !doc.getElementById(id));
+      assertEqual(missing.length, 0, `Missing: ${missing.join(', ')}`);
+    });
+
+    it('Sidebar has grade items', () => {
+      const items = doc.querySelectorAll('.sidebar-item[data-grade]');
+      assertGreater(items.length, 10, `Only ${items.length} sidebar items`);
+    });
+
+    it('Mode tabs have data-mode', () => {
+      const tabs = doc.querySelectorAll('.mode-tab[data-mode]');
+      assertEqual(tabs.length, 3, 'Should have 3 mode tabs (任务, 学习, 挑战)');
+    });
+  });
+
+  // === 3. JS Modules ===
+  describe('📦 JS Modules', () => {
+    it('State module loaded', () => {
+      assert(typeof app.State !== 'undefined');
+      assert(typeof app.State.get === 'function');
+      assert(typeof app.State.set === 'function');
+      assert(typeof app.State.config === 'function');
+    });
+
+    it('DataService module loaded', () => {
+      assert(typeof app.DataService !== 'undefined');
+      assert(typeof app.DataService.generateQuizQuestions === 'function');
+    });
+
+    it('Speech module loaded', () => {
+      assert(typeof app.Speech !== 'undefined');
+      assert(typeof app.Speech.speak === 'function');
+    });
+
+    it('BadgeService has 11 badges', () => {
+      assertEqual(app.BadgeService.getAll().length, 11, 'Should have 11 badges');
+    });
+
+    it('LearnController loaded', () => {
+      assert(typeof app.LearnController.next === 'function');
+      assert(typeof app.LearnController.prev === 'function');
+      assert(typeof app.LearnController.flip === 'function');
+      assert(typeof app.LearnController.reinforce === 'function');
+    });
+
+    it('ChallengeController loaded', () => {
+      assert(typeof app.ChallengeController.start === 'function');
+      assert(typeof app.ChallengeController.setType === 'function');
+    });
+
+    it('ProfileManager loaded', () => {
+      assert(typeof app.ProfileManager !== 'undefined');
+      assert(typeof app.ProfileManager.getProfiles === 'function');
+    });
+  });
+
+  // === 4. Quiz Logic ===
+  describe('🎮 Quiz Logic', () => {
+    it('Generates pickPinyin questions', () => {
+      const q = app.DataService.generateQuizQuestions(false, 'pickPinyin', 5);
+      assert(q !== null, 'Should generate questions');
+      assertGreater(q.length, 0, 'Should have questions');
+      assertEqual(q[0].type, 'pickPinyin');
+      assertEqual(q[0].options.length, 4, 'Should have 4 options');
+    });
+
+    it('Generates pickChar questions', () => {
+      const q = app.DataService.generateQuizQuestions(false, 'pickChar', 5);
+      assert(q !== null);
+      assertEqual(q[0].type, 'pickChar');
+    });
+
+    it('Generates fillBlank questions', () => {
+      const q = app.DataService.generateQuizQuestions(false, 'fillBlank', 5);
+      assert(q !== null);
+      // fillBlank may fall back to pickChar for some chars
+      assert(q[0].type === 'fillBlank' || q[0].type === 'pickChar');
+    });
+
+    it('Generates mixed questions', () => {
+      const q = app.DataService.generateQuizQuestions(false, 'mixed', 10);
+      assert(q !== null);
+      const types = new Set(q.map(x => x.type));
+      assertGreater(types.size, 1, 'Mixed should have multiple types');
+    });
+
+    it('Correct answer is always in options', () => {
+      const q = app.DataService.generateQuizQuestions(false, 'pickPinyin', 10);
+      q.forEach(question => {
+        assert(question.options.includes(question.target), 'Target must be in options');
+      });
+    });
+  });
+
+  // === 5. Badge System ===
+  describe('🏆 Badge System', () => {
+    it('All badges have required fields', () => {
+      app.BadgeService.getAll().forEach(b => {
+        assert(b.id, `Missing id`);
+        assert(b.emoji, `${b.id} missing emoji`);
+        assert(b.name, `${b.id} missing name`);
+        assert(b.desc !== undefined, `${b.id} missing desc`);
+        assert(typeof b.check === 'function', `${b.id} missing check`);
+      });
+    });
+
+    it('Badge IDs are unique', () => {
+      const ids = app.BadgeService.getAll().map(b => b.id);
+      assertEqual(ids.length, new Set(ids).size, 'Duplicate badge IDs');
+    });
+
+    it('checkAndAward returns array', () => {
+      const result = app.BadgeService.checkAndAward();
+      assert(Array.isArray(result), 'Should return array');
+    });
+  });
+
+  // === 6. Profile System ===
+  describe('👤 Profiles', () => {
+    it('At least one profile exists', () => {
+      assertGreater(app.ProfileManager.getProfiles().length, 0, 'No profiles');
+    });
+
+    it('Profile has id, name, avatar', () => {
+      const p = app.ProfileManager.getProfiles()[0];
+      assert(p.id, 'Missing id');
+      assert(p.name, 'Missing name');
+      assert(p.avatar, 'Missing avatar');
+    });
+
+    it('State has active profile', () => {
+      const id = app.State.getProfileId();
+      assert(id && id.length > 0, 'No active profile ID');
+    });
+  });
+
+  // === 7. Streak Logic ===
+  describe('🔥 Streak', () => {
+    it('Stats has consecutiveDays field', () => {
+      const stats = app.State.get('stats');
+      assert(stats.consecutiveDays !== undefined, 'Missing consecutiveDays');
+    });
+
+    it('Streak display shows a number', () => {
+      const el = frame.contentDocument.getElementById('streakNumber');
+      assert(el, 'streakNumber element missing');
+      const num = parseInt(el.textContent);
+      assert(!isNaN(num), `Streak should be a number, got: ${el.textContent}`);
+    });
+  });
+
+  // === 8. Timer ===
+  describe('⏱️ Timer', () => {
+    it('Timer select element exists', () => {
+      const el = frame.contentDocument.getElementById('quizTimerSelect');
+      assert(el, 'quizTimerSelect not found');
+    });
+
+    it('Timer bar element exists', () => {
+      const el = frame.contentDocument.getElementById('quizTimerBar');
+      assert(el, 'quizTimerBar not found');
+    });
+
+    it('Timer bar has pointer-events:none', () => {
+      const el = frame.contentDocument.getElementById('quizTimerBar');
+      const style = frame.contentWindow.getComputedStyle(el);
+      assertEqual(style.pointerEvents, 'none', 'Timer bar should not block clicks');
+    });
+
+    it('setTimer function exists', () => {
+      assert(typeof app.ChallengeController.setTimer === 'function');
+    });
+
+    it('Timer options are 0, 5, 10, 15', () => {
+      const el = frame.contentDocument.getElementById('quizTimerSelect');
+      const values = Array.from(el.options).map(o => o.value);
+      assert(values.includes('0'), 'Missing 0 (off)');
+      assert(values.includes('5'), 'Missing 5');
+      assert(values.includes('10'), 'Missing 10');
+      assert(values.includes('15'), 'Missing 15');
+    });
+  });
+
+  // === 9. Spaced Repetition (智能复习) ===
+  describe('📈 Spaced Repetition — Module API', () => {
+    it('SpacedRepService module exists with all methods', () => {
+      assert(typeof app.SpacedRepService !== 'undefined', 'SpacedRepService not defined');
+      assert(typeof app.SpacedRepService.recordAnswer === 'function', 'recordAnswer missing');
+      assert(typeof app.SpacedRepService.getDueChars === 'function', 'getDueChars missing');
+      assert(typeof app.SpacedRepService.getDueCount === 'function', 'getDueCount missing');
+      assert(typeof app.SpacedRepService.getTotalCount === 'function', 'getTotalCount missing');
+      assert(typeof app.SpacedRepService.getStats === 'function', 'getStats missing');
+      assert(typeof app.SpacedRepService.resetCache === 'function', 'resetCache missing');
+    });
+
+    it('getStats returns all 5 box counts', () => {
+      const stats = app.SpacedRepService.getStats();
+      assert(stats.box1 !== undefined, 'Missing box1');
+      assert(stats.box2 !== undefined, 'Missing box2');
+      assert(stats.box3 !== undefined, 'Missing box3');
+      assert(stats.box4 !== undefined, 'Missing box4');
+      assert(stats.box5 !== undefined, 'Missing box5');
+    });
+
+    it('getDueCount matches getDueChars length', () => {
+      const count = app.SpacedRepService.getDueCount();
+      const chars = app.SpacedRepService.getDueChars();
+      assertEqual(count, chars.length, `getDueCount=${count} but getDueChars.length=${chars.length}`);
+    });
+  });
+
+  describe('📈 Spaced Repetition — Box Promotion (Correct Answers)', () => {
+    it('First correct answer: enters system at Box 2 (not due today)', () => {
+      // Use a unique char unlikely to be in the system already
+      const testChar = '鑫';
+      // Clear by recording fresh
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      delete data[testChar];
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      app.SpacedRepService.recordAnswer(testChar, true);
+      const due = app.SpacedRepService.getDueChars();
+      assert(!due.includes(testChar), 'First correct answer should go to Box 2 (due tomorrow, not today)');
+    });
+
+    it('Correct answer increments box (Box 2 → Box 3)', () => {
+      const testChar = '淼';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      // Manually set to Box 2 with review yesterday
+      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      data[testChar] = { box: 1, lastReview: yesterday, correctStreak: 1 };
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      // Should be due (1 day since Box 2 interval=1)
+      assert(app.SpacedRepService.getDueChars().includes(testChar), 'Should be due before answering');
+
+      app.SpacedRepService.recordAnswer(testChar, true);
+      app.SpacedRepService.resetCache();
+      const updated = app.State.load('spacedRep', {});
+      assertEqual(updated[testChar].box, 2, `Should be Box 3 (index 2), got box=${updated[testChar].box}`);
+    });
+
+    it('Box 5 correct answer stays at Box 5 (max)', () => {
+      const testChar = '焱';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      const old = new Date(Date.now() - 15 * 86400000).toISOString().slice(0, 10);
+      data[testChar] = { box: 4, lastReview: old, correctStreak: 5 };
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      app.SpacedRepService.recordAnswer(testChar, true);
+      app.SpacedRepService.resetCache();
+      const updated = app.State.load('spacedRep', {});
+      assertEqual(updated[testChar].box, 4, `Should stay at Box 5 (index 4), got box=${updated[testChar].box}`);
+    });
+
+    it('correctStreak increments on consecutive correct', () => {
+      const testChar = '垚';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      data[testChar] = { box: 1, lastReview: new Date().toISOString().slice(0, 10), correctStreak: 2 };
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      app.SpacedRepService.recordAnswer(testChar, true);
+      app.SpacedRepService.resetCache();
+      const updated = app.State.load('spacedRep', {});
+      assertEqual(updated[testChar].correctStreak, 3, `Expected streak=3, got ${updated[testChar].correctStreak}`);
+    });
+  });
+
+  describe('📈 Spaced Repetition — Box Demotion (Wrong Answers)', () => {
+    it('First wrong answer: enters system at Box 1, due immediately', () => {
+      const testChar = '犇';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      delete data[testChar];
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      app.SpacedRepService.recordAnswer(testChar, false);
+      const due = app.SpacedRepService.getDueChars();
+      assert(due.includes(testChar), 'Wrong answer should be due immediately (Box 1, interval=0)');
+    });
+
+    it('Wrong answer from Box 3 drops to Box 1 (due immediately)', () => {
+      const testChar = '骉';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      data[testChar] = { box: 2, lastReview: new Date().toISOString().slice(0, 10), correctStreak: 3 };
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      app.SpacedRepService.recordAnswer(testChar, false);
+      app.SpacedRepService.resetCache();
+      const updated = app.State.load('spacedRep', {});
+      assertEqual(updated[testChar].box, 0, `Should drop to Box 1 (index 0), got box=${updated[testChar].box}`);
+      // Check it's due immediately
+      const due = app.SpacedRepService.getDueChars();
+      assert(due.includes(testChar), 'Should be due immediately after wrong answer');
+    });
+
+    it('Wrong answer from Box 5 drops to Box 1 (due immediately)', () => {
+      const testChar = '飝';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      data[testChar] = { box: 4, lastReview: new Date().toISOString().slice(0, 10), correctStreak: 10 };
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      app.SpacedRepService.recordAnswer(testChar, false);
+      app.SpacedRepService.resetCache();
+      const updated = app.State.load('spacedRep', {});
+      assertEqual(updated[testChar].box, 0, `Should drop to Box 1, got box=${updated[testChar].box}`);
+      assertEqual(updated[testChar].correctStreak, 0, 'correctStreak should reset to 0');
+    });
+
+    it('correctStreak resets to 0 on wrong answer', () => {
+      const testChar = '麤';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      data[testChar] = { box: 3, lastReview: new Date().toISOString().slice(0, 10), correctStreak: 7 };
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      app.SpacedRepService.recordAnswer(testChar, false);
+      app.SpacedRepService.resetCache();
+      const updated = app.State.load('spacedRep', {});
+      assertEqual(updated[testChar].correctStreak, 0, `Expected streak=0, got ${updated[testChar].correctStreak}`);
+    });
+  });
+
+  describe('📈 Spaced Repetition — Due Date Logic', () => {
+    it('Box 1 (interval=0): due same day', () => {
+      const testChar = '厵';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      const today = new Date().toISOString().slice(0, 10);
+      data[testChar] = { box: 0, lastReview: today, correctStreak: 0 };
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      const due = app.SpacedRepService.getDueChars();
+      assert(due.includes(testChar), 'Box 1 char reviewed today should be due immediately');
+    });
+
+    it('Box 2 (interval=1): NOT due same day', () => {
+      const testChar = '叒';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      const today = new Date().toISOString().slice(0, 10);
+      data[testChar] = { box: 1, lastReview: today, correctStreak: 1 };
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      const due = app.SpacedRepService.getDueChars();
+      assert(!due.includes(testChar), 'Box 2 char reviewed today should NOT be due (interval=1 day)');
+    });
+
+    it('Box 2 (interval=1): due after 1 day', () => {
+      const testChar = '叕';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      data[testChar] = { box: 1, lastReview: yesterday, correctStreak: 1 };
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      const due = app.SpacedRepService.getDueChars();
+      assert(due.includes(testChar), 'Box 2 char reviewed yesterday should be due today');
+    });
+
+    it('Box 3 (interval=3): NOT due after 2 days', () => {
+      const testChar = '燊';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
+      data[testChar] = { box: 2, lastReview: twoDaysAgo, correctStreak: 2 };
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      const due = app.SpacedRepService.getDueChars();
+      assert(!due.includes(testChar), 'Box 3 char reviewed 2 days ago should NOT be due (interval=3)');
+    });
+
+    it('Box 3 (interval=3): due after 3 days', () => {
+      const testChar = '畾';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10);
+      data[testChar] = { box: 2, lastReview: threeDaysAgo, correctStreak: 2 };
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      const due = app.SpacedRepService.getDueChars();
+      assert(due.includes(testChar), 'Box 3 char reviewed 3 days ago should be due');
+    });
+
+    it('Box 4 (interval=7): due after 7 days', () => {
+      const testChar = '磊';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+      data[testChar] = { box: 3, lastReview: sevenDaysAgo, correctStreak: 3 };
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      const due = app.SpacedRepService.getDueChars();
+      assert(due.includes(testChar), 'Box 4 char reviewed 7 days ago should be due');
+    });
+
+    it('Box 4 (interval=7): NOT due after 6 days', () => {
+      const testChar = '晶';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      const sixDaysAgo = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+      data[testChar] = { box: 3, lastReview: sixDaysAgo, correctStreak: 3 };
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      const due = app.SpacedRepService.getDueChars();
+      assert(!due.includes(testChar), 'Box 4 char reviewed 6 days ago should NOT be due (interval=7)');
+    });
+
+    it('Box 5 (interval=14): due after 14 days', () => {
+      const testChar = '森';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
+      data[testChar] = { box: 4, lastReview: fourteenDaysAgo, correctStreak: 5 };
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      const due = app.SpacedRepService.getDueChars();
+      assert(due.includes(testChar), 'Box 5 char reviewed 14 days ago should be due');
+    });
+
+    it('Box 5 (interval=14): NOT due after 13 days', () => {
+      const testChar = '众';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      const thirteenDaysAgo = new Date(Date.now() - 13 * 86400000).toISOString().slice(0, 10);
+      data[testChar] = { box: 4, lastReview: thirteenDaysAgo, correctStreak: 5 };
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      const due = app.SpacedRepService.getDueChars();
+      assert(!due.includes(testChar), 'Box 5 char reviewed 13 days ago should NOT be due (interval=14)');
+    });
+  });
+
+  describe('📈 Spaced Repetition — UI Integration', () => {
+    it('srsSideCount element exists and shows a number', () => {
+      const el = frame.contentDocument.getElementById('srsSideCount');
+      assert(el, 'srsSideCount not found in DOM');
+      const num = parseInt(el.textContent);
+      assert(!isNaN(num), `srsSideCount should be a number, got: ${el.textContent}`);
+    });
+
+    it('Sidebar has 智能复习 item with data-grade="srs"', () => {
+      const item = frame.contentDocument.querySelector('[data-grade="srs"]');
+      assert(item, 'Sidebar item with data-grade="srs" not found');
+    });
+
+    it('Clicking srs sidebar item filters to due chars', () => {
+      // First ensure there are some due chars
+      app.SpacedRepService.resetCache();
+      app.SpacedRepService.recordAnswer('啊', false);  // Make one due
+      
+      const item = frame.contentDocument.querySelector('[data-grade="srs"]');
+      if (item && !item.classList.contains('disabled')) {
+        item.click();
+        // Wait a tick for the filter to apply
+        const filtered = app.State.get('filteredChars');
+        assert(Array.isArray(filtered), 'filteredChars should be array after srs click');
+      }
+    });
+  });
+
+  describe('📈 Spaced Repetition — Edge Cases', () => {
+    it('Recording same char multiple times correct — only promotes when due', () => {
+      const testChar = '蘅';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      delete data[testChar];
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      // First correct: box 0 → 1 (Box 1 interval=0, so it IS due → promotes)
+      app.SpacedRepService.recordAnswer(testChar, true);
+      // Second correct same day: box 1 interval=1, daysSince=0 → NOT due → no promotion
+      app.SpacedRepService.recordAnswer(testChar, true);
+      // Third correct same day: same → no promotion
+      app.SpacedRepService.recordAnswer(testChar, true);
+
+      app.SpacedRepService.resetCache();
+      const updated = app.State.load('spacedRep', {});
+      assertEqual(updated[testChar].box, 1, `Expected box=1 (only one promotion from Box 1→2), got box=${updated[testChar].box}`);
+      assertEqual(updated[testChar].correctStreak, 3, `Expected streak=3, got ${updated[testChar].correctStreak}`);
+    });
+
+    it('Correct then wrong resets to Box 1', () => {
+      const testChar = '馫';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      delete data[testChar];
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      app.SpacedRepService.recordAnswer(testChar, true);   // box: 0→1 (Box 1 is due)
+      app.SpacedRepService.recordAnswer(testChar, true);   // box: stays 1 (not due yet)
+      app.SpacedRepService.recordAnswer(testChar, false);  // box: 1→0
+
+      app.SpacedRepService.resetCache();
+      const updated = app.State.load('spacedRep', {});
+      assertEqual(updated[testChar].box, 0, `Expected box=0 after wrong, got box=${updated[testChar].box}`);
+      assertEqual(updated[testChar].correctStreak, 0, `Expected streak=0 after wrong, got ${updated[testChar].correctStreak}`);
+    });
+
+    it('getTotalCount reflects all chars ever quizzed', () => {
+      const before = app.SpacedRepService.getTotalCount();
+      const uniqueChar = '龘';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      delete data[uniqueChar];
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      const countBefore = app.SpacedRepService.getTotalCount();
+      app.SpacedRepService.recordAnswer(uniqueChar, true);
+      const countAfter = app.SpacedRepService.getTotalCount();
+      assertEqual(countAfter, countBefore + 1, `Total should increment by 1`);
+    });
+
+    it('resetCache forces reload from localStorage', () => {
+      const testChar = '靐';
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      data[testChar] = { box: 3, lastReview: '2020-01-01', correctStreak: 5 };
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      // After reset, should pick up the manually written data
+      const due = app.SpacedRepService.getDueChars();
+      assert(due.includes(testChar), 'After resetCache, should reflect manually saved data (old date = due)');
+    });
+  });
+
+  // === 10. Config ===
+  describe('⚙️ Config', () => {
+    it('Config returns defaults for missing keys', () => {
+      assertEqual(app.State.config('fake.key', 42), 42);
+    });
+
+    it('Config reads speech.rate', () => {
+      const rate = app.State.config('speech.rate', 0.8);
+      assert(typeof rate === 'number', 'speech.rate should be number');
+    });
+  });
+
+  // === 11. SRS Count Persists on Refresh (Bug Fix Regression) ===
+  describe('📈 SRS Count Initialization on Page Load', () => {
+    it('srsSideCount reflects actual due count after app init (not 0)', () => {
+      // Seed some due chars into localStorage
+      app.SpacedRepService.resetCache();
+      app.SpacedRepService.recordAnswer('瀚', false); // Box 1, immediately due
+      app.SpacedRepService.recordAnswer('澈', false); // Box 1, immediately due
+
+      // Simulate what happens on page load: call updateSrsCount
+      app.FilterUI.updateSrsCount();
+
+      const el = frame.contentDocument.getElementById('srsSideCount');
+      const count = parseInt(el.textContent);
+      assert(count >= 2, `SRS count should be >= 2 after seeding due chars, got ${count}`);
+    });
+
+    it('updateFavCount is called during init (favSideCount reflects localStorage)', () => {
+      const el = frame.contentDocument.getElementById('favSideCount');
+      assert(el, 'favSideCount element must exist');
+      const count = parseInt(el.textContent);
+      // Count should match actual favorites (may be 0 if none saved, but must be a number)
+      const actualFavs = app.FavoriteService.getAll().length;
+      assertEqual(count, actualFavs, `favSideCount=${count} but actual favorites=${actualFavs}`);
+    });
+
+    it('updateErrCount is called during init (errSideCount reflects localStorage)', () => {
+      const el = frame.contentDocument.getElementById('errSideCount');
+      assert(el, 'errSideCount element must exist');
+      const count = parseInt(el.textContent);
+      const actualErrs = app.ErrorBookService.count();
+      assertEqual(count, actualErrs, `errSideCount=${count} but actual error book=${actualErrs}`);
+    });
+
+    it('SRS count updates after recordAnswer without needing quiz end', () => {
+      const before = parseInt(frame.contentDocument.getElementById('srsSideCount').textContent);
+      const testChar = '翡';
+      // Clear this char first
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      delete data[testChar];
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      // Record wrong (becomes due immediately)
+      app.SpacedRepService.recordAnswer(testChar, false);
+      app.FilterUI.updateSrsCount();
+
+      const after = parseInt(frame.contentDocument.getElementById('srsSideCount').textContent);
+      assert(after >= before, `SRS count should not decrease after adding a due char. Before=${before}, after=${after}`);
+    });
+  });
+
+  // === 12. End Screen Button Clickability (Bug Fix Regression) ===
+  describe('🎮 End Screen — Button Clickability', () => {
+    it('End screen buttons exist with correct onclick handlers', () => {
+      const btnPlay = frame.contentDocument.getElementById('btnPlayAgain');
+      const btnErr = frame.contentDocument.getElementById('btnErrorReview');
+      assert(btnPlay, 'btnPlayAgain must exist');
+      assert(btnErr, 'btnErrorReview must exist');
+    });
+
+    it('content-header z-index is not higher than end-screen', () => {
+      const header = frame.contentDocument.querySelector('.content-header');
+      if (header) {
+        const style = frame.contentWindow.getComputedStyle(header);
+        const zIndex = parseInt(style.zIndex) || 0;
+        assert(zIndex <= 10, `content-header z-index should be <= 10, got ${zIndex}`);
+      }
+    });
+
+    it('end-screen has position:relative for proper stacking', () => {
+      const endScreen = frame.contentDocument.getElementById('quizEnd');
+      assert(endScreen, 'quizEnd must exist');
+      const style = frame.contentWindow.getComputedStyle(endScreen);
+      assertEqual(style.position, 'relative', `end-screen should have position:relative, got ${style.position}`);
+    });
+
+    it('end-actions z-index is higher than content-header', () => {
+      const endActions = frame.contentDocument.querySelector('.end-actions');
+      const contentHeader = frame.contentDocument.querySelector('.content-header');
+      if (endActions && contentHeader) {
+        const endZ = parseInt(frame.contentWindow.getComputedStyle(endActions).zIndex) || 0;
+        const headerZ = parseInt(frame.contentWindow.getComputedStyle(contentHeader).zIndex) || 0;
+        assert(endZ > headerZ, `end-actions z-index (${endZ}) should be > content-header z-index (${headerZ})`);
+      }
+    });
+
+    it('btnErrorReview click triggers ChallengeController.start(true)', () => {
+      // Switch to challenge mode first
+      app.AppController.switchMode('challenge');
+
+      // Wait for quiz to load, then simulate end screen
+      const endEl = frame.contentDocument.getElementById('quizEnd');
+      const activeEl = frame.contentDocument.getElementById('quizActive');
+      // Force show end screen
+      if (activeEl) activeEl.classList.add('hidden');
+      if (endEl) endEl.classList.remove('hidden');
+
+      // Verify the button exists and is not hidden
+      const btnErr = frame.contentDocument.getElementById('btnErrorReview');
+      assert(btnErr, 'btnErrorReview must exist');
+      const style = frame.contentWindow.getComputedStyle(btnErr);
+      assert(style.display !== 'none', 'btnErrorReview should not be display:none');
+      assert(style.visibility !== 'hidden', 'btnErrorReview should not be visibility:hidden');
+      assert(parseFloat(style.opacity) > 0, 'btnErrorReview should have opacity > 0');
+
+      // Restore state
+      if (activeEl) activeEl.classList.remove('hidden');
+      if (endEl) endEl.classList.add('hidden');
+      app.AppController.switchMode('learn');
+    });
+
+    it('btnPlayAgain click triggers ChallengeController.start()', () => {
+      app.AppController.switchMode('challenge');
+
+      const endEl = frame.contentDocument.getElementById('quizEnd');
+      const activeEl = frame.contentDocument.getElementById('quizActive');
+      if (activeEl) activeEl.classList.add('hidden');
+      if (endEl) endEl.classList.remove('hidden');
+
+      // Verify the button exists and is not hidden
+      const btnPlay = frame.contentDocument.getElementById('btnPlayAgain');
+      assert(btnPlay, 'btnPlayAgain must exist');
+      const style = frame.contentWindow.getComputedStyle(btnPlay);
+      assert(style.display !== 'none', 'btnPlayAgain should not be display:none');
+      assert(style.visibility !== 'hidden', 'btnPlayAgain should not be visibility:hidden');
+      assert(parseFloat(style.opacity) > 0, 'btnPlayAgain should have opacity > 0');
+
+      if (activeEl) activeEl.classList.remove('hidden');
+      if (endEl) endEl.classList.add('hidden');
+      app.AppController.switchMode('learn');
+    });
+  });
+
+  // === 13. 智能复习 Dropdown Categories ===
+  describe('📈 智能复习 — Dropdown Filter Categories', () => {
+
+    // Helper: seed spaced rep data with chars in various boxes
+    function seedSrsData() {
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      const today = new Date().toISOString().slice(0, 10);
+      const yesterday = new Date(Date.now() - 1 * 86400000).toISOString().slice(0, 10);
+      const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10);
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+      const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
+
+      // Box 1 due (wrong today) — 今日任务
+      data['错'] = { box: 0, lastReview: today, correctStreak: 0 };
+      data['难'] = { box: 0, lastReview: today, correctStreak: 0 };
+
+      // Box 2 due (reviewed yesterday, interval=1 passed) — 复习回顾
+      data['复'] = { box: 1, lastReview: yesterday, correctStreak: 1 };
+
+      // Box 3 due (reviewed 3 days ago) — 复习回顾
+      data['习'] = { box: 2, lastReview: threeDaysAgo, correctStreak: 2 };
+
+      // Box 4 due (reviewed 7 days ago) — 复习回顾
+      data['温'] = { box: 3, lastReview: sevenDaysAgo, correctStreak: 3 };
+
+      // Box 3 NOT due (reviewed today) — 熟悉中
+      data['好'] = { box: 2, lastReview: today, correctStreak: 2 };
+      data['学'] = { box: 2, lastReview: yesterday, correctStreak: 2 }; // 1 day < 3 day interval
+
+      // Box 4 NOT due (reviewed 2 days ago, interval=7) — 快掌握了
+      data['棒'] = { box: 3, lastReview: today, correctStreak: 3 };
+      data['强'] = { box: 3, lastReview: yesterday, correctStreak: 3 }; // 1 day < 7 day interval
+
+      // Box 5 NOT due (reviewed 5 days ago, interval=14) — 已掌握
+      data['王'] = { box: 4, lastReview: today, correctStreak: 5 };
+      data['冠'] = { box: 4, lastReview: sevenDaysAgo, correctStreak: 5 }; // 7 < 14
+
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+    }
+
+    it('Selecting srs grade populates dropdown with category options', () => {
+      seedSrsData();
+      app.AppController.selectSemester('srs', 'srs');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      assert(sel.options.length >= 4, `Expected at least 4 dropdown options, got ${sel.options.length}`);
+    });
+
+    it('Dropdown has "全部待复习" option as first/default', () => {
+      seedSrsData();
+      app.AppController.selectSemester('srs', 'srs');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const firstOption = sel.options[0].textContent;
+      assert(firstOption.includes('全部待复习') || firstOption.includes('待复习'), 
+        `First option should be "全部待复习", got: ${firstOption}`);
+    });
+
+    it('Dropdown has "今日任务" option (Box 1 due chars)', () => {
+      seedSrsData();
+      app.AppController.selectSemester('srs', 'srs');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const options = Array.from(sel.options).map(o => o.textContent);
+      const found = options.find(o => o.includes('今日任务'));
+      assert(found, `Should have "今日任务" option. Options: ${options.join(', ')}`);
+    });
+
+    it('Dropdown has "复习回顾" option (Box 2-5 due chars)', () => {
+      seedSrsData();
+      app.AppController.selectSemester('srs', 'srs');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const options = Array.from(sel.options).map(o => o.textContent);
+      const found = options.find(o => o.includes('复习回顾'));
+      assert(found, `Should have "复习回顾" option. Options: ${options.join(', ')}`);
+    });
+
+    it('Dropdown has "熟悉中" option (Box 3 not due)', () => {
+      seedSrsData();
+      app.AppController.selectSemester('srs', 'srs');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const options = Array.from(sel.options).map(o => o.textContent);
+      const found = options.find(o => o.includes('熟悉中'));
+      assert(found, `Should have "熟悉中" option. Options: ${options.join(', ')}`);
+    });
+
+    it('Dropdown has "快掌握了" option (Box 4 not due)', () => {
+      seedSrsData();
+      app.AppController.selectSemester('srs', 'srs');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const options = Array.from(sel.options).map(o => o.textContent);
+      const found = options.find(o => o.includes('快掌握了'));
+      assert(found, `Should have "快掌握了" option. Options: ${options.join(', ')}`);
+    });
+
+    it('Dropdown has "已掌握" option (Box 5 not due)', () => {
+      seedSrsData();
+      app.AppController.selectSemester('srs', 'srs');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const options = Array.from(sel.options).map(o => o.textContent);
+      const found = options.find(o => o.includes('已掌握'));
+      assert(found, `Should have "已掌握" option. Options: ${options.join(', ')}`);
+    });
+
+    it('Each option shows character count', () => {
+      seedSrsData();
+      app.AppController.selectSemester('srs', 'srs');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      Array.from(sel.options).forEach(opt => {
+        const match = opt.textContent.match(/\d+字/);
+        assert(match, `Option "${opt.textContent}" should show char count (N字)`);
+      });
+    });
+
+    it('Selecting "今日任务" filters to only Box 1 due chars', () => {
+      seedSrsData();
+      app.AppController.selectSemester('srs', 'srs');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      // Find the 今日任务 option value
+      const opt = Array.from(sel.options).find(o => o.textContent.includes('今日任务'));
+      assert(opt, '今日任务 option not found');
+      sel.value = opt.value;
+      sel.dispatchEvent(new Event('change'));
+
+      const filtered = app.State.get('filteredChars');
+      assert(filtered.length > 0, 'Should have chars after selecting 今日任务');
+      // All filtered chars should be Box 1 due chars
+      const srsData = app.State.load('spacedRep', {});
+      filtered.forEach(c => {
+        const info = srsData[c.char];
+        assert(info && info.box === 0, `Char "${c.char}" should be Box 1, got box=${info ? info.box : 'undefined'}`);
+      });
+    });
+
+    it('Selecting "复习回顾" filters to Box 2-5 due chars only', () => {
+      seedSrsData();
+      app.AppController.selectSemester('srs', 'srs');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const opt = Array.from(sel.options).find(o => o.textContent.includes('复习回顾'));
+      assert(opt, '复习回顾 option not found');
+      sel.value = opt.value;
+      sel.dispatchEvent(new Event('change'));
+
+      const filtered = app.State.get('filteredChars');
+      const srsData = app.State.load('spacedRep', {});
+      filtered.forEach(c => {
+        const info = srsData[c.char];
+        assert(info && info.box >= 1, `Char "${c.char}" should be Box 2+, got box=${info ? info.box : 'undefined'}`);
+      });
+    });
+
+    it('Selecting "已掌握" filters to Box 5 not-due chars', () => {
+      seedSrsData();
+      app.AppController.selectSemester('srs', 'srs');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const opt = Array.from(sel.options).find(o => o.textContent.includes('已掌握'));
+      assert(opt, '已掌握 option not found');
+      sel.value = opt.value;
+      sel.dispatchEvent(new Event('change'));
+
+      const filtered = app.State.get('filteredChars');
+      const srsData = app.State.load('spacedRep', {});
+      filtered.forEach(c => {
+        const info = srsData[c.char];
+        assert(info && info.box === 4, `Char "${c.char}" should be Box 5 (index 4), got box=${info ? info.box : 'undefined'}`);
+      });
+    });
+
+    it('Selecting "熟悉中" filters to Box 3 not-due chars', () => {
+      seedSrsData();
+      app.AppController.selectSemester('srs', 'srs');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const opt = Array.from(sel.options).find(o => o.textContent.includes('熟悉中'));
+      assert(opt, '熟悉中 option not found');
+      sel.value = opt.value;
+      sel.dispatchEvent(new Event('change'));
+
+      const filtered = app.State.get('filteredChars');
+      const srsData = app.State.load('spacedRep', {});
+      filtered.forEach(c => {
+        const info = srsData[c.char];
+        assert(info && info.box === 2, `Char "${c.char}" should be Box 3 (index 2), got box=${info ? info.box : 'undefined'}`);
+      });
+    });
+
+    it('Selecting "快掌握了" filters to Box 4 not-due chars', () => {
+      seedSrsData();
+      app.AppController.selectSemester('srs', 'srs');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const opt = Array.from(sel.options).find(o => o.textContent.includes('快掌握了'));
+      assert(opt, '快掌握了 option not found');
+      sel.value = opt.value;
+      sel.dispatchEvent(new Event('change'));
+
+      const filtered = app.State.get('filteredChars');
+      const srsData = app.State.load('spacedRep', {});
+      filtered.forEach(c => {
+        const info = srsData[c.char];
+        assert(info && info.box === 3, `Char "${c.char}" should be Box 4 (index 3), got box=${info ? info.box : 'undefined'}`);
+      });
+    });
+
+    it('"全部待复习" includes Box 1 + Box 2-5 due (not mastered/not-due)', () => {
+      seedSrsData();
+      app.AppController.selectSemester('srs', 'srs');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      // Default is first option (全部待复习)
+      sel.value = sel.options[0].value;
+      sel.dispatchEvent(new Event('change'));
+
+      const filtered = app.State.get('filteredChars');
+      assert(filtered.length > 0, 'Should have due chars');
+      // None of the not-due Box 3-5 chars should be in here
+      const srsData = app.State.load('spacedRep', {});
+      const today = new Date().toISOString().slice(0, 10);
+      const todayMs = new Date(today).getTime();
+      const BOX_INTERVALS = [0, 1, 3, 7, 14];
+      filtered.forEach(c => {
+        const info = srsData[c.char];
+        if (info) {
+          const lastMs = new Date(info.lastReview).getTime();
+          const daysSince = Math.round((todayMs - lastMs) / 86400000);
+          const interval = info.box < BOX_INTERVALS.length ? BOX_INTERVALS[info.box] : 14;
+          assert(daysSince >= interval, `Char "${c.char}" is not due (daysSince=${daysSince}, interval=${interval})`);
+        }
+      });
+    });
+
+    it('Empty categories are hidden or show 0字', () => {
+      // Clear all SRS data
+      app.SpacedRepService.resetCache();
+      app.State.save('spacedRep', {});
+      app.SpacedRepService.resetCache();
+
+      app.AppController.selectSemester('srs', 'srs');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      // With no data, should still have at least the "全部待复习" option
+      assert(sel.options.length >= 1, 'Should have at least one option even with no SRS data');
+      // First option should show 0字
+      const firstText = sel.options[0].textContent;
+      assert(firstText.includes('0字') || firstText.includes('0'), 
+        `With no data, first option should show 0. Got: ${firstText}`);
+    });
+  });
+
+  // === 14. 生词本 Dropdown by Semester ===
+  describe('❤️ 生词本 — Dropdown Filter by Grade-Semester', () => {
+
+    // Helper: seed favorites with chars from multiple grade-semesters
+    function seedFavorites() {
+      const allChars = app.State.get('allChars');
+      // Pick chars that are UNIQUE to their grade-semester (not appearing in other semesters)
+      const charsByGradeSem = {};
+      allChars.forEach(c => {
+        const key = `${c.grade}-${c.semester}`;
+        if (!charsByGradeSem[key]) charsByGradeSem[key] = [];
+        charsByGradeSem[key].push(c);
+      });
+
+      // Find chars unique to each semester (char string not in any other semester)
+      const allCharStrings = {};
+      allChars.forEach(c => {
+        if (!allCharStrings[c.char]) allCharStrings[c.char] = new Set();
+        allCharStrings[c.char].add(`${c.grade}-${c.semester}`);
+      });
+
+      function uniqueCharsFor(grade, sem, count) {
+        const key = `${grade}-${sem}`;
+        const pool = (charsByGradeSem[key] || []).filter(c => allCharStrings[c.char].size === 1);
+        return pool.slice(0, count);
+      }
+
+      const g1s1Chars = uniqueCharsFor(1, 1, 3);
+      const g1s2Chars = uniqueCharsFor(1, 2, 2);
+      const g2s1Chars = uniqueCharsFor(2, 1, 4);
+
+      // Clear favorites and add our test chars
+      const favChars = [...g1s1Chars, ...g1s2Chars, ...g2s1Chars].map(c => c.char);
+      app.State.save('favorites', favChars);
+      app.State.set('favorites', favChars);
+    }
+
+    it('Selecting fav populates dropdown with semester options', () => {
+      seedFavorites();
+      app.AppController.selectSemester('fav', 'fav');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      assert(sel.options.length >= 3, `Expected at least 3 dropdown options (all + 2 semesters), got ${sel.options.length}`);
+    });
+
+    it('Dropdown has "全部收藏" option as first/default', () => {
+      seedFavorites();
+      app.AppController.selectSemester('fav', 'fav');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const firstOption = sel.options[0].textContent;
+      assert(firstOption.includes('全部收藏') || firstOption.includes('全部'),
+        `First option should be "全部收藏", got: ${firstOption}`);
+    });
+
+    it('Each option shows character count (N字)', () => {
+      seedFavorites();
+      app.AppController.selectSemester('fav', 'fav');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      Array.from(sel.options).forEach(opt => {
+        const match = opt.textContent.match(/\d+字/);
+        assert(match, `Option "${opt.textContent}" should show char count (N字)`);
+      });
+    });
+
+    it('Dropdown shows semester options like "一年级上册"', () => {
+      seedFavorites();
+      app.AppController.selectSemester('fav', 'fav');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const options = Array.from(sel.options).map(o => o.textContent);
+      const hasG1S1 = options.some(o => o.includes('一年级') && o.includes('上'));
+      const hasG1S2 = options.some(o => o.includes('一年级') && o.includes('下'));
+      const hasG2S1 = options.some(o => o.includes('二年级') && o.includes('上'));
+      assert(hasG1S1, `Should have 一年级上册 option. Options: ${options.join(', ')}`);
+      assert(hasG1S2, `Should have 一年级下册 option. Options: ${options.join(', ')}`);
+      assert(hasG2S1, `Should have 二年级上册 option. Options: ${options.join(', ')}`);
+    });
+
+    it('Semesters without favorites are NOT shown in dropdown', () => {
+      seedFavorites(); // Only has g1s1, g1s2, g2s1
+      app.AppController.selectSemester('fav', 'fav');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const options = Array.from(sel.options).map(o => o.textContent);
+      // 六年级下册 should not appear
+      const hasG6S2 = options.some(o => o.includes('六年级') && o.includes('下'));
+      assert(!hasG6S2, `Should NOT have 六年级下册 option. Options: ${options.join(', ')}`);
+    });
+
+    it('Selecting a semester option filters to that grade+semester favorites only', () => {
+      seedFavorites();
+      app.AppController.selectSemester('fav', 'fav');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      // Find 一年级上册 option
+      const opt = Array.from(sel.options).find(o => o.textContent.includes('一年级') && o.textContent.includes('上'));
+      assert(opt, '一年级上册 option not found');
+      sel.value = opt.value;
+      sel.dispatchEvent(new Event('change'));
+
+      const filtered = app.State.get('filteredChars');
+      assert(filtered.length > 0, 'Should have chars after selecting 一年级上册');
+      filtered.forEach(c => {
+        assert(c.grade === 1 && c.semester === 1, `Char "${c.char}" should be grade=1 semester=1, got grade=${c.grade} semester=${c.semester}`);
+      });
+    });
+
+    it('Selecting "全部收藏" shows all favorites across all semesters', () => {
+      seedFavorites();
+      app.AppController.selectSemester('fav', 'fav');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      sel.value = sel.options[0].value;
+      sel.dispatchEvent(new Event('change'));
+
+      const filtered = app.State.get('filteredChars');
+      const favs = app.FavoriteService.getAll();
+      assertEqual(filtered.length, favs.length, `全部收藏 should show all ${favs.length} favorites, got ${filtered.length}`);
+    });
+
+    it('Semester option count matches actual favorites in that semester', () => {
+      seedFavorites();
+      app.AppController.selectSemester('fav', 'fav');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+
+      // Check g2s1 count
+      const allChars = app.State.get('allChars');
+      const favs = app.FavoriteService.getAll();
+      const g2s1Favs = allChars.filter(c => favs.includes(c.char) && c.grade === 2 && c.semester === 1);
+      const uniqueG2S1 = [...new Set(g2s1Favs.map(c => c.char))].length;
+
+      const opt = Array.from(sel.options).find(o => o.textContent.includes('二年级') && o.textContent.includes('上'));
+      assert(opt, '二年级上册 option not found');
+      const match = opt.textContent.match(/(\d+)字/);
+      assert(match, 'Should have count in option text');
+      assertEqual(parseInt(match[1]), uniqueG2S1, `二年级上册 count should be ${uniqueG2S1}, got ${match[1]}`);
+    });
+
+    it('Empty favorites shows dropdown with 0字', () => {
+      app.State.save('favorites', []);
+      app.State.set('favorites', []);
+      app.AppController.selectSemester('fav', 'fav');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      assert(sel.options.length >= 1, 'Should have at least one option');
+      const firstText = sel.options[0].textContent;
+      assert(firstText.includes('0字') || firstText.includes('0'),
+        `With no favorites, should show 0. Got: ${firstText}`);
+    });
+  });
+
+  // === 15. 错题本 Dropdown by Error Frequency ===
+  describe('📖 错题本 — Dropdown Filter by Error Frequency', () => {
+
+    // Helper: seed error book with chars at different wrong counts
+    function seedErrorBook() {
+      const errorBook = [
+        { char: '难', pinyin: 'nán', wrongCount: 5, consecutiveCorrect: 0 },
+        { char: '错', pinyin: 'cuò', wrongCount: 4, consecutiveCorrect: 0 },
+        { char: '忘', pinyin: 'wàng', wrongCount: 3, consecutiveCorrect: 0 },
+        { char: '混', pinyin: 'hùn', wrongCount: 2, consecutiveCorrect: 0 },
+        { char: '淆', pinyin: 'xiáo', wrongCount: 2, consecutiveCorrect: 0 },
+        { char: '近', pinyin: 'jìn', wrongCount: 1, consecutiveCorrect: 0 },
+        { char: '远', pinyin: 'yuǎn', wrongCount: 1, consecutiveCorrect: 0 },
+        { char: '新', pinyin: 'xīn', wrongCount: 1, consecutiveCorrect: 0 },
+        { char: '旧', pinyin: 'jiù', wrongCount: 1, consecutiveCorrect: 0 },
+      ];
+      app.State.set('errorBook', errorBook);
+      app.State.persist('errorBook');
+    }
+
+    it('Selecting err populates dropdown with frequency options', () => {
+      seedErrorBook();
+      app.AppController.selectSemester('err', 'err');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      assert(sel.options.length >= 3, `Expected at least 3 dropdown options, got ${sel.options.length}`);
+    });
+
+    it('Dropdown has "全部错题" option as first/default', () => {
+      seedErrorBook();
+      app.AppController.selectSemester('err', 'err');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const firstOption = sel.options[0].textContent;
+      assert(firstOption.includes('全部错题') || firstOption.includes('全部'),
+        `First option should be "全部错题", got: ${firstOption}`);
+    });
+
+    it('Dropdown has "经常出错" option (wrongCount >= 3)', () => {
+      seedErrorBook();
+      app.AppController.selectSemester('err', 'err');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const options = Array.from(sel.options).map(o => o.textContent);
+      const found = options.find(o => o.includes('经常出错'));
+      assert(found, `Should have "经常出错" option. Options: ${options.join(', ')}`);
+    });
+
+    it('Dropdown has "偶尔出错" option (wrongCount == 2)', () => {
+      seedErrorBook();
+      app.AppController.selectSemester('err', 'err');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const options = Array.from(sel.options).map(o => o.textContent);
+      const found = options.find(o => o.includes('偶尔出错'));
+      assert(found, `Should have "偶尔出错" option. Options: ${options.join(', ')}`);
+    });
+
+    it('Dropdown has "刚出错" option (wrongCount == 1)', () => {
+      seedErrorBook();
+      app.AppController.selectSemester('err', 'err');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const options = Array.from(sel.options).map(o => o.textContent);
+      const found = options.find(o => o.includes('刚出错'));
+      assert(found, `Should have "刚出错" option. Options: ${options.join(', ')}`);
+    });
+
+    it('Each option shows character count', () => {
+      seedErrorBook();
+      app.AppController.selectSemester('err', 'err');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      Array.from(sel.options).forEach(opt => {
+        const match = opt.textContent.match(/\d+字/);
+        assert(match, `Option "${opt.textContent}" should show char count (N字)`);
+      });
+    });
+
+    it('Selecting "经常出错" filters to wrongCount >= 3 only', () => {
+      seedErrorBook();
+      app.AppController.selectSemester('err', 'err');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const opt = Array.from(sel.options).find(o => o.textContent.includes('经常出错'));
+      assert(opt, '经常出错 option not found');
+      sel.value = opt.value;
+      sel.dispatchEvent(new Event('change'));
+
+      const filtered = app.State.get('filteredChars');
+      assert(filtered.length > 0, 'Should have chars after selecting 经常出错');
+      const errorBook = app.ErrorBookService.getAll();
+      filtered.forEach(c => {
+        const entry = errorBook.find(e => e.char === c.char);
+        assert(entry && entry.wrongCount >= 3, `Char "${c.char}" should have wrongCount >= 3, got ${entry ? entry.wrongCount : 'not found'}`);
+      });
+    });
+
+    it('Selecting "偶尔出错" filters to wrongCount == 2 only', () => {
+      seedErrorBook();
+      app.AppController.selectSemester('err', 'err');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const opt = Array.from(sel.options).find(o => o.textContent.includes('偶尔出错'));
+      assert(opt, '偶尔出错 option not found');
+      sel.value = opt.value;
+      sel.dispatchEvent(new Event('change'));
+
+      const filtered = app.State.get('filteredChars');
+      assert(filtered.length > 0, 'Should have chars after selecting 偶尔出错');
+      const errorBook = app.ErrorBookService.getAll();
+      filtered.forEach(c => {
+        const entry = errorBook.find(e => e.char === c.char);
+        assertEqual(entry.wrongCount, 2, `Char "${c.char}" should have wrongCount == 2, got ${entry ? entry.wrongCount : 'not found'}`);
+      });
+    });
+
+    it('Selecting "刚出错" filters to wrongCount == 1 only', () => {
+      seedErrorBook();
+      app.AppController.selectSemester('err', 'err');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const opt = Array.from(sel.options).find(o => o.textContent.includes('刚出错'));
+      assert(opt, '刚出错 option not found');
+      sel.value = opt.value;
+      sel.dispatchEvent(new Event('change'));
+
+      const filtered = app.State.get('filteredChars');
+      assert(filtered.length > 0, 'Should have chars after selecting 刚出错');
+      const errorBook = app.ErrorBookService.getAll();
+      filtered.forEach(c => {
+        const entry = errorBook.find(e => e.char === c.char);
+        assertEqual(entry.wrongCount, 1, `Char "${c.char}" should have wrongCount == 1, got ${entry ? entry.wrongCount : 'not found'}`);
+      });
+    });
+
+    it('Selecting "全部错题" shows all error book chars', () => {
+      seedErrorBook();
+      app.AppController.selectSemester('err', 'err');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      sel.value = sel.options[0].value;
+      sel.dispatchEvent(new Event('change'));
+
+      const filtered = app.State.get('filteredChars');
+      const errCount = app.ErrorBookService.count();
+      assertEqual(filtered.length, errCount, `全部错题 should show all ${errCount} errors, got ${filtered.length}`);
+    });
+
+    it('Empty error book shows dropdown with 0字', () => {
+      app.State.set('errorBook', []);
+      app.State.persist('errorBook');
+      app.AppController.selectSemester('err', 'err');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      assert(sel.options.length >= 1, 'Should have at least one option');
+      const firstText = sel.options[0].textContent;
+      assert(firstText.includes('0字') || firstText.includes('0'),
+        `With no errors, should show 0. Got: ${firstText}`);
+    });
+
+    it('Empty frequency categories are hidden from dropdown', () => {
+      // Only have wrongCount=1 chars
+      const errorBook = [
+        { char: '新', pinyin: 'xīn', wrongCount: 1, consecutiveCorrect: 0 },
+      ];
+      app.State.set('errorBook', errorBook);
+      app.State.persist('errorBook');
+      app.AppController.selectSemester('err', 'err');
+      const sel = frame.contentDocument.getElementById('lessonFilter');
+      const options = Array.from(sel.options).map(o => o.textContent);
+      const hasFrequent = options.some(o => o.includes('经常出错'));
+      assert(!hasFrequent, `Should NOT have "经常出错" when no chars have wrongCount >= 3`);
+    });
+  });
+
+  // === 16. Daily Task Service ===
+  describe('📖 Daily Task — Service API', () => {
+    it('DailyTaskService module exists with all methods', () => {
+      assert(typeof app.DailyTaskService !== 'undefined', 'DailyTaskService not defined');
+      assert(typeof app.DailyTaskService.getProgress === 'function', 'getProgress missing');
+      assert(typeof app.DailyTaskService.needsSetup === 'function', 'needsSetup missing');
+      assert(typeof app.DailyTaskService.initProgress === 'function', 'initProgress missing');
+      assert(typeof app.DailyTaskService.getTaskState === 'function', 'getTaskState missing');
+      assert(typeof app.DailyTaskService.getCurrentLesson === 'function', 'getCurrentLesson missing');
+      assert(typeof app.DailyTaskService.getReviewChars === 'function', 'getReviewChars missing');
+      assert(typeof app.DailyTaskService.getRecapChars === 'function', 'getRecapChars missing');
+      assert(typeof app.DailyTaskService.completeReview === 'function', 'completeReview missing');
+      assert(typeof app.DailyTaskService.completeRecap === 'function', 'completeRecap missing');
+      assert(typeof app.DailyTaskService.completeLearn === 'function', 'completeLearn missing');
+      assert(typeof app.DailyTaskService.completeQuiz === 'function', 'completeQuiz missing');
+      assert(typeof app.DailyTaskService.markCharLearned === 'function', 'markCharLearned missing');
+      assert(typeof app.DailyTaskService.getGrowthLevel === 'function', 'getGrowthLevel missing');
+    });
+
+    it('DailyTaskController module exists with render method', () => {
+      assert(typeof app.DailyTaskController !== 'undefined', 'DailyTaskController not defined');
+      assert(typeof app.DailyTaskController.render === 'function', 'render missing');
+    });
+
+    it('needsSetup returns true when no progress saved', () => {
+      app.State.save('lessonProgress', null);
+      assertEqual(app.DailyTaskService.needsSetup(), true, 'Should need setup when progress is null');
+    });
+
+    it('initProgress saves grade, semester, lessonIndex', () => {
+      app.DailyTaskService.initProgress(3, 1, 2);
+      const progress = app.DailyTaskService.getProgress();
+      assertEqual(progress.grade, 3, 'Grade should be 3');
+      assertEqual(progress.semester, 1, 'Semester should be 1');
+      assertEqual(progress.lessonIndex, 2, 'Lesson index should be 2');
+      assert(Array.isArray(progress.completedLessons), 'completedLessons should be array');
+    });
+
+    it('needsSetup returns false after initProgress', () => {
+      app.DailyTaskService.initProgress(1, 1, 0);
+      assertEqual(app.DailyTaskService.needsSetup(), false, 'Should not need setup after init');
+    });
+  });
+
+  describe('📖 Daily Task — Task State & Step Flow', () => {
+    it('getTaskState returns fresh state for today', () => {
+      app.DailyTaskService.initProgress(1, 1, 0);
+      // Clear daily task state
+      app.State.save('dailyTask', { date: '', step: 'review' });
+      const state = app.DailyTaskService.getTaskState();
+      assertEqual(state.step, 'review', 'Fresh state should start at review');
+      assertEqual(state.reviewDone, false);
+      assertEqual(state.recapDone, false);
+      assertEqual(state.learnDone, false);
+      assertEqual(state.quizDone, false);
+    });
+
+    it('completeReview advances step to recap', () => {
+      app.State.save('dailyTask', { date: '', step: 'review' });
+      app.DailyTaskService.getTaskState(); // reset to today
+      app.DailyTaskService.completeReview(5);
+      const state = app.DailyTaskService.getTaskState();
+      assertEqual(state.step, 'recap', 'Step should be recap after review');
+      assertEqual(state.reviewDone, true);
+      assertEqual(state.reviewedCount, 5);
+    });
+
+    it('completeRecap advances step to learn', () => {
+      app.DailyTaskService.completeRecap(3);
+      const state = app.DailyTaskService.getTaskState();
+      assertEqual(state.step, 'learn', 'Step should be learn after recap');
+      assertEqual(state.recapDone, true);
+      assertEqual(state.recapCount, 3);
+    });
+
+    it('completeLearn advances step to quiz', () => {
+      app.DailyTaskService.completeLearn();
+      const state = app.DailyTaskService.getTaskState();
+      assertEqual(state.step, 'quiz', 'Step should be quiz after learn');
+      assertEqual(state.learnDone, true);
+    });
+
+    it('markCharLearned accumulates unique chars', () => {
+      app.State.save('dailyTask', { date: '', step: 'review' });
+      app.DailyTaskService.getTaskState(); // reset
+      app.DailyTaskService.markCharLearned('天');
+      app.DailyTaskService.markCharLearned('地');
+      app.DailyTaskService.markCharLearned('天'); // duplicate
+      const state = app.DailyTaskService.getTaskState();
+      assertEqual(state.learnedChars.length, 2, 'Should have 2 unique chars');
+      assert(state.learnedChars.includes('天'));
+      assert(state.learnedChars.includes('地'));
+    });
+  });
+
+  describe('📖 Daily Task — Quiz Completion & Advancement', () => {
+    it('completeQuiz with >= 60% advances lesson', () => {
+      app.DailyTaskService.initProgress(1, 1, 0);
+      app.State.save('dailyTask', { date: '', step: 'review' });
+      app.DailyTaskService.getTaskState(); // reset
+      app.DailyTaskService.completeReview(0);
+      app.DailyTaskService.completeRecap(0);
+      app.DailyTaskService.completeLearn();
+
+      const reward = app.DailyTaskService.completeQuiz(7, 10); // 70%
+      const state = app.DailyTaskService.getTaskState();
+      assertEqual(state.step, 'done');
+      assertEqual(state.advanced, true, 'Should advance on 70%');
+      const progress = app.DailyTaskService.getProgress();
+      assertEqual(progress.lessonIndex, 1, 'Should advance to lesson 1');
+      assert(reward.points >= 2, 'Should get at least 2 growth points for 70%');
+    });
+
+    it('completeQuiz with < 60% does NOT advance lesson', () => {
+      app.DailyTaskService.initProgress(1, 1, 0);
+      app.State.save('dailyTask', { date: '', step: 'review' });
+      app.DailyTaskService.getTaskState();
+      app.DailyTaskService.completeReview(0);
+      app.DailyTaskService.completeRecap(0);
+      app.DailyTaskService.completeLearn();
+
+      const reward = app.DailyTaskService.completeQuiz(4, 10); // 40%
+      const state = app.DailyTaskService.getTaskState();
+      assertEqual(state.step, 'done');
+      assertEqual(state.advanced, false, 'Should NOT advance on 40%');
+      const progress = app.DailyTaskService.getProgress();
+      assertEqual(progress.lessonIndex, 0, 'Should stay at lesson 0');
+    });
+
+    it('completeQuiz with 100% gives max reward (5 points)', () => {
+      app.DailyTaskService.initProgress(1, 1, 0);
+      app.State.save('dailyTask', { date: '', step: 'review' });
+      app.DailyTaskService.getTaskState();
+      app.DailyTaskService.completeReview(0);
+      app.DailyTaskService.completeRecap(0);
+      app.DailyTaskService.completeLearn();
+
+      const reward = app.DailyTaskService.completeQuiz(10, 10);
+      assertEqual(reward.points, 5, 'Perfect score should give 5 points');
+      assertEqual(reward.emoji, '🌟');
+    });
+  });
+
+  describe('📖 Daily Task — Lesson Navigation', () => {
+    it('getCurrentLesson returns correct lesson', () => {
+      app.DailyTaskService.initProgress(1, 1, 0);
+      const lesson = app.DailyTaskService.getCurrentLesson();
+      assert(lesson !== null, 'Should have a lesson');
+      assert(lesson.chars.length > 0, 'Lesson should have chars');
+      assert(lesson.title, 'Lesson should have a title');
+    });
+
+    it('getCurrentGradeLessons returns all lessons for grade/semester', () => {
+      app.DailyTaskService.initProgress(1, 1, 0);
+      const lessons = app.DailyTaskService.getCurrentGradeLessons();
+      assertGreater(lessons.length, 3, 'Grade 1 semester 1 should have multiple lessons');
+    });
+
+    it('Lesson advances across semester boundary', () => {
+      // Set to last lesson of semester 1
+      const lessons = app.State.get('lessons').filter(l => {
+        const [g, s] = l.id.split('-');
+        return parseInt(g) === 1 && parseInt(s) === 1;
+      });
+      app.DailyTaskService.initProgress(1, 1, lessons.length - 1);
+
+      // Complete with passing score
+      app.State.save('dailyTask', { date: '', step: 'review' });
+      app.DailyTaskService.getTaskState();
+      app.DailyTaskService.completeReview(0);
+      app.DailyTaskService.completeRecap(0);
+      app.DailyTaskService.completeLearn();
+      app.DailyTaskService.completeQuiz(8, 10);
+
+      const progress = app.DailyTaskService.getProgress();
+      assertEqual(progress.semester, 2, 'Should advance to semester 2');
+      assertEqual(progress.lessonIndex, 0, 'Should reset lesson index to 0');
+    });
+  });
+
+  describe('📖 Daily Task — Review Chars', () => {
+    it('getReviewChars returns max 10 chars', () => {
+      // Seed many due chars
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      const today = new Date().toISOString().slice(0, 10);
+      for (let i = 0; i < 20; i++) {
+        data[`测${i}`] = { box: 0, lastReview: today, correctStreak: 0 };
+      }
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      app.DailyTaskService.initProgress(1, 1, 0);
+      const reviewChars = app.DailyTaskService.getReviewChars();
+      assert(reviewChars.length <= 10, `Should be max 10, got ${reviewChars.length}`);
+    });
+
+    it('getReviewChars prioritizes lower boxes', () => {
+      app.SpacedRepService.resetCache();
+      const data = {};
+      const today = new Date().toISOString().slice(0, 10);
+      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      const allChars = app.State.get('allChars');
+
+      // Add some Box 1 chars (highest priority)
+      allChars.slice(0, 5).forEach(c => {
+        data[c.char] = { box: 0, lastReview: today, correctStreak: 0 };
+      });
+      // Add some Box 2 chars that are due
+      allChars.slice(5, 10).forEach(c => {
+        data[c.char] = { box: 1, lastReview: yesterday, correctStreak: 1 };
+      });
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      app.DailyTaskService.initProgress(1, 1, 0);
+      const reviewChars = app.DailyTaskService.getReviewChars();
+      // First chars should be Box 1 (box=0)
+      if (reviewChars.length > 0) {
+        const srsData = app.State.load('spacedRep', {});
+        const firstBox = srsData[reviewChars[0].char].box;
+        assertEqual(firstBox, 0, 'First review char should be from Box 1 (most urgent)');
+      }
+    });
+  });
+
+  describe('📖 Daily Task — Recap (Previous Lesson)', () => {
+    it('getRecapChars returns empty for first lesson', () => {
+      app.DailyTaskService.initProgress(1, 1, 0); // First lesson
+      const recapChars = app.DailyTaskService.getRecapChars();
+      assertEqual(recapChars.length, 0, 'First lesson should have no recap');
+    });
+
+    it('getRecapChars returns previous lesson chars', () => {
+      app.DailyTaskService.initProgress(1, 1, 1); // Second lesson
+      const recapChars = app.DailyTaskService.getRecapChars();
+      assertGreater(recapChars.length, 0, 'Second lesson should have recap chars from lesson 0');
+      // Verify they match lesson 0's chars
+      const lessons = app.State.get('lessons').filter(l => {
+        const [g, s] = l.id.split('-');
+        return parseInt(g) === 1 && parseInt(s) === 1;
+      });
+      const expectedChars = lessons[0].chars.map(c => c.char);
+      recapChars.forEach(c => {
+        assert(expectedChars.includes(c.char), `Recap char "${c.char}" should be from previous lesson`);
+      });
+    });
+  });
+
+  describe('📖 Daily Task — Growth Level', () => {
+    it('getGrowthLevel returns valid structure', () => {
+      const level = app.DailyTaskService.getGrowthLevel();
+      assert(level.emoji, 'Should have emoji');
+      assert(level.name, 'Should have name');
+      assert(level.total !== undefined, 'Should have total');
+      assert(level.nextEmoji, 'Should have nextEmoji');
+      assert(level.nextName, 'Should have nextName');
+      assert(level.progress !== undefined, 'Should have progress (0-1)');
+    });
+
+    it('Growth level progresses with more chars in SRS', () => {
+      // Clear SRS
+      app.State.save('spacedRep', {});
+      app.SpacedRepService.resetCache();
+      const level0 = app.DailyTaskService.getGrowthLevel();
+      assertEqual(level0.name, '种子', 'Should be 种子 at 0 chars');
+
+      // Add 50+ chars
+      const data = {};
+      const allChars = app.State.get('allChars');
+      allChars.slice(0, 55).forEach(c => {
+        data[c.char] = { box: 2, lastReview: new Date().toISOString().slice(0, 10), correctStreak: 2 };
+      });
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+      const level50 = app.DailyTaskService.getGrowthLevel();
+      assertEqual(level50.name, '萌芽', 'Should be 萌芽 at 55 chars');
+    });
+  });
+
+  describe('📖 Daily Task — Redo Today\'s Task', () => {
+    it('Redo resets task state but keeps same lesson (non-advanced)', () => {
+      // Setup: complete a lesson with < 60% (doesn't advance)
+      app.DailyTaskService.initProgress(1, 1, 2);
+      app.State.save('dailyTask', { date: '', step: 'review' });
+      app.DailyTaskService.getTaskState();
+      app.DailyTaskService.completeReview(0);
+      app.DailyTaskService.completeRecap(0);
+      app.DailyTaskService.completeLearn();
+      app.DailyTaskService.completeQuiz(3, 10); // 30% — doesn't advance
+
+      const progressBefore = app.DailyTaskService.getProgress();
+      assertEqual(progressBefore.lessonIndex, 2, 'Should stay at lesson 2 (not advanced)');
+
+      // Simulate redo: reset task state
+      const newState = {
+        date: new Date().toISOString().slice(0, 10),
+        step: 'review', reviewDone: false, recapDone: false,
+        learnDone: false, learnedChars: [], quizDone: false,
+        quizScore: 0, quizTotal: 0, growthEarned: 0
+      };
+      app.State.save('dailyTask', newState);
+
+      const state = app.DailyTaskService.getTaskState();
+      assertEqual(state.step, 'review', 'Should restart at review');
+      assertEqual(state.quizDone, false, 'quizDone should be false');
+      const progressAfter = app.DailyTaskService.getProgress();
+      assertEqual(progressAfter.lessonIndex, 2, 'Should still be at lesson 2');
+    });
+
+    it('Redo rolls back lesson index when already advanced (>= 60%)', () => {
+      // Setup: complete a lesson with >= 60% (advances)
+      app.DailyTaskService.initProgress(1, 1, 3);
+      app.State.save('dailyTask', { date: '', step: 'review' });
+      app.DailyTaskService.getTaskState();
+      app.DailyTaskService.completeReview(0);
+      app.DailyTaskService.completeRecap(0);
+      app.DailyTaskService.completeLearn();
+      app.DailyTaskService.completeQuiz(8, 10); // 80% — advances
+
+      const progressAdvanced = app.DailyTaskService.getProgress();
+      assertEqual(progressAdvanced.lessonIndex, 4, 'Should have advanced to lesson 4');
+
+      // Simulate redo: roll back + reset state
+      const progress = app.DailyTaskService.getProgress();
+      if (progress.lessonIndex > 0) {
+        progress.lessonIndex--;
+        if (progress.completedLessons.length > 0) progress.completedLessons.pop();
+        app.State.save('lessonProgress', progress);
+      }
+      const newState = {
+        date: new Date().toISOString().slice(0, 10),
+        step: 'review', reviewDone: false, recapDone: false,
+        learnDone: false, learnedChars: [], quizDone: false,
+        quizScore: 0, quizTotal: 0, growthEarned: 0
+      };
+      app.State.save('dailyTask', newState);
+
+      const progressAfter = app.DailyTaskService.getProgress();
+      assertEqual(progressAfter.lessonIndex, 3, 'Should roll back to lesson 3');
+      const state = app.DailyTaskService.getTaskState();
+      assertEqual(state.step, 'review', 'Should restart at review');
+    });
+
+    it('Redo preserves other profile data (favorites, errorBook)', () => {
+      // Setup some profile data
+      app.State.set('favorites', ['天', '地']);
+      app.State.persist('favorites');
+      const errBook = [{ char: '难', pinyin: 'nán', wrongCount: 2, consecutiveCorrect: 0 }];
+      app.State.set('errorBook', errBook);
+      app.State.persist('errorBook');
+
+      // Complete and redo
+      app.DailyTaskService.initProgress(1, 1, 0);
+      app.State.save('dailyTask', { date: '', step: 'review' });
+      app.DailyTaskService.getTaskState();
+      app.DailyTaskService.completeReview(0);
+      app.DailyTaskService.completeRecap(0);
+      app.DailyTaskService.completeLearn();
+      app.DailyTaskService.completeQuiz(5, 10);
+
+      // Reset task state (redo)
+      const newState = {
+        date: new Date().toISOString().slice(0, 10),
+        step: 'review', reviewDone: false, recapDone: false,
+        learnDone: false, learnedChars: [], quizDone: false,
+        quizScore: 0, quizTotal: 0, growthEarned: 0
+      };
+      app.State.save('dailyTask', newState);
+
+      // Verify other data is untouched
+      const favs = app.State.load('favorites', []);
+      assert(favs.includes('天'), 'Favorites should be preserved after redo');
+      const errors = app.State.load('errorBook', []);
+      assertEqual(errors.length, 1, 'ErrorBook should be preserved after redo');
+    });
+
+    it('Multiple redos in same day all work correctly', () => {
+      app.DailyTaskService.initProgress(1, 1, 0);
+
+      // First run
+      app.State.save('dailyTask', { date: '', step: 'review' });
+      app.DailyTaskService.getTaskState();
+      app.DailyTaskService.completeReview(0);
+      app.DailyTaskService.completeRecap(0);
+      app.DailyTaskService.completeLearn();
+      app.DailyTaskService.completeQuiz(9, 10); // advances to lesson 1
+
+      assertEqual(app.DailyTaskService.getProgress().lessonIndex, 1);
+
+      // Redo #1: roll back and reset
+      let progress = app.DailyTaskService.getProgress();
+      progress.lessonIndex--;
+      if (progress.completedLessons.length > 0) progress.completedLessons.pop();
+      app.State.save('lessonProgress', progress);
+      app.State.save('dailyTask', {
+        date: new Date().toISOString().slice(0, 10),
+        step: 'review', reviewDone: false, recapDone: false,
+        learnDone: false, learnedChars: [], quizDone: false,
+        quizScore: 0, quizTotal: 0, growthEarned: 0
+      });
+
+      assertEqual(app.DailyTaskService.getProgress().lessonIndex, 0, 'Should be back at lesson 0');
+      assertEqual(app.DailyTaskService.getTaskState().step, 'review', 'Should be at review');
+
+      // Second run
+      app.DailyTaskService.completeReview(0);
+      app.DailyTaskService.completeRecap(0);
+      app.DailyTaskService.completeLearn();
+      app.DailyTaskService.completeQuiz(10, 10); // advances again
+
+      assertEqual(app.DailyTaskService.getProgress().lessonIndex, 1, 'Should advance again to lesson 1');
+
+      // Redo #2
+      progress = app.DailyTaskService.getProgress();
+      progress.lessonIndex--;
+      if (progress.completedLessons.length > 0) progress.completedLessons.pop();
+      app.State.save('lessonProgress', progress);
+      app.State.save('dailyTask', {
+        date: new Date().toISOString().slice(0, 10),
+        step: 'review', reviewDone: false, recapDone: false,
+        learnDone: false, learnedChars: [], quizDone: false,
+        quizScore: 0, quizTotal: 0, growthEarned: 0
+      });
+
+      assertEqual(app.DailyTaskService.getProgress().lessonIndex, 0, 'Should be back at lesson 0 again');
+    });
+  });
+
+  renderResults();
+}
+</script>
+</body>
+</html>

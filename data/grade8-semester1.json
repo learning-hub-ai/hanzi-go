@@ -1,0 +1,693 @@
+{
+  "grade": 8,
+  "semester": 1,
+  "lessons": [
+    {
+      "id": "8-1-1",
+      "title": "第3课《\"飞天\"凌空》",
+      "chars": [
+        {
+          "char": "翘",
+          "pinyin": "qiáo",
+          "words": [
+            "翘首",
+            "翘起"
+          ],
+          "sentence": "八千名观众翘首而望。"
+        },
+        {
+          "char": "屏",
+          "pinyin": "bǐng",
+          "words": [
+            "屏息",
+            "屏气"
+          ],
+          "sentence": "观众屏息凝视着跳台。"
+        },
+        {
+          "char": "悄",
+          "pinyin": "qiǎo",
+          "words": [
+            "悄然",
+            "悄无声息"
+          ],
+          "sentence": "水花悄然不惊。"
+        },
+        {
+          "char": "凌",
+          "pinyin": "líng",
+          "words": [
+            "凌空",
+            "凌晨"
+          ],
+          "sentence": "跳水姑娘凌空翔舞。"
+        },
+        {
+          "char": "翔",
+          "pinyin": "xiáng",
+          "words": [
+            "飞翔",
+            "翱翔"
+          ],
+          "sentence": "她在空中翔舞如飞天。"
+        },
+        {
+          "char": "潇",
+          "pinyin": "xiāo",
+          "words": [
+            "潇洒",
+            "潇潇"
+          ],
+          "sentence": "动作潇洒自如。"
+        },
+        {
+          "char": "缭",
+          "pinyin": "liáo",
+          "words": [
+            "缭乱",
+            "缭绕"
+          ],
+          "sentence": "观众眼花缭乱。"
+        }
+      ]
+    },
+    {
+      "id": "8-1-2",
+      "title": "第4课《一着惊海天》",
+      "chars": [
+        {
+          "char": "艉",
+          "pinyin": "wěi",
+          "words": [
+            "船艉",
+            "艉部"
+          ],
+          "sentence": "舰艉的着舰指挥官挥动旗帜。"
+        },
+        {
+          "char": "殚",
+          "pinyin": "dān",
+          "words": [
+            "殚精竭虑",
+            "殚尽"
+          ],
+          "sentence": "多少人殚精竭虑攻关。"
+        },
+        {
+          "char": "镌",
+          "pinyin": "juān",
+          "words": [
+            "镌刻",
+            "镌字"
+          ],
+          "sentence": "这一刻镌刻在共和国史册上。"
+        }
+      ]
+    },
+    {
+      "id": "8-1-3",
+      "title": "第5课《国行公祭，为佑世和》",
+      "chars": [
+        {
+          "char": "殇",
+          "pinyin": "shāng",
+          "words": [
+            "国殇",
+            "夭殇"
+          ],
+          "sentence": "国行公祭，祭国殇。"
+        },
+        {
+          "char": "寰",
+          "pinyin": "huán",
+          "words": [
+            "人寰",
+            "寰宇"
+          ],
+          "sentence": "那场浩劫惨绝人寰。"
+        },
+        {
+          "char": "篡",
+          "pinyin": "cuàn",
+          "words": [
+            "篡改",
+            "篡夺"
+          ],
+          "sentence": "有人企图篡改历史。"
+        },
+        {
+          "char": "聩",
+          "pinyin": "kuì",
+          "words": [
+            "振聋发聩",
+            "昏聩"
+          ],
+          "sentence": "这声音振聋发聩。"
+        },
+        {
+          "char": "遁",
+          "pinyin": "dùn",
+          "words": [
+            "遁形",
+            "逃遁"
+          ],
+          "sentence": "铁证面前谁也无法遁形。"
+        }
+      ]
+    },
+    {
+      "id": "8-1-4",
+      "title": "第6课《藤野先生》",
+      "chars": [
+        {
+          "char": "熳",
+          "pinyin": "màn",
+          "words": [
+            "烂熳",
+            "熳烂"
+          ],
+          "sentence": "上野的樱花烂熳的时节。"
+        },
+        {
+          "char": "埠",
+          "pinyin": "bù",
+          "words": [
+            "商埠",
+            "埠头"
+          ],
+          "sentence": "去大商埠设立的机构学习。"
+        },
+        {
+          "char": "喝",
+          "pinyin": "hè",
+          "words": [
+            "喝采",
+            "吆喝"
+          ],
+          "sentence": "他们拍掌喝采起来。"
+        },
+        {
+          "char": "杳",
+          "pinyin": "yǎo",
+          "words": [
+            "杳无消息",
+            "杳然"
+          ],
+          "sentence": "从此杳无消息了。"
+        },
+        {
+          "char": "恶",
+          "pinyin": "wù",
+          "words": [
+            "深恶痛疾",
+            "厌恶"
+          ],
+          "sentence": "鲁迅深恶痛疾那些人。"
+        },
+        {
+          "char": "迺",
+          "pinyin": "nǎi",
+          "words": [
+            "迺莹",
+            "迺字"
+          ],
+          "sentence": "原名张迺莹。"
+        }
+      ]
+    },
+    {
+      "id": "8-1-5",
+      "title": "第7课《回忆我的母亲》",
+      "chars": [
+        {
+          "char": "佃",
+          "pinyin": "diàn",
+          "words": [
+            "佃农",
+            "佃户"
+          ],
+          "sentence": "母亲是一个佃农的女儿。"
+        },
+        {
+          "char": "妯",
+          "pinyin": "zhóu",
+          "words": [
+            "妯娌",
+            "妯姑"
+          ],
+          "sentence": "和妯娌们友好相处。"
+        },
+        {
+          "char": "娌",
+          "pinyin": "lǐ",
+          "words": [
+            "妯娌",
+            "娌妇"
+          ],
+          "sentence": "和妯娌们友好相处。"
+        },
+        {
+          "char": "慰",
+          "pinyin": "wèi",
+          "words": [
+            "安慰",
+            "慰问"
+          ],
+          "sentence": "母亲的话给了我极大的安慰。"
+        },
+        {
+          "char": "溺",
+          "pinyin": "nì",
+          "words": [
+            "溺爱",
+            "溺水"
+          ],
+          "sentence": "她从不溺爱孩子。"
+        },
+        {
+          "char": "勉",
+          "pinyin": "miǎn",
+          "words": [
+            "勤勉",
+            "勉励"
+          ],
+          "sentence": "母亲一生勤勉劳作。"
+        }
+      ]
+    },
+    {
+      "id": "8-1-6",
+      "title": "第8课《列夫·托尔斯泰》",
+      "chars": [
+        {
+          "char": "髭",
+          "pinyin": "zī",
+          "words": [
+            "胡髭",
+            "髭须"
+          ],
+          "sentence": "他长着浓密的髭须。"
+        },
+        {
+          "char": "鬈",
+          "pinyin": "quán",
+          "words": [
+            "鬈发",
+            "鬈曲"
+          ],
+          "sentence": "他的头发鬈曲着。"
+        },
+        {
+          "char": "黝",
+          "pinyin": "yǒu",
+          "words": [
+            "黝黑",
+            "黝暗"
+          ],
+          "sentence": "他脸色黝黑。"
+        },
+        {
+          "char": "粲",
+          "pinyin": "càn",
+          "words": [
+            "粲然",
+            "粲花"
+          ],
+          "sentence": "他笑得粲然。"
+        },
+        {
+          "char": "颔",
+          "pinyin": "hàn",
+          "words": [
+            "颔首",
+            "下颔"
+          ],
+          "sentence": "他微微颔首。"
+        },
+        {
+          "char": "禁",
+          "pinyin": "jīn",
+          "words": [
+            "禁不住",
+            "情不自禁"
+          ],
+          "sentence": "人们禁不住赞叹。"
+        }
+      ]
+    },
+    {
+      "id": "8-1-7",
+      "title": "第9课《美丽的颜色》",
+      "chars": [
+        {
+          "char": "踱",
+          "pinyin": "duó",
+          "words": [
+            "踱步",
+            "踱来踱去"
+          ],
+          "sentence": "居里夫人踱到小屋里。"
+        },
+        {
+          "char": "猝",
+          "pinyin": "cù",
+          "words": [
+            "猝然",
+            "猝不及防"
+          ],
+          "sentence": "一种猝然的激动使她止步。"
+        },
+        {
+          "char": "窒",
+          "pinyin": "zhì",
+          "words": [
+            "窒息",
+            "窒碍"
+          ],
+          "sentence": "潮湿闷热令人窒息。"
+        },
+        {
+          "char": "嘘",
+          "pinyin": "xū",
+          "words": [
+            "吹嘘",
+            "嘘声"
+          ],
+          "sentence": "他们从不吹嘘自己。"
+        },
+        {
+          "char": "镭",
+          "pinyin": "léi",
+          "words": [
+            "镭射",
+            "镭元素"
+          ],
+          "sentence": "镭在黑暗中发出蓝光。"
+        },
+        {
+          "char": "钋",
+          "pinyin": "pō",
+          "words": [
+            "钋元素",
+            "放射钋"
+          ],
+          "sentence": "他们发现了钋元素。"
+        },
+        {
+          "char": "氯",
+          "pinyin": "lǜ",
+          "words": [
+            "氯气",
+            "氯化"
+          ],
+          "sentence": "学名氯化镭。"
+        }
+      ]
+    },
+    {
+      "id": "8-1-8",
+      "title": "第14课《背影》",
+      "chars": [
+        {
+          "char": "踌",
+          "pinyin": "chóu",
+          "words": [
+            "踌躇",
+            "踌满"
+          ],
+          "sentence": "父亲踌躇了一会。"
+        },
+        {
+          "char": "躇",
+          "pinyin": "chú",
+          "words": [
+            "踌躇",
+            "躇步"
+          ],
+          "sentence": "父亲踌躇了一会。"
+        },
+        {
+          "char": "蹒",
+          "pinyin": "pán",
+          "words": [
+            "蹒跚",
+            "蹒行"
+          ],
+          "sentence": "他蹒跚地走到铁道边。"
+        },
+        {
+          "char": "跚",
+          "pinyin": "shān",
+          "words": [
+            "蹒跚",
+            "跚步"
+          ],
+          "sentence": "他蹒跚地走到铁道边。"
+        },
+        {
+          "char": "拭",
+          "pinyin": "shì",
+          "words": [
+            "擦拭",
+            "拂拭"
+          ],
+          "sentence": "我赶紧拭去了泪水。"
+        },
+        {
+          "char": "颓",
+          "pinyin": "tuí",
+          "words": [
+            "颓唐",
+            "颓废"
+          ],
+          "sentence": "父亲少年时日子颓唐。"
+        },
+        {
+          "char": "琐",
+          "pinyin": "suǒ",
+          "words": [
+            "琐屑",
+            "琐碎"
+          ],
+          "sentence": "家中光景惨淡，一切琐屑的事。"
+        }
+      ]
+    },
+    {
+      "id": "8-1-9",
+      "title": "第15课《白杨礼赞》",
+      "chars": [
+        {
+          "char": "恹",
+          "pinyin": "yān",
+          "words": [
+            "恹恹",
+            "恹病"
+          ],
+          "sentence": "黄土高原恹恹欲睡。"
+        },
+        {
+          "char": "虬",
+          "pinyin": "qiú",
+          "words": [
+            "虬枝",
+            "虬龙"
+          ],
+          "sentence": "白杨树虬枝铁干。"
+        },
+        {
+          "char": "婆",
+          "pinyin": "pó",
+          "words": [
+            "婆娑",
+            "婆婆"
+          ],
+          "sentence": "没有婆娑的姿态。"
+        },
+        {
+          "char": "坦",
+          "pinyin": "tǎn",
+          "words": [
+            "坦荡如砥",
+            "平坦"
+          ],
+          "sentence": "黄土高原坦荡如砥。"
+        },
+        {
+          "char": "砥",
+          "pinyin": "dǐ",
+          "words": [
+            "坦荡如砥",
+            "砥砺"
+          ],
+          "sentence": "黄土高原坦荡如砥。"
+        },
+        {
+          "char": "秀",
+          "pinyin": "xiù",
+          "words": [
+            "秀颀",
+            "秀丽"
+          ],
+          "sentence": "白杨树秀颀挺拔。"
+        },
+        {
+          "char": "颀",
+          "pinyin": "qí",
+          "words": [
+            "秀颀",
+            "颀长"
+          ],
+          "sentence": "那是白杨树，秀颀的身姿。"
+        }
+      ]
+    },
+    {
+      "id": "8-1-10",
+      "title": "第18课《中国石拱桥》",
+      "chars": [
+        {
+          "char": "弧",
+          "pinyin": "hú",
+          "words": [
+            "弧形",
+            "弧线"
+          ],
+          "sentence": "石拱桥的桥洞成弧形。"
+        },
+        {
+          "char": "陡",
+          "pinyin": "dǒu",
+          "words": [
+            "陡坡",
+            "陡峭"
+          ],
+          "sentence": "桥面和路面几乎没有陡坡。"
+        },
+        {
+          "char": "匀",
+          "pinyin": "yún",
+          "words": [
+            "匀称",
+            "均匀"
+          ],
+          "sentence": "桥身各部分匀称和谐。"
+        },
+        {
+          "char": "饯",
+          "pinyin": "jiàn",
+          "words": [
+            "饯行",
+            "饯别"
+          ],
+          "sentence": "朋友们设宴饯行。"
+        },
+        {
+          "char": "洨",
+          "pinyin": "xiáo",
+          "words": [
+            "洨河",
+            "洨水"
+          ],
+          "sentence": "赵州桥横跨在洨河上。"
+        },
+        {
+          "char": "鷟",
+          "pinyin": "zhuó",
+          "words": [
+            "张鷟",
+            "鷟评"
+          ],
+          "sentence": "唐朝张鷟赞美赵州桥。"
+        }
+      ]
+    },
+    {
+      "id": "8-1-11",
+      "title": "第22课《愚公移山》",
+      "chars": [
+        {
+          "char": "惩",
+          "pinyin": "chéng",
+          "words": [
+            "惩罚",
+            "惩戒"
+          ],
+          "sentence": "帝感其诚，惩山北之塞。"
+        },
+        {
+          "char": "塞",
+          "pinyin": "sè",
+          "words": [
+            "阻塞",
+            "堵塞"
+          ],
+          "sentence": "惩山北之塞，出入之迂也。"
+        },
+        {
+          "char": "迂",
+          "pinyin": "yū",
+          "words": [
+            "迂回",
+            "迂腐"
+          ],
+          "sentence": "出入之迂也。"
+        },
+        {
+          "char": "荷",
+          "pinyin": "hè",
+          "words": [
+            "荷担",
+            "重荷"
+          ],
+          "sentence": "遂率子孙荷担者三夫。"
+        },
+        {
+          "char": "箕",
+          "pinyin": "jī",
+          "words": [
+            "箕畚",
+            "簸箕"
+          ],
+          "sentence": "箕畚运于渤海之尾。"
+        },
+        {
+          "char": "畚",
+          "pinyin": "běn",
+          "words": [
+            "箕畚",
+            "畚箕"
+          ],
+          "sentence": "箕畚运于渤海之尾。"
+        },
+        {
+          "char": "孀",
+          "pinyin": "shuāng",
+          "words": [
+            "孀妻",
+            "遗孀"
+          ],
+          "sentence": "邻人京城氏之孀妻。"
+        },
+        {
+          "char": "龀",
+          "pinyin": "chèn",
+          "words": [
+            "始龀",
+            "龀齿"
+          ],
+          "sentence": "有遗男，始龀。"
+        },
+        {
+          "char": "匮",
+          "pinyin": "kuì",
+          "words": [
+            "匮乏",
+            "匮竭"
+          ],
+          "sentence": "子子孙孙无穷匮也。"
+        }
+      ]
+    }
+  ]
+}

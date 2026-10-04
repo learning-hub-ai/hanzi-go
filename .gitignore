@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.swp
+*.swo
+.DS_Store
+
+# 本地开发服务器日志，不进仓库
+server.log
+
+# 调试页，本地用
+debug.html

@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>HanziGo — 汉字学习好伙伴</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4f46e5">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="HanziGo">
+<link rel="icon" href="assets/icon-192.png">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<script>
+// Register service worker for offline PWA support
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').then(reg => {
+    // Check for updates periodically
+    setInterval(() => reg.update(), 60 * 60 * 1000); // hourly
+  }).catch(() => {});
+}
+</script>
+
+<!-- Header -->
+<header>
+  <div class="header-left">
+    <button class="mobile-grade-picker" id="mobileGradePicker" aria-label="选择年级">
+      <span class="mobile-grade-label" id="mobileGradeLabel">📕 一年级上册</span>
+      <span class="mobile-grade-arrow">▼</span>
+    </button>
+    <div class="app-title">✈️ HanziGo — 汉字学习好伙伴</div>
+    <div class="app-greeting" id="appGreeting"></div>
+  </div>
+  <div class="mode-tabs">
+    <button class="mode-tab active" data-mode="dailyTask">📖 任务</button>
+    <button class="mode-tab" data-mode="learn">📚 学习</button>
+    <button class="mode-tab" data-mode="challenge">🎮 挑战</button>
+  </div>
+  <div class="streak-display" id="streakDisplay" title="连续学习天数">🔥 <span id="streakNumber">0</span></div>
+  <div class="header-right">
+    <button id="btnFavorites" title="生词本" aria-label="生词本">❤️</button>
+    <button id="btnErrorBook" title="错题本" aria-label="错题本">📖</button>
+    <button id="btnBadges" title="成就墙" aria-label="成就墙">🏆</button>
+    <button id="btnProfile" class="profile-btn" title="切换用户" aria-label="切换用户">
+      <span class="profile-avatar" id="profileAvatar">👧</span>
+      <span class="profile-name" id="profileName"></span>
+    </button>
+  </div>
+</header>
+
+<!-- Layout: sidebar + content -->
+<div class="app-layout">
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <!-- 复习区 (collapsible, top priority) -->
+    <div class="sidebar-review">
+      <div class="sidebar-group-header" id="reviewGroupToggle">
+        <span class="sidebar-group-header-left">🎯 复习区</span>
+        <span class="sidebar-group-arrow" id="reviewArrow">−</span>
+      </div>
+      <div class="sidebar-group-items" id="reviewGroupItems">
+        <div class="sidebar-item sidebar-subitem" data-sem="fav" data-grade="fav">
+          <span class="sidebar-item-icon">❤️</span>
+          <span class="sidebar-item-label">生词本</span>
+          <span class="sidebar-item-count" id="favSideCount">0</span>
+        </div>
+        <div class="sidebar-item sidebar-subitem" data-sem="err" data-grade="err">
+          <span class="sidebar-item-icon">📖</span>
+          <span class="sidebar-item-label">错题本</span>
+          <span class="sidebar-item-count" id="errSideCount">0</span>
+        </div>
+        <div class="sidebar-item sidebar-subitem" data-sem="srs" data-grade="srs">
+          <span class="sidebar-item-icon">📈</span>
+          <span class="sidebar-item-label">智能复习</span>
+          <span class="sidebar-item-count" id="srsSideCount">0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <!-- 年级导航 (accordion — one grade expanded at a time) -->
+    <div class="sidebar-grades" id="sidebarGrades">
+      <div class="sidebar-grade-group" data-grade-group="1">
+        <div class="sidebar-grade-header active">
+          <span class="sidebar-grade-icon grade-icon-pink">📘</span>
+          <span class="sidebar-grade-label">一年级</span>
+          <span class="sidebar-grade-arrow">−</span>
+        </div>
+        <div class="sidebar-grade-children expanded">
+          <div class="sidebar-item active" data-sem="1" data-grade="1">
+            <span class="sidebar-item-label">上册</span>
+            <span class="sidebar-item-count" data-count-for="1-1"></span>
+          </div>
+          <div class="sidebar-item" data-sem="2" data-grade="1">
+            <span class="sidebar-item-label">下册</span>
+            <span class="sidebar-item-count" data-count-for="1-2"></span>
+          </div>
+        </div>
+      </div>
+      <div class="sidebar-grade-group" data-grade-group="2">
+        <div class="sidebar-grade-header">
+          <span class="sidebar-grade-icon">📗</span>
+          <span class="sidebar-grade-label">二年级</span>
+          <span class="sidebar-grade-arrow">+</span>
+        </div>
+        <div class="sidebar-grade-children">
+          <div class="sidebar-item" data-sem="1" data-grade="2">
+            <span class="sidebar-item-label">上册</span>
+            <span class="sidebar-item-count" data-count-for="2-1"></span>
+          </div>
+          <div class="sidebar-item" data-sem="2" data-grade="2">
+            <span class="sidebar-item-label">下册</span>
+            <span class="sidebar-item-count" data-count-for="2-2"></span>
+          </div>
+        </div>
+      </div>
+      <div class="sidebar-grade-group" data-grade-group="3">
+        <div class="sidebar-grade-header">
+          <span class="sidebar-grade-icon">📙</span>
+          <span class="sidebar-grade-label">三年级</span>
+          <span class="sidebar-grade-arrow">+</span>
+        </div>
+        <div class="sidebar-grade-children">
+          <div class="sidebar-item" data-sem="1" data-grade="3">
+            <span class="sidebar-item-label">上册</span>
+            <span class="sidebar-item-count" data-count-for="3-1"></span>
+          </div>
+          <div class="sidebar-item" data-sem="2" data-grade="3">
+            <span class="sidebar-item-label">下册</span>
+            <span class="sidebar-item-count" data-count-for="3-2"></span>
+          </div>
+        </div>
+      </div>
+      <div class="sidebar-grade-group" data-grade-group="4">
+        <div class="sidebar-grade-header">
+          <span class="sidebar-grade-icon">📕</span>
+          <span class="sidebar-grade-label">四年级</span>
+          <span class="sidebar-grade-arrow">+</span>
+        </div>
+        <div class="sidebar-grade-children">
+          <div class="sidebar-item" data-sem="1" data-grade="4">
+            <span class="sidebar-item-label">上册</span>
+            <span class="sidebar-item-count" data-count-for="4-1"></span>
+          </div>
+          <div class="sidebar-item" data-sem="2" data-grade="4">
+            <span class="sidebar-item-label">下册</span>
+            <span class="sidebar-item-count" data-count-for="4-2"></span>
+          </div>
+        </div>
+      </div>
+      <div class="sidebar-grade-group" data-grade-group="5">
+        <div class="sidebar-grade-header">
+          <span class="sidebar-grade-icon">📒</span>
+          <span class="sidebar-grade-label">五年级</span>
+          <span class="sidebar-grade-arrow">+</span>
+        </div>
+        <div class="sidebar-grade-children">
+          <div class="sidebar-item" data-sem="1" data-grade="5">
+            <span class="sidebar-item-label">上册</span>
+            <span class="sidebar-item-count" data-count-for="5-1"></span>
+          </div>
+          <div class="sidebar-item" data-sem="2" data-grade="5">
+            <span class="sidebar-item-label">下册</span>
+            <span class="sidebar-item-count" data-count-for="5-2"></span>
+          </div>
+        </div>
+      </div>
+      <div class="sidebar-grade-group" data-grade-group="6">
+        <div class="sidebar-grade-header">
+          <span class="sidebar-grade-icon">📘</span>
+          <span class="sidebar-grade-label">六年级</span>
+          <span class="sidebar-grade-arrow">+</span>
+        </div>
+        <div class="sidebar-grade-children">
+          <div class="sidebar-item" data-sem="1" data-grade="6">
+            <span class="sidebar-item-label">上册</span>
+            <span class="sidebar-item-count" data-count-for="6-1"></span>
+          </div>
+          <div class="sidebar-item" data-sem="2" data-grade="6">
+            <span class="sidebar-item-label">下册</span>
+            <span class="sidebar-item-count" data-count-for="6-2"></span>
+          </div>
+        </div>
+      </div>
+      <div class="sidebar-grade-group" data-grade-group="7">
+        <div class="sidebar-grade-header">
+          <span class="sidebar-grade-icon" style="filter:hue-rotate(200deg)">📖</span>
+          <span class="sidebar-grade-label">七年级</span>
+          <span class="sidebar-grade-arrow">+</span>
+        </div>
+        <div class="sidebar-grade-children">
+          <div class="sidebar-item" data-sem="1" data-grade="7">
+            <span class="sidebar-item-label">上册</span>
+            <span class="sidebar-item-count" data-count-for="7-1"></span>
+          </div>
+          <div class="sidebar-item" data-sem="2" data-grade="7">
+            <span class="sidebar-item-label">下册</span>
+            <span class="sidebar-item-count" data-count-for="7-2"></span>
+          </div>
+        </div>
+      </div>
+      <div class="sidebar-grade-group" data-grade-group="8">
+        <div class="sidebar-grade-header">
+          <span class="sidebar-grade-icon" style="filter:hue-rotate(270deg)">📖</span>
+          <span class="sidebar-grade-label">八年级</span>
+          <span class="sidebar-grade-arrow">+</span>
+        </div>
+        <div class="sidebar-grade-children">
+          <div class="sidebar-item" data-sem="1" data-grade="8">
+            <span class="sidebar-item-label">上册</span>
+            <span class="sidebar-item-count" data-count-for="8-1"></span>
+          </div>
+          <div class="sidebar-item" data-sem="2" data-grade="8">
+            <span class="sidebar-item-label">下册</span>
+            <span class="sidebar-item-count" data-count-for="8-2"></span>
+          </div>
+        </div>
+      </div>
+      <div class="sidebar-grade-group" data-grade-group="9">
+        <div class="sidebar-grade-header">
+          <span class="sidebar-grade-icon" style="filter:hue-rotate(100deg)">📖</span>
+          <span class="sidebar-grade-label">九年级</span>
+          <span class="sidebar-grade-arrow">+</span>
+        </div>
+        <div class="sidebar-grade-children">
+          <div class="sidebar-item" data-sem="1" data-grade="9">
+            <span class="sidebar-item-label">上册</span>
+            <span class="sidebar-item-count" data-count-for="9-1"></span>
+          </div>
+          <div class="sidebar-item" data-sem="2" data-grade="9">
+            <span class="sidebar-item-label">下册</span>
+            <span class="sidebar-item-count" data-count-for="9-2"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div>
+    </div>
+    </div>
+
+    <!-- 底部固定：成就 -->
+    <div class="sidebar-footer">
+      <div class="sidebar-divider"></div>
+      <div class="sidebar-item" id="sidebarBadges">
+        <span class="sidebar-item-icon">🏆</span>
+        <span class="sidebar-item-label">成就</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main>
+    <!-- Daily Task Mode -->
+    <div id="dailyTaskMode"></div>
+
+    <!-- Learning Mode -->
+    <div id="learnMode" class="hidden">>
+      <div class="content-header">
+        <label for="lessonFilter" class="hidden">选择课文</label>
+        <select id="lessonFilter" aria-label="选择课文">
+          <option value="all">全部课文</option>
+        </select>
+      </div>
+      <div class="card-container" id="cardContainer">
+        <div class="card" id="flashcard" role="button" aria-label="点击翻转卡片">
+          <div class="card-face card-front">
+            <button class="pinyin-toggle" id="btnPinyinToggle">拼音</button>
+            <button class="fav-btn" id="favBtn">🤍</button>
+            <div class="card-char char-display" id="cardChar" role="button" aria-label="点击朗读" title="点击朗读">天</div>
+            <div class="card-pinyin-small hidden" id="cardPinyinSmall">tiān</div>
+            <div class="card-hint">点击翻转 →</div>
+          </div>
+          <div class="card-face card-back">
+            <div class="card-pinyin-back" id="cardPinyinBack">tiān</div>
+            <div class="card-words" id="cardWords">天空 · 今天 · 蓝天</div>
+            <div class="card-sentence" id="cardSentence">天在上，地在下。</div>
+          </div>
+        </div>
+      </div>
+      <div class="card-controls">
+        <button id="btnPrev" aria-label="上一个">⬅️ 上一个</button>
+        <button id="btnFlip" aria-label="翻转卡片">🔄 翻转</button>
+        <button id="btnSpeak" aria-label="朗读">🔊 朗读</button>
+        <button id="btnReinforce" aria-label="加强记忆" class="btn-reinforce">🔁 加强记忆</button>
+        <button id="btnNext" aria-label="下一个">➡️ 下一个</button>
+      </div>
+      <div class="progress-container">
+        <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:2%"></div></div>
+        <div class="progress-text" id="progressBar">1 / 45</div>
+      </div>
+    </div>
+
+    <!-- Challenge Mode -->
+    <div id="challengeMode" class="hidden">
+      <div class="quiz-type-selector" id="quizTypeSelector">
+        <button class="quiz-type-btn active" data-qtype="pickPinyin">字→音</button>
+        <button class="quiz-type-btn" data-qtype="pickChar">音→字</button>
+        <button class="quiz-type-btn" data-qtype="pickWord">字→词</button>
+        <button class="quiz-type-btn" data-qtype="fillBlank">📝 填空</button>
+        <button class="quiz-type-btn" data-qtype="mixed">🎲 混合</button>
+        <select id="quizTimerSelect" class="quiz-timer-select">
+          <option value="0">⏱️ 关</option>
+          <option value="5">⏱️ 5秒</option>
+          <option value="10">⏱️ 10秒</option>
+          <option value="15">⏱️ 15秒</option>
+        </select>
+      </div>
+      <div class="quiz-timer-bar hidden" id="quizTimerBar">
+        <div class="quiz-timer-fill" id="quizTimerFill"></div>
+      </div>
+      <div class="quiz-container" id="quizActive">
+        <div class="quiz-dots" id="quizDots"></div>
+        <div class="quiz-stats">
+          <span>📊 <span id="quizScore">0</span>分</span>
+          <span>🔥 <span id="quizStreak">0</span>连对 <span id="streakFire" class="streak-fire hidden">🔥</span></span>
+          <span>📝 <span id="quizProgress">1/10</span></span>
+        </div>
+        <div class="quiz-char char-display" id="quizChar">天</div>
+        <div class="quiz-options" id="quizOptions"></div>
+      </div>
+      <div id="quizEnd" class="end-screen hidden">
+        <div class="end-score" id="endScore">8</div>
+        <div class="end-detail" id="endDetail">正确率 80%</div>
+        <div class="end-msg" id="endMsg">很厉害！继续加油！💪</div>
+        <div class="end-actions">
+          <button class="btn-play-again" id="btnPlayAgain" onclick="try{ChallengeController.start()}catch(e){document.getElementById('endMsg').textContent='错误:'+e.message}">🔄 再来一轮</button>
+          <button class="btn-play-again btn-play-again--secondary" id="btnErrorReview" onclick="try{ChallengeController.start(true)}catch(e){document.getElementById('endMsg').textContent='错误:'+e.message}">📖 错题复习</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modalBox">
+    <button class="modal-close" id="btnModalClose">✕</button>
+    <h3 id="modalTitle">生词本</h3>
+    <div id="modalContent"></div>
+  </div>
+</div>
+
+<!-- Mobile Bottom Bar (hidden on desktop) -->
+<nav class="mobile-bottom-bar" id="mobileBottomBar">
+  <button id="mbtnPrev" aria-label="上一个">◀️</button>
+  <button id="mbtnFlip" aria-label="翻转">🔄</button>
+  <button id="mbtnSpeak" aria-label="朗读">🔊</button>
+  <button id="mbtnReinforce" aria-label="加强记忆">🔁</button>
+  <button id="mbtnNext" aria-label="下一个">▶️</button>
+</nav>
+
+<!-- Mobile Bottom Sheet (grade/lesson picker) -->
+<div class="mobile-sheet-overlay hidden" id="mobileSheetOverlay">
+  <div class="mobile-sheet" id="mobileSheet">
+    <div class="mobile-sheet-handle"></div>
+    <h3 class="mobile-sheet-title">选择年级</h3>
+    <div class="mobile-sheet-content" id="mobileSheetContent">
+      <!-- Populated by JS -->
+    </div>
+  </div>
+</div>
+
+<!-- Scripts -->
+<script src="js/constants.js"></script>
+<script src="js/state.js"></script>
+<script src="js/data.js"></script>
+<script src="js/services.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/controllers.js"></script>
+<script src="js/daily-task.js"></script>
+<script src="js/mobile.js"></script>
+<script>
+AppController.init();
+MobileUI.init();
+// Expose modules for testing (accessed via iframe.contentWindow)
+window.State = State;
+window.DataService = DataService;
+window.Speech = Speech;
+window.BadgeService = BadgeService;
+window.FavoriteService = FavoriteService;
+window.ErrorBookService = ErrorBookService;
+window.StatsService = StatsService;
+window.SpacedRepService = SpacedRepService;
+window.LearnController = LearnController;
+window.ChallengeController = ChallengeController;
+window.ProfileManager = ProfileManager;
+window.AppController = AppController;
+window.FilterUI = FilterUI;
+window.MobileUI = MobileUI;
+window.DailyTaskService = DailyTaskService;
+window.DailyTaskController = DailyTaskController;
+</script>
+</body>
+</html>

@@ -1,0 +1,690 @@
+{
+  "grade": 9,
+  "semester": 1,
+  "lessons": [
+    {
+      "id": "9-1-1",
+      "title": "第1课《沁园春·雪》",
+      "chars": [
+        {
+          "char": "娆",
+          "pinyin": "ráo",
+          "words": [
+            "妖娆",
+            "娇娆"
+          ],
+          "sentence": "须晴日，看红装素裹，分外妖娆。"
+        },
+        {
+          "char": "汗",
+          "pinyin": "hán",
+          "words": [
+            "可汗",
+            "成吉思汗"
+          ],
+          "sentence": "一代天骄，成吉思汗。"
+        },
+        {
+          "char": "骚",
+          "pinyin": "sāo",
+          "words": [
+            "风骚",
+            "骚客"
+          ],
+          "sentence": "唐宗宋祖，稍逊风骚。"
+        }
+      ]
+    },
+    {
+      "id": "9-1-2",
+      "title": "第7课《敬业与乐业》",
+      "chars": [
+        {
+          "char": "骛",
+          "pinyin": "wù",
+          "words": [
+            "好高骛远",
+            "骛远"
+          ],
+          "sentence": "敬业即是责任心，不要好高骛远。"
+        },
+        {
+          "char": "蜩",
+          "pinyin": "tiáo",
+          "words": [
+            "蜩翼",
+            "蜩螗"
+          ],
+          "sentence": "虽蜩翼般细微之事也要专注。"
+        },
+        {
+          "char": "聒",
+          "pinyin": "guō",
+          "words": [
+            "聒噪",
+            "聒耳"
+          ],
+          "sentence": "不要聒噪，安心做事。"
+        }
+      ]
+    },
+    {
+      "id": "9-1-3",
+      "title": "第8课《就英法联军远征中国致巴特勒上尉的信》",
+      "chars": [
+        {
+          "char": "箧",
+          "pinyin": "qiè",
+          "words": [
+            "箱箧",
+            "翻箧"
+          ],
+          "sentence": "丰功伟绩！收获巨大！两座箧满。"
+        },
+        {
+          "char": "琉",
+          "pinyin": "liú",
+          "words": [
+            "琉璃",
+            "琉瓦"
+          ],
+          "sentence": "请想象琉璃与大理石的宫殿。"
+        },
+        {
+          "char": "璃",
+          "pinyin": "lí",
+          "words": [
+            "琉璃",
+            "玻璃"
+          ],
+          "sentence": "请想象琉璃与大理石的宫殿。"
+        },
+        {
+          "char": "珐",
+          "pinyin": "fà",
+          "words": [
+            "珐琅",
+            "珐质"
+          ],
+          "sentence": "再加上珐琅质的装饰。"
+        },
+        {
+          "char": "琅",
+          "pinyin": "láng",
+          "words": [
+            "珐琅",
+            "琅琊"
+          ],
+          "sentence": "再加上珐琅质的装饰。"
+        },
+        {
+          "char": "瓴",
+          "pinyin": "líng",
+          "words": [
+            "高屋建瓴",
+            "瓦瓴"
+          ],
+          "sentence": "高屋建瓴，气势恢宏。"
+        }
+      ]
+    },
+    {
+      "id": "9-1-4",
+      "title": "第10课《精神的三间小屋》",
+      "chars": [
+        {
+          "char": "秽",
+          "pinyin": "huì",
+          "words": [
+            "污秽",
+            "秽物"
+          ],
+          "sentence": "给精神扫除污秽。"
+        },
+        {
+          "char": "袤",
+          "pinyin": "mào",
+          "words": [
+            "广袤",
+            "袤延"
+          ],
+          "sentence": "广袤的心灵空间。"
+        },
+        {
+          "char": "宥",
+          "pinyin": "yòu",
+          "words": [
+            "宥恕",
+            "宽宥"
+          ],
+          "sentence": "宽宥自己的过失。"
+        },
+        {
+          "char": "坍",
+          "pinyin": "tān",
+          "words": [
+            "坍塌",
+            "坍圮"
+          ],
+          "sentence": "精神的小屋不能坍塌。"
+        },
+        {
+          "char": "棂",
+          "pinyin": "líng",
+          "words": [
+            "窗棂",
+            "棂花"
+          ],
+          "sentence": "打开窗棂让阳光照进来。"
+        },
+        {
+          "char": "矗",
+          "pinyin": "chù",
+          "words": [
+            "矗立",
+            "矗然"
+          ],
+          "sentence": "让精神的小屋矗立不倒。"
+        }
+      ]
+    },
+    {
+      "id": "9-1-5",
+      "title": "第11课《岳阳楼记》",
+      "chars": [
+        {
+          "char": "谪",
+          "pinyin": "zhé",
+          "words": [
+            "贬谪",
+            "谪居"
+          ],
+          "sentence": "滕子京谪守巴陵郡。"
+        },
+        {
+          "char": "霏",
+          "pinyin": "fēi",
+          "words": [
+            "霏霏",
+            "烟霏"
+          ],
+          "sentence": "若夫淫雨霏霏。"
+        },
+        {
+          "char": "曜",
+          "pinyin": "yào",
+          "words": [
+            "日星隐曜",
+            "曜日"
+          ],
+          "sentence": "日星隐曜，山岳潜形。"
+        },
+        {
+          "char": "樯",
+          "pinyin": "qiáng",
+          "words": [
+            "桅樯",
+            "樯橹"
+          ],
+          "sentence": "樯倾楫摧。"
+        },
+        {
+          "char": "楫",
+          "pinyin": "jí",
+          "words": [
+            "舟楫",
+            "桨楫"
+          ],
+          "sentence": "樯倾楫摧。"
+        },
+        {
+          "char": "芷",
+          "pinyin": "zhǐ",
+          "words": [
+            "岸芷",
+            "白芷"
+          ],
+          "sentence": "岸芷汀兰，郁郁青青。"
+        },
+        {
+          "char": "汀",
+          "pinyin": "tīng",
+          "words": [
+            "汀兰",
+            "沙汀"
+          ],
+          "sentence": "岸芷汀兰，郁郁青青。"
+        }
+      ]
+    },
+    {
+      "id": "9-1-6",
+      "title": "第12课《醉翁亭记》",
+      "chars": [
+        {
+          "char": "滁",
+          "pinyin": "chú",
+          "words": [
+            "滁州",
+            "滁水"
+          ],
+          "sentence": "环滁皆山也。"
+        },
+        {
+          "char": "暝",
+          "pinyin": "míng",
+          "words": [
+            "日暝",
+            "暝色"
+          ],
+          "sentence": "若夫日出而林霏开，云归而岩穴暝。"
+        },
+        {
+          "char": "洌",
+          "pinyin": "liè",
+          "words": [
+            "清洌",
+            "洌然"
+          ],
+          "sentence": "酿泉为酒，泉香而酒洌。"
+        },
+        {
+          "char": "蔌",
+          "pinyin": "sù",
+          "words": [
+            "山蔌",
+            "野蔌"
+          ],
+          "sentence": "山肴野蔌，杂然而前陈者。"
+        },
+        {
+          "char": "弈",
+          "pinyin": "yì",
+          "words": [
+            "对弈",
+            "弈棋"
+          ],
+          "sentence": "射者中，弈者胜。"
+        },
+        {
+          "char": "觥",
+          "pinyin": "gōng",
+          "words": [
+            "觥筹",
+            "觥船"
+          ],
+          "sentence": "觥筹交错，起坐而喧哗者。"
+        },
+        {
+          "char": "翳",
+          "pinyin": "yì",
+          "words": [
+            "翳然",
+            "遮翳"
+          ],
+          "sentence": "树林阴翳，鸣声上下。"
+        }
+      ]
+    },
+    {
+      "id": "9-1-7",
+      "title": "第13课《湖心亭看雪》",
+      "chars": [
+        {
+          "char": "更",
+          "pinyin": "gēng",
+          "words": [
+            "更定",
+            "三更"
+          ],
+          "sentence": "是日更定矣。"
+        },
+        {
+          "char": "拏",
+          "pinyin": "ná",
+          "words": [
+            "拏舟",
+            "拏取"
+          ],
+          "sentence": "余拏一小舟。"
+        },
+        {
+          "char": "毳",
+          "pinyin": "cuì",
+          "words": [
+            "毳衣",
+            "毳毛"
+          ],
+          "sentence": "拥毳衣炉火。"
+        },
+        {
+          "char": "凇",
+          "pinyin": "sōng",
+          "words": [
+            "雾凇",
+            "冰凇"
+          ],
+          "sentence": "雾凇沆砀。"
+        },
+        {
+          "char": "砀",
+          "pinyin": "dàng",
+          "words": [
+            "沆砀",
+            "砀山"
+          ],
+          "sentence": "雾凇沆砀，天与云与山与水。"
+        }
+      ]
+    },
+    {
+      "id": "9-1-8",
+      "title": "第14课《诗词三首》",
+      "chars": [
+        {
+          "char": "樽",
+          "pinyin": "zūn",
+          "words": [
+            "金樽",
+            "酒樽"
+          ],
+          "sentence": "金樽清酒斗十千。"
+        },
+        {
+          "char": "箸",
+          "pinyin": "zhù",
+          "words": [
+            "筷箸",
+            "象箸"
+          ],
+          "sentence": "停杯投箸不能食。"
+        },
+        {
+          "char": "塞",
+          "pinyin": "sè",
+          "words": [
+            "闭塞",
+            "阻塞"
+          ],
+          "sentence": "欲渡黄河冰塞川。"
+        },
+        {
+          "char": "歧",
+          "pinyin": "qí",
+          "words": [
+            "歧路",
+            "分歧"
+          ],
+          "sentence": "多歧路，今安在？"
+        },
+        {
+          "char": "绮",
+          "pinyin": "qǐ",
+          "words": [
+            "绮丽",
+            "绮罗"
+          ],
+          "sentence": "绮窗前，寒梅著花未？"
+        },
+        {
+          "char": "柯",
+          "pinyin": "kē",
+          "words": [
+            "烂柯",
+            "柯树"
+          ],
+          "sentence": "到乡翻似烂柯人。"
+        },
+        {
+          "char": "婵",
+          "pinyin": "chán",
+          "words": [
+            "婵娟",
+            "婵媛"
+          ],
+          "sentence": "但愿人长久，千里共婵娟。"
+        },
+        {
+          "char": "娟",
+          "pinyin": "juān",
+          "words": [
+            "婵娟",
+            "娟秀"
+          ],
+          "sentence": "但愿人长久，千里共婵娟。"
+        }
+      ]
+    },
+    {
+      "id": "9-1-9",
+      "title": "第15课《故乡》",
+      "chars": [
+        {
+          "char": "猹",
+          "pinyin": "chá",
+          "words": [
+            "猹獾",
+            "野猹"
+          ],
+          "sentence": "月亮底下有一只猹。"
+        },
+        {
+          "char": "獾",
+          "pinyin": "huān",
+          "words": [
+            "獾猪",
+            "狗獾"
+          ],
+          "sentence": "有刺猬也有獾猪。"
+        },
+        {
+          "char": "弶",
+          "pinyin": "jiàng",
+          "words": [
+            "弶鸟",
+            "弶子"
+          ],
+          "sentence": "闰土会用弶捉小鸟。"
+        },
+        {
+          "char": "踝",
+          "pinyin": "huái",
+          "words": [
+            "脚踝",
+            "踝骨"
+          ],
+          "sentence": "他的脚踝上套着银项圈。"
+        },
+        {
+          "char": "汛",
+          "pinyin": "xùn",
+          "words": [
+            "潮汛",
+            "汛期"
+          ],
+          "sentence": "潮汛来的时候可以捡贝壳。"
+        },
+        {
+          "char": "髀",
+          "pinyin": "bì",
+          "words": [
+            "髀骨",
+            "股髀"
+          ],
+          "sentence": "闰土捏着钢叉护住髀间。"
+        },
+        {
+          "char": "瑟",
+          "pinyin": "sè",
+          "words": [
+            "萧瑟",
+            "瑟瑟"
+          ],
+          "sentence": "深冬天气很萧瑟。"
+        },
+        {
+          "char": "黛",
+          "pinyin": "dài",
+          "words": [
+            "黛色",
+            "粉黛"
+          ],
+          "sentence": "远处青黛色的山峦。"
+        }
+      ]
+    },
+    {
+      "id": "9-1-10",
+      "title": "第18课《中国人失掉自信力了吗》",
+      "chars": [
+        {
+          "char": "玄",
+          "pinyin": "xuán",
+          "words": [
+            "玄虚",
+            "玄妙"
+          ],
+          "sentence": "这事实是很渺茫的，自欺欺人是很玄虚的。"
+        },
+        {
+          "char": "诓",
+          "pinyin": "kuāng",
+          "words": [
+            "诓骗",
+            "诓人"
+          ],
+          "sentence": "希望不是用来诓骗人的。"
+        },
+        {
+          "char": "搽",
+          "pinyin": "chá",
+          "words": [
+            "搽粉",
+            "搽药"
+          ],
+          "sentence": "不过是搽在表面的脂粉。"
+        },
+        {
+          "char": "脊",
+          "pinyin": "jǐ",
+          "words": [
+            "脊梁",
+            "脊背"
+          ],
+          "sentence": "我们有并不失掉自信力的中国人在，这就是中国的脊梁。"
+        }
+      ]
+    },
+    {
+      "id": "9-1-11",
+      "title": "第19课《怀疑与学问》",
+      "chars": [
+        {
+          "char": "颉",
+          "pinyin": "jié",
+          "words": [
+            "仓颉",
+            "颉刚"
+          ],
+          "sentence": "顾颉刚是著名的历史学家。"
+        },
+        {
+          "char": "虚",
+          "pinyin": "xū",
+          "words": [
+            "虚妄",
+            "谦虚"
+          ],
+          "sentence": "不要被虚妄的学说欺骗。"
+        },
+        {
+          "char": "塾",
+          "pinyin": "shú",
+          "words": [
+            "私塾",
+            "学塾"
+          ],
+          "sentence": "在私塾念书不能问。"
+        },
+        {
+          "char": "辨",
+          "pinyin": "biàn",
+          "words": [
+            "辨别",
+            "辨识"
+          ],
+          "sentence": "辨别事物的真伪。"
+        },
+        {
+          "char": "惑",
+          "pinyin": "huò",
+          "words": [
+            "疑惑",
+            "困惑"
+          ],
+          "sentence": "学则须疑，不疑则不惑。"
+        }
+      ]
+    },
+    {
+      "id": "9-1-12",
+      "title": "第22课《范进中举》",
+      "chars": [
+        {
+          "char": "阄",
+          "pinyin": "jiū",
+          "words": [
+            "抓阄",
+            "拈阄"
+          ],
+          "sentence": "行香走了一回，抓了一个阄。"
+        },
+        {
+          "char": "绾",
+          "pinyin": "wǎn",
+          "words": [
+            "绾发",
+            "绾结"
+          ],
+          "sentence": "头上绾着个大髻。"
+        },
+        {
+          "char": "簇",
+          "pinyin": "cù",
+          "words": [
+            "簇拥",
+            "花簇"
+          ],
+          "sentence": "众人簇拥着范进。"
+        },
+        {
+          "char": "兀",
+          "pinyin": "wù",
+          "words": [
+            "兀自",
+            "兀立"
+          ],
+          "sentence": "范进兀自看着。"
+        },
+        {
+          "char": "拙",
+          "pinyin": "zhuō",
+          "words": [
+            "拙见",
+            "笨拙"
+          ],
+          "sentence": "是小弟的拙见。"
+        },
+        {
+          "char": "桑",
+          "pinyin": "sāng",
+          "words": [
+            "桑梓",
+            "桑树"
+          ],
+          "sentence": "先生同在桑梓。"
+        }
+      ]
+    }
+  ]
+}
