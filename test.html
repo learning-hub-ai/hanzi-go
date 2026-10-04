@@ -2044,7 +2044,13 @@ async function runTests() {
       // shape (box + band), the way qinshihuang/how-to-use.html does it.
       frame.contentDocument.getElementById('btnHelp').click();
       const blocks = frame.contentDocument.querySelectorAll('.help-block');
-      assertEqual(blocks.length, 6, `expected 6 sections, got ${blocks.length}`);
+      // Not a fixed count — that breaks on every new section. What matters is
+      // that every block is properly formed.
+      assertGreater(blocks.length, 4, `too few sections: ${blocks.length}`);
+      const malformed = Array.from(blocks).filter(b =>
+        !b.querySelector('.help-sec') || !b.querySelector('.help-body'));
+      assertEqual(malformed.length, 0,
+        `${malformed.length} sections lack a title band or body`);
 
       const band = frame.contentWindow.getComputedStyle(
         frame.contentDocument.querySelector('.help-sec'));
@@ -2106,6 +2112,28 @@ async function runTests() {
         'drop 只看不练 — it says what the section is not');
       assert(html.includes('\u5b66\u4e86\u591a\u5c11'),
         'say what it is for: seeing how much has been learned');
+    });
+
+    it('Help: states the licence and that rights are reserved', () => {
+      // The repo is public; that is not the same as permissive. MIT was
+      // dropped precisely because it allows the commercial reuse this forbids.
+      const html = app.ModalUI.renderHelp();
+      assert(html.includes('\u7248\u6743'), 'should have a copyright section');
+      assert(html.includes('\u4fdd\u7559\u6240\u6709\u6743\u5229'), 'should say all rights reserved');
+      assert(html.includes('LICENSE'), 'should point at the full licence');
+      assert(html.includes('\u8bf7\u6539\u4e3a\u653e\u94fe\u63a5'),
+        'should say to link rather than copy — the practical ask');
+      assert(!/\bMIT\b/.test(html), 'MIT was dropped; it permits what this forbids');
+    });
+
+    it('Help: keeps textbook rights separate from the project\u2019s own', () => {
+      // Claiming the whole dataset would be wrong: the characters and pinyin
+      // belong to 人教社; only the words and sentences are this project's.
+      const html = app.ModalUI.renderHelp();
+      assert(html.includes('\u6559\u6750\u7f16\u8005\u53ca\u51fa\u7248\u793e'),
+        'textbook content belongs to its publisher');
+      assert(html.includes('\u7ec4\u8bcd\u548c\u4f8b\u53e5'),
+        'should name what the project did author');
     });
 
     it('Help: explains where data is stored and that it does not sync', () => {
