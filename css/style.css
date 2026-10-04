@@ -214,6 +214,12 @@ main{
 .card-front{z-index:1}
 .card-back{transform:rotateY(180deg);z-index:2}
 .card-char{font-size:clamp(80px, 12vw, 128px);line-height:1.1;color:var(--text);position:relative;z-index:1}
+/* Custom cards can have a multi-character front. Scale down proportionally so
+   the responsive clamp() above and its breakpoint overrides still apply —
+   an inline pixel font-size would defeat all three. */
+.card-char.card-char--len2{font-size:clamp(56px, 9vw, 92px)}
+.card-char.card-char--len4{font-size:clamp(40px, 7vw, 68px)}
+.card-char.card-char--long{font-size:clamp(28px, 5vw, 48px)}
 .card-pinyin-small{font-size:16px;color:var(--primary);margin-top:var(--s2);font-weight:600;z-index:1}
 .card-pinyin-back{font-size:36px;color:var(--primary);font-weight:800;margin-bottom:var(--s5)}
 .card-words{font-size:20px;color:var(--text-secondary);margin-bottom:var(--s5);font-weight:600}
@@ -674,3 +680,8 @@ main{
 }
 
 .dt-return-btn{background:linear-gradient(135deg,#4f46e5,#7c3aed)!important;color:#fff!important;border:none!important;font-weight:700}
+
+/* Inline feedback under the 自定义字卡 form */
+.form-msg{font-size:13px;min-height:18px;margin-top:6px}
+.form-msg--ok{color:var(--success,#059669)}
+.form-msg--err{color:var(--danger,#991b1b)}

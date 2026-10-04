@@ -57,9 +57,52 @@ let failed = 0;
 let app; // reference to iframe's window
 
 function describe(group, fn) { tests.push({ group, tests: [] }); fn(); }
+
+/**
+ * describe() with a per-test setup hook.
+ *
+ * Every test shares one iframe and one localStorage profile, so a group that
+ * seeds spacedRep / errorBook / stats leaves that data behind and later
+ * assertions silently measure the leftovers. That made two "totals match"
+ * tests pass for the wrong reason: both sides counted the same polluted set.
+ */
+let _beforeEachFn = null;
+function describeWith(group, setup, fn) {
+  tests.push({ group, tests: [] });
+  const prev = _beforeEachFn;
+  _beforeEachFn = setup;
+  try { fn(); } finally { _beforeEachFn = prev; }
+}
+
+/** Wipe per-profile learning data so a test starts from a known state. */
+function resetProfileData() {
+  if (!app || !app.State) return;
+  app.State.save('spacedRep', {});
+  if (app.SpacedRepService) app.SpacedRepService.resetCache();
+  app.State.save('customCards', []);
+  app.State.set('errorBook', []);     app.State.persist('errorBook');
+  app.State.set('favorites', []);     app.State.persist('favorites');
+  app.State.set('stats', {
+    totalRounds: 0, totalCorrect: 0, totalAnswered: 0,
+    streak: 0, lastPlayDate: '', consecutiveDays: 0, bestStreak: 0,
+    perfectRounds: 0, totalEverWrong: 0, playDates: []
+  });
+  app.State.persist('stats');
+  if (app.FilterUI) {
+    app.FilterUI.updateFavCount();
+    app.FilterUI.updateErrCount();
+    app.FilterUI.updateSrsCount();
+    app.FilterUI.updateCustomCount();
+  }
+}
+
 function it(name, fn) {
   const group = tests[tests.length - 1];
-  try { fn(); group.tests.push({ name, pass: true }); passed++; }
+  try {
+    if (_beforeEachFn) _beforeEachFn();
+    fn();
+    group.tests.push({ name, pass: true }); passed++;
+  }
   catch (e) { group.tests.push({ name, pass: false, error: e.message }); failed++; }
 }
 function assert(cond, msg) { if (!cond) throw new Error(msg || 'Assertion failed'); }
@@ -374,7 +417,7 @@ async function runTests() {
   });
 
   // === 9. Spaced Repetition (智能复习) ===
-  describe('📈 Spaced Repetition — Module API', () => {
+  describeWith('📈 Spaced Repetition — Module API', resetProfileData, () => {
     it('SpacedRepService module exists with all methods', () => {
       assert(typeof app.SpacedRepService !== 'undefined', 'SpacedRepService not defined');
       assert(typeof app.SpacedRepService.recordAnswer === 'function', 'recordAnswer missing');
@@ -401,7 +444,7 @@ async function runTests() {
     });
   });
 
-  describe('📈 Spaced Repetition — Box Promotion (Correct Answers)', () => {
+  describeWith('📈 Spaced Repetition — Box Promotion (Correct Answers)', resetProfileData, () => {
     it('First correct answer: enters system at Box 2 (not due today)', () => {
       // Use a unique char unlikely to be in the system already
       const testChar = '鑫';
@@ -469,7 +512,7 @@ async function runTests() {
     });
   });
 
-  describe('📈 Spaced Repetition — Box Demotion (Wrong Answers)', () => {
+  describeWith('📈 Spaced Repetition — Box Demotion (Wrong Answers)', resetProfileData, () => {
     it('First wrong answer: enters system at Box 1, due immediately', () => {
       const testChar = '犇';
       app.SpacedRepService.resetCache();
@@ -513,6 +556,25 @@ async function runTests() {
       assertEqual(updated[testChar].correctStreak, 0, 'correctStreak should reset to 0');
     });
 
+    it('R4: demotion and the error book are independent mechanisms', () => {
+      // The requirement states these are separate; nothing asserted it before.
+      const testChar = '\u72ec';
+      const today = new Date().toISOString().slice(0, 10);
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      data[testChar] = { box: 3, lastReview: today, correctStreak: 3 };
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+
+      app.SpacedRepService.recordAnswer(testChar, false);
+      app.ErrorBookService.addWrong(testChar, 'd\u00fa');
+
+      app.SpacedRepService.resetCache();
+      assertEqual(app.State.load('spacedRep', {})[testChar].box, 2, 'SRS demotes one box');
+      assert(app.ErrorBookService.getAll().some(e => e.char === testChar),
+        'and the char also lands in the error book — the two are independent');
+    });
+
     it('R4: wrong answer at Box 1 clamps at 0, never negative', () => {
       const testChar = '鱻';
       app.SpacedRepService.resetCache();
@@ -545,7 +607,7 @@ async function runTests() {
     });
   });
 
-  describe('📈 Spaced Repetition — Due Date Logic', () => {
+  describeWith('📈 Spaced Repetition — Due Date Logic', resetProfileData, () => {
     it('Box 1 (interval=0): due same day', () => {
       const testChar = '厵';
       app.SpacedRepService.resetCache();
@@ -692,7 +754,7 @@ async function runTests() {
     });
   });
 
-  describe('📈 Spaced Repetition — Edge Cases', () => {
+  describeWith('📈 Spaced Repetition — Edge Cases', resetProfileData, () => {
     it('Recording same char multiple times correct — only promotes when due', () => {
       const testChar = '蘅';
       app.SpacedRepService.resetCache();
@@ -762,7 +824,7 @@ async function runTests() {
   });
 
   // === 10. Config ===
-  describe('\u{1F4C8} R3 \u2014 Extended Box Intervals (7 boxes)', () => {
+  describeWith('\u{1F4C8} R3 \u2014 Extended Box Intervals (7 boxes)', resetProfileData, () => {
     it('R3: BOX_INTERVALS is [0,1,3,7,14,30,60]', () => {
       const iv = app.SpacedRepService.getBoxIntervals();
       assertEqual(iv.length, 7, `Expected 7 boxes, got ${iv.length}`);
@@ -878,7 +940,7 @@ async function runTests() {
     });
   });
 
-  describe('\u{1F525} R5 \u2014 Streak Grace Day', () => {
+  describeWith('\u{1F525} R5 \u2014 Streak Grace Day', resetProfileData, () => {
     function setStreak(lastPlayDate, consecutiveDays) {
       const stats = app.State.get('stats');
       stats.lastPlayDate = lastPlayDate;
@@ -953,6 +1015,822 @@ async function runTests() {
       app.StatsService.recordRound(8, 10);
       assertEqual(app.State.get('stats').consecutiveDays, 1, 'current streak resets');
       assertEqual(app.State.get('stats').bestStreak, 40, 'bestStreak must survive a reset');
+    });
+
+    // The bug this group guards against: R5 was originally applied to
+    // recordRound only, so recordDailyTask kept the old
+    // `lastPlayDate === yesterday` logic. A child who did just the daily task
+    // still lost the streak after one missed day. Both now share _advanceStreak.
+    it('R5 bug: recordDailyTask honours the grace day', () => {
+      setStreak(daysAgo(2), 12);
+      app.StatsService.recordDailyTask();
+      assertEqual(app.State.get('stats').consecutiveDays, 13,
+        `Daily task must forgive one missed day, got ${app.State.get('stats').consecutiveDays}`);
+    });
+
+    it('R5 bug: recordDailyTask resets after a 3-day gap', () => {
+      setStreak(daysAgo(3), 20);
+      app.StatsService.recordDailyTask();
+      assertEqual(app.State.get('stats').consecutiveDays, 1,
+        `3-day gap should reset, got ${app.State.get('stats').consecutiveDays}`);
+    });
+
+    it('R5 bug: recordDailyTask does not double-count the same day', () => {
+      const today = new Date().toISOString().slice(0, 10);
+      setStreak(today, 7);
+      app.StatsService.recordDailyTask();
+      app.StatsService.recordDailyTask();
+      assertEqual(app.State.get('stats').consecutiveDays, 7,
+        `Same-day repeats must not increment, got ${app.State.get('stats').consecutiveDays}`);
+    });
+
+    it('R5 bug: daily task and quiz share one streak, not two', () => {
+      // Daily task yesterday, quiz today → one continuous streak, not a reset
+      setStreak(daysAgo(1), 5);
+      app.StatsService.recordDailyTask();
+      assertEqual(app.State.get('stats').consecutiveDays, 6, 'daily task continues the streak');
+      // Same day, now via quiz → must not increment again
+      app.StatsService.recordRound(8, 10);
+      assertEqual(app.State.get('stats').consecutiveDays, 6,
+        `Quiz after daily task on the same day must not double-count, got ${app.State.get('stats').consecutiveDays}`);
+    });
+
+    it('R5: recordDailyTask also maintains bestStreak', () => {
+      const stats = app.State.get('stats');
+      stats.bestStreak = 3;
+      app.State.set('stats', stats);
+      setStreak(daysAgo(1), 9);
+      app.StatsService.recordDailyTask();
+      assertEqual(app.State.get('stats').bestStreak, 10,
+        `bestStreak should rise to 10, got ${app.State.get('stats').bestStreak}`);
+    });
+  });
+
+  describeWith('\u{1F4CD} Sidebar Selection vs Mode', resetProfileData, () => {
+    const sidebarActive = () =>
+      Array.from(frame.contentDocument.querySelectorAll('.sidebar-item.active'))
+        .map(el => el.dataset.grade);
+
+    it('任务 mode shows no sidebar selection', () => {
+      app.AppController.switchMode('dailyTask');
+      assertEqual(sidebarActive().length, 0,
+        `任务 mode must not highlight a sidebar item, found: ${sidebarActive().join(',')}`);
+    });
+
+    it('任务 mode clears a selection left by learn mode', () => {
+      app.AppController.switchMode('learn');
+      const item = frame.contentDocument.querySelector('.sidebar-item[data-grade="fav"]');
+      item.classList.add('active');
+      assertGreater(sidebarActive().length, 0, 'precondition: something is selected');
+
+      app.AppController.switchMode('dailyTask');
+      assertEqual(sidebarActive().length, 0,
+        `switching to 任务 must clear the selection, found: ${sidebarActive().join(',')}`);
+    });
+
+    it('learn mode keeps its sidebar selection', () => {
+      app.AppController.switchMode('learn');
+      const item = frame.contentDocument.querySelector('.sidebar-item[data-grade="fav"]');
+      item.classList.add('active');
+      app.AppController.switchMode('learn');
+      assert(item.classList.contains('active'), 'learn mode must not clear the selection');
+    });
+
+    it('challenge mode keeps its sidebar selection', () => {
+      app.AppController.switchMode('learn');
+      const item = frame.contentDocument.querySelector('.sidebar-item[data-grade="fav"]');
+      item.classList.add('active');
+      app.AppController.switchMode('challenge');
+      assert(item.classList.contains('active'), 'challenge mode must not clear the selection');
+    });
+
+    it('clicking a sidebar item from 任务 selects it and leaves 任务', () => {
+      // Needs an enabled item: review items are .disabled when their count is
+      // 0, and the click handler returns early on those. Favourite one char so
+      // 练生字 is clickable.
+      app.FavoriteService.toggle('\u5929');
+      app.FilterUI.updateFavCount();
+      app.AppController.switchMode('dailyTask');
+
+      const item = frame.contentDocument.querySelector('.sidebar-item[data-grade="fav"]');
+      assert(!item.classList.contains('disabled'), 'precondition: 练生字 is enabled');
+      item.click();
+
+      // The click handler switches mode first, then paints — the highlight
+      // must survive that ordering.
+      assert(item.classList.contains('active'),
+        'clicked item must end up selected, not cleared by the mode switch');
+      assert(app.State.get('mode') !== 'dailyTask', 'should have left 任务 mode');
+    });
+
+    it('a disabled review item is not selectable', () => {
+      // 智能复习 has nothing due on a fresh profile; clicking it must do nothing
+      // rather than select an empty set.
+      const srs = frame.contentDocument.querySelector('.sidebar-item[data-grade="srs"]');
+      if (!srs.classList.contains('disabled')) return; // has due chars, not applicable
+      app.AppController.switchMode('dailyTask');
+      srs.click();
+      assert(!srs.classList.contains('active'), 'disabled item must not become selected');
+      assertEqual(app.State.get('mode'), 'dailyTask', 'disabled item must not switch mode');
+    });
+  });
+
+  describeWith('\u{1F4CA} R2 \u2014 \u5b66\u4e60\u62a5\u544a (Report)', resetProfileData, () => {
+    const today = () => new Date().toISOString().slice(0, 10);
+    const daysAgo = n => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+
+    function seedSrs(map) {
+      app.SpacedRepService.resetCache();
+      const data = app.State.load('spacedRep', {});
+      for (const [c, box] of Object.entries(map)) {
+        data[c] = { box, lastReview: today(), correctStreak: box };
+      }
+      app.State.save('spacedRep', data);
+      app.SpacedRepService.resetCache();
+    }
+    function seedErrorBook(entries) {
+      app.State.set('errorBook', entries);
+      app.State.persist('errorBook');
+      app.FilterUI.updateErrCount(); // keep the sidebar badge in sync with what we seeded
+    }
+
+    it('R2: report reflects real data, not placeholders', () => {
+      // A typeof check would pass against a stub, so assert the numbers move
+      // with the data instead.
+      app.CustomCardService.add('\u6d4b', 'probe', '');
+      app.SpacedRepService.recordAnswer('\u6d4b', false);
+      const r = app.ReportService.build();
+      assertEqual(r.totalSeen, 1, `totalSeen should follow the SRS store, got ${r.totalSeen}`);
+      assertEqual(r.mastery.total, 1, `mastery.total should match, got ${r.mastery.total}`);
+      assertEqual(r.date, new Date().toISOString().slice(0, 10), 'date should be today');
+    });
+
+    it('R2: header has the report button, wired to a handler', () => {
+      const btn = frame.contentDocument.getElementById('btnReport');
+      assert(btn, '#btnReport not found in header');
+      assert(typeof app.AppController.showReport === 'function', 'showReport not exposed');
+    });
+
+    it('R2: build() always returns every field', () => {
+      const r = app.ReportService.build();
+      for (const k of ['date', 'mastery', 'dueToday', 'totalSeen', 'week',
+                       'streak', 'totals', 'stuck', 'hardest', 'errorBookCount']) {
+        assert(r[k] !== undefined, `missing field: ${k}`);
+      }
+      for (const k of ['mastered', 'learning', 'needsWork', 'total']) {
+        assert(typeof r.mastery[k] === 'number', `mastery.${k} not a number`);
+      }
+    });
+
+    it('R2: mastery split buckets every box, totals match', () => {
+      seedSrs({ '\u95e8': 0, '\u95ea': 1, '\u95f2': 2, '\u95f4': 3, '\u9600': 4, '\u9601': 5, '\u9605': 6 });
+      const m = app.ReportService.getMasterySplit();
+      assertEqual(m.needsWork >= 2, true, `box 0-1 should count as needsWork, got ${m.needsWork}`);
+      assertEqual(m.learning >= 2, true, `box 2-3 should count as learning, got ${m.learning}`);
+      assertEqual(m.mastered >= 3, true, `box 4+ should count as mastered, got ${m.mastered}`);
+      assertEqual(m.total, m.mastered + m.learning + m.needsWork, 'total must equal the sum');
+      assertEqual(m.total, app.SpacedRepService.getTotalCount(),
+        `split total ${m.total} != SRS total ${app.SpacedRepService.getTotalCount()} \u2014 a box is being dropped`);
+    });
+
+    it('R2: 卡住的字 needs BOTH a low box and repeated errors', () => {
+      // 塘 learned today, correct, never wrong      → not stuck
+      // 虑 low box and wrong 4 times               → stuck
+      // 冠 wrong 5 times but already in a high box  → not stuck
+      seedSrs({ '\u5858': 0, '\u8651': 1, '\u51a0': 5 });
+      seedErrorBook([
+        { char: '\u8651', pinyin: 'l\u00fc', wrongCount: 4, consecutiveCorrect: 0 },
+        { char: '\u51a0', pinyin: 'gu\u0101n', wrongCount: 5, consecutiveCorrect: 0 }
+      ]);
+      const stuck = app.ReportService.getStuckChars().map(c => c.char);
+      assert(stuck.includes('\u8651'), '虑 (low box, 4 wrong) should be stuck');
+      assert(!stuck.includes('\u5858'), '塘 (learned today, never wrong) must NOT be stuck');
+      assert(!stuck.includes('\u51a0'), '冠 (high box) must NOT be stuck despite 5 errors');
+    });
+
+    it('R2: 卡住的字 ignores errors below the threshold', () => {
+      seedSrs({ '\u6e56': 0 });
+      seedErrorBook([{ char: '\u6e56', pinyin: 'h\u00fa', wrongCount: 2, consecutiveCorrect: 0 }]);
+      assertEqual(app.ReportService.getStuckChars().length, 0,
+        'wrongCount=2 is below the threshold of 3, should not be reported as stuck');
+    });
+
+    it('R2: 卡住的字 sorted worst first', () => {
+      seedSrs({ '\u7532': 0, '\u4e59': 0, '\u4e19': 0 });
+      seedErrorBook([
+        { char: '\u7532', pinyin: 'ji\u0101', wrongCount: 3, consecutiveCorrect: 0 },
+        { char: '\u4e59', pinyin: 'y\u01d0', wrongCount: 9, consecutiveCorrect: 0 },
+        { char: '\u4e19', pinyin: 'b\u01d0ng', wrongCount: 5, consecutiveCorrect: 0 }
+      ]);
+      const counts = app.ReportService.getStuckChars().map(c => c.wrongCount);
+      assertEqual(counts.join(','), '9,5,3', `expected descending, got ${counts.join(',')}`);
+    });
+
+    it('R2: hardest list is sorted and capped at 10', () => {
+      const many = [];
+      for (let i = 0; i < 15; i++) {
+        many.push({ char: String.fromCharCode(0x4e00 + i), pinyin: 'x', wrongCount: i + 1, consecutiveCorrect: 0 });
+      }
+      seedErrorBook(many);
+      const hardest = app.ReportService.getHardestChars();
+      assertEqual(hardest.length, 10, `should cap at 10, got ${hardest.length}`);
+      assertEqual(hardest[0].wrongCount, 15, `worst first, got ${hardest[0].wrongCount}`);
+    });
+
+    it('R2: week activity reports 7 days, oldest first', () => {
+      const w = app.ReportService.getWeekActivity();
+      assertEqual(w.days.length, 7, `expected 7 days, got ${w.days.length}`);
+      assertEqual(w.days[6].date, today(), 'last entry must be today');
+      assertEqual(w.days[0].date, daysAgo(6), 'first entry must be 6 days ago');
+    });
+
+    it('R2: week activity counts only recorded days', () => {
+      const stats = app.State.get('stats');
+      stats.playDates = [today(), daysAgo(2), daysAgo(30)]; // the 30-day-old one is outside the window
+      app.State.set('stats', stats);
+      app.State.persist('stats');
+      const w = app.ReportService.getWeekActivity();
+      assertEqual(w.activeCount, 2, `only 2 of the 3 dates are within 7 days, got ${w.activeCount}`);
+      assert(w.days[6].active, 'today should be active');
+      assert(w.days[4].active, '2 days ago should be active');
+      assert(!w.days[5].active, 'yesterday was not recorded');
+    });
+
+    it('R2: playDates is recorded by both entry points', () => {
+      const stats = app.State.get('stats');
+      stats.playDates = [];
+      stats.lastPlayDate = '';
+      stats.consecutiveDays = 0;
+      app.State.set('stats', stats);
+      app.State.persist('stats');
+
+      app.StatsService.recordRound(5, 10);
+      assert((app.State.get('stats').playDates || []).includes(today()),
+        'recordRound must record today in playDates');
+
+      // Same day again, via the other entry point — must not duplicate
+      app.StatsService.recordDailyTask();
+      const dates = app.State.get('stats').playDates;
+      assertEqual(dates.filter(d => d === today()).length, 1,
+        `today must appear once, got ${dates.filter(d => d === today()).length}`);
+    });
+
+    it('R2: playDates is capped so localStorage cannot grow forever', () => {
+      const stats = app.State.get('stats');
+      const many = [];
+      for (let i = 500; i > 0; i--) many.push(daysAgo(i));
+      stats.playDates = many;
+      stats.lastPlayDate = daysAgo(1);
+      app.State.set('stats', stats);
+      app.State.persist('stats');
+
+      app.StatsService.recordRound(5, 10);
+      const len = app.State.get('stats').playDates.length;
+      assert(len <= 400, `playDates should be capped at 400, got ${len}`);
+      assert(app.State.get('stats').playDates.includes(today()), 'today must survive the trim');
+    });
+
+    it('R2: renderReport puts the real numbers on screen', () => {
+      // length > 0 would pass for "x"; assert the values actually appear.
+      seedSrs({ '\u7532': 5, '\u4e59': 5, '\u4e19': 0 });
+      const r = app.ReportService.build();
+      const html = app.ModalUI.renderReport(r);
+      assert(html.includes(`${r.mastery.mastered} \u5b57`),
+        `mastered count ${r.mastery.mastered} should be rendered`);
+      assert(html.includes(`${r.totalSeen} \u5b57`),
+        `totalSeen ${r.totalSeen} should be rendered`);
+      assert(html.includes('/7'), 'the week strip should be rendered');
+    });
+
+    it('R2: empty profile shows a message, not a wall of zeros', () => {
+      app.SpacedRepService.resetCache();
+      app.State.save('spacedRep', {});
+      app.SpacedRepService.resetCache();
+      const html = app.ModalUI.renderReport(app.ReportService.build());
+      assert(html.includes('\u8fd8\u6ca1\u6709\u5b66\u4e60\u8bb0\u5f55'),
+        'a profile with no SRS data should say so explicitly');
+    });
+
+    it('R2: report is read-only \u2014 no action buttons', () => {
+      seedSrs({ '\u5929': 2 });
+      seedErrorBook([{ char: '\u5929', pinyin: 'ti\u0101n', wrongCount: 3, consecutiveCorrect: 0 }]);
+      const html = app.ModalUI.renderReport(app.ReportService.build());
+      assert(!/data-action=/.test(html), 'report must not contain actionable controls');
+      assert(!/<button/.test(html), 'report must not contain buttons');
+    });
+
+    it('R2: character data is escaped, not injected raw', () => {
+      seedSrs({ '\u5b57': 0 });
+      seedErrorBook([{ char: '<img src=x onerror=1>', pinyin: '<b>no</b>', wrongCount: 7, consecutiveCorrect: 0 }]);
+      const html = app.ModalUI.renderReport(app.ReportService.build());
+      assert(!html.includes('<img src=x'), 'raw HTML from stored data must be escaped');
+      assert(!html.includes('<b>no</b>'), 'raw pinyin HTML must be escaped');
+    });
+
+  });
+
+  describeWith('\u270f\ufe0f R8 \u2014 \u81ea\u5b9a\u4e49\u5b57\u5361 (Custom Cards)', resetProfileData, () => {
+    function clearCards() {
+      app.State.save('customCards', []);
+    }
+
+    /** Add a card and enter study mode on it — the setup 6 tests below share. */
+    function studyOneCard(front, back, pinyin) {
+      app.CustomCardService.add(front, back, pinyin || '');
+      app.FilterUI.updateCustomCount();
+      app.AppController.switchMode('learn');
+      app.AppController.selectSemester('custom', 'custom');
+      app.LearnController.showCurrent();
+    }
+
+    it('R8: service and renderer exist and are exported', () => {
+      assert(typeof app.CustomCardService === 'object', 'CustomCardService not exported');
+      for (const fn of ['add', 'remove', 'getAll', 'count', 'asChars', 'validate']) {
+        assert(typeof app.CustomCardService[fn] === 'function', `missing ${fn}()`);
+      }
+      assert(typeof app.ModalUI.renderCustomCards === 'function', 'renderCustomCards missing');
+    });
+
+    it('R8: sidebar item sits below 智能复习', () => {
+      const items = Array.from(frame.contentDocument.querySelectorAll('.sidebar-item[data-grade]'))
+        .map(el => el.dataset.grade);
+      const srs = items.indexOf('srs');
+      const custom = items.indexOf('custom');
+      assert(custom >= 0, 'custom sidebar item not found');
+      assert(srs >= 0 && custom === srs + 1,
+        `custom should follow srs; order was ${items.slice(0, 5).join(',')}`);
+    });
+
+    it('R8: sidebar label fits without being clipped', () => {
+      // 自定义字卡 (5 chars) overflowed the 180px sidebar and the ellipsis cut
+      // the front, leaving 定义 — which reads as "definition", the opposite
+      // of the intent. Labels here must fit.
+      const label = frame.contentDocument.querySelector(
+        '.sidebar-item[data-grade="custom"] .sidebar-item-label');
+      assert(label, 'custom label not found');
+      assert(label.textContent.length <= 4,
+        `label "${label.textContent}" is ${label.textContent.length} chars; the sidebar clips beyond 4`);
+
+    });
+
+    it('R8: all sidebar review labels are short enough to fit', () => {
+      // Measured against a 180px sidebar with 24px subitem indent: 4 CJK chars
+      // is the limit, and that assumes a 1-2 digit count badge. A live
+      // scrollWidth check is not used here because a 3-digit badge legitimately
+      // squeezes the label, making the assertion depend on other tests' data.
+      const labels = Array.from(frame.contentDocument.querySelectorAll(
+        '.sidebar-review .sidebar-item-label')).map(l => l.textContent);
+      assertGreater(labels.length, 3, 'should have at least 4 review items');
+      const tooLong = labels.filter(t => t.length > 4);
+      assertEqual(tooLong.length, 0,
+        `these labels exceed 4 chars and will be clipped: ${tooLong.join(', ')}`);
+    });
+
+    it('R8: adding a card stores it', () => {
+      const r = app.CustomCardService.add('\u79e6', '\u79e6\u59cb\u7687\u7edf\u4e00\u4e86\u4e2d\u56fd', 'q\u00edn');
+      assert(r.ok, `add failed: ${r.error}`);
+      assertEqual(app.CustomCardService.count(), 1, 'should have 1 card');
+      const c = app.CustomCardService.getAll()[0];
+      assertEqual(c.front, '\u79e6', 'front stored');
+      assertEqual(c.pinyin, 'q\u00edn', 'pinyin stored');
+      assert(c.created, 'created date stored');
+    });
+
+    it('R8: pinyin is optional', () => {
+      const r = app.CustomCardService.add('\u6c49', '\u6c49\u5b57', '');
+      assert(r.ok, `add without pinyin should work: ${r.error}`);
+      assertEqual(app.CustomCardService.getAll()[0].pinyin, '', 'empty pinyin kept as empty string');
+    });
+
+    it('R8: empty front or back is rejected', () => {
+      assert(!app.CustomCardService.add('', 'back', '').ok, 'empty front must be rejected');
+      assert(!app.CustomCardService.add('front', '', '').ok, 'empty back must be rejected');
+      assert(!app.CustomCardService.add('   ', 'back', '').ok, 'whitespace-only front must be rejected');
+      assertEqual(app.CustomCardService.count(), 0, 'nothing should have been stored');
+    });
+
+    it('R8: input is trimmed', () => {
+      app.CustomCardService.add('  \u5b57  ', '  \u610f\u601d  ', '  z\u00ec  ');
+      const c = app.CustomCardService.getAll()[0];
+      assertEqual(c.front, '\u5b57', `front should be trimmed, got "${c.front}"`);
+      assertEqual(c.back, '\u610f\u601d', `back should be trimmed, got "${c.back}"`);
+      assertEqual(c.pinyin, 'z\u00ec', `pinyin should be trimmed, got "${c.pinyin}"`);
+    });
+
+    it('R8: duplicate fronts are rejected', () => {
+      app.CustomCardService.add('\u91cd', 'first', '');
+      const second = app.CustomCardService.add('\u91cd', 'second', '');
+      assert(!second.ok, 'duplicate front should be rejected');
+      assert(second.error.includes('\u91cd'), `error should name the character, got "${second.error}"`);
+      assertEqual(app.CustomCardService.count(), 1, 'should still be 1 card');
+    });
+
+    it('R8: over-long back is rejected', () => {
+      const r = app.CustomCardService.add('\u957f', 'x'.repeat(201), '');
+      assert(!r.ok, '201-char back should be rejected (max 200)');
+      const ok = app.CustomCardService.add('\u957f', 'x'.repeat(200), '');
+      assert(ok.ok, `exactly 200 chars should be accepted: ${ok.error}`);
+    });
+
+    it('R8: over-long front is rejected', () => {
+      const r = app.CustomCardService.add('\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d', 'too long', '');
+      assert(!r.ok, '9-char front should be rejected (max 8)');
+    });
+
+    it('R8: removing a card works, removing a missing one is a no-op', () => {
+      app.CustomCardService.add('\u5220', 'to delete', '');
+      assertEqual(app.CustomCardService.remove('\u5220'), true, 'remove should report success');
+      assertEqual(app.CustomCardService.count(), 0, 'card should be gone');
+      assertEqual(app.CustomCardService.remove('\u4e0d\u5b58\u5728'), false,
+        'removing a nonexistent card should return false, not throw');
+    });
+
+    it('R8: asChars produces the textbook character shape', () => {
+      app.CustomCardService.add('\u79e6', '\u7edf\u4e00\u4e2d\u56fd', 'q\u00edn');
+      const chars = app.CustomCardService.asChars();
+      assertEqual(chars.length, 1, 'one char object');
+      const c = chars[0];
+      for (const k of ['char', 'pinyin', 'words', 'sentence', 'grade', 'semester']) {
+        assert(c[k] !== undefined, `missing field ${k} — downstream code expects it`);
+      }
+      assertEqual(c.char, '\u79e6', 'front maps to char');
+      assertEqual(c.sentence, '\u7edf\u4e00\u4e2d\u56fd', 'back maps to sentence (the card back)');
+      assert(Array.isArray(c.words), 'words must be an array, not undefined');
+      assertEqual(c.grade, 0, 'grade 0 marks non-textbook origin');
+      assert(c.isCustom, 'isCustom flag set');
+    });
+
+    it('R8: newest card listed first', () => {
+      app.CustomCardService.add('\u4e00', 'first', '');
+      app.CustomCardService.add('\u4e8c', 'second', '');
+      assertEqual(app.CustomCardService.getAll()[0].front, '\u4e8c',
+        'getAll should list newest first');
+    });
+
+    it('R8: cards render as flashcards without throwing', () => {
+      app.CustomCardService.add('\u79e6', '\u7edf\u4e00\u4e2d\u56fd', 'q\u00edn');
+      // This is the real risk: CardUI used to call charData.words.join() directly,
+      // which throws when words is missing.
+      app.CardUI.render(app.CustomCardService.asChars()[0], 0, 1);
+      assertEqual(frame.contentDocument.getElementById('cardChar').textContent, '\u79e6',
+        'front should be on the card');
+      assertEqual(frame.contentDocument.getElementById('cardSentence').textContent, '\u7edf\u4e00\u4e2d\u56fd',
+        'back should be on the card');
+    });
+
+    it('R8: a card with no pinyin and no words still renders', () => {
+      app.CardUI.render({ char: '\u5b57', pinyin: '', words: undefined, sentence: '' }, 0, 1);
+      assertEqual(frame.contentDocument.getElementById('cardWords').textContent, '',
+        'missing words must render empty, not throw');
+    });
+
+    it('R8: front length picks a CSS size class, not an inline style', () => {
+      const el = frame.contentDocument.getElementById('cardChar');
+
+      app.CardUI.render({ char: '\u79e6', pinyin: '', words: [], sentence: 'x' }, 0, 1);
+      assertEqual(el.className.includes('card-char--'), false,
+        `a single character should use the default size, got "${el.className}"`);
+
+      app.CardUI.render({ char: '\u79e6\u59cb\u7687', pinyin: '', words: [], sentence: 'x' }, 0, 1);
+      assert(el.classList.contains('card-char--len4'),
+        `a 3-char front should get card-char--len4, got "${el.className}"`);
+
+      app.CardUI.render({ char: '\u79e6\u59cb\u7687\u7edf\u4e00\u4e2d', pinyin: '', words: [], sentence: 'x' }, 0, 1);
+      assert(el.classList.contains('card-char--long'),
+        `a 6-char front should get card-char--long, got "${el.className}"`);
+
+      // Inline font-size would override the responsive clamp() in style.css
+      assertEqual(el.style.fontSize, '', 'sizing must come from CSS, not an inline style');
+
+      // And the classes must not accumulate across renders
+      app.CardUI.render({ char: '\u5929', pinyin: '', words: [], sentence: 'x' }, 0, 1);
+      assertEqual(el.className.includes('card-char--'), false,
+        `size classes must be cleared when going back to one char, got "${el.className}"`);
+    });
+
+    it('R8: form renders with all three inputs', () => {
+      const html = app.ModalUI.renderCustomCards(app.CustomCardService.getAll());
+      for (const id of ['ccFront', 'ccPinyin', 'ccBack']) {
+        assert(html.includes(id), `form missing input ${id}`);
+      }
+      assert(html.includes('cc-add'), 'form missing the add button');
+    });
+
+    it('R8: empty state shows guidance, and the form is still there', () => {
+      const html = app.ModalUI.renderCustomCards(app.CustomCardService.getAll());
+      assert(html.includes('\u8fd8\u6ca1\u6709\u81ea\u5b9a\u4e49\u5b57\u5361'), 'should say there are no cards yet');
+      assert(html.includes('ccFront'), 'the add form must remain available when empty');
+    });
+
+    it('R8: stored text is escaped when rendered', () => {
+      app.CustomCardService.add('<b>x</b>', '<img src=y onerror=1>', '');
+      const html = app.ModalUI.renderCustomCards(app.CustomCardService.getAll());
+      assert(!html.includes('<img src=y'), 'stored HTML must be escaped');
+      assert(!html.includes('<b>x</b>'), 'stored front HTML must be escaped');
+      clearCards();
+    });
+
+    it('R8: sidebar badge is never disabled at zero', () => {
+      app.FilterUI.updateCustomCount();
+      const item = frame.contentDocument.querySelector('.sidebar-item[data-grade="custom"]');
+      assert(!item.classList.contains('disabled'),
+        'must stay clickable at zero cards, otherwise the first card can never be created');
+      assertEqual(frame.contentDocument.getElementById('customSideCount').textContent, '0',
+        'badge should show 0');
+    });
+
+    it('R8: badge follows the card count', () => {
+      app.CustomCardService.add('\u4e00', 'a', '');
+      app.CustomCardService.add('\u4e8c', 'b', '');
+      app.FilterUI.updateCustomCount();
+      assertEqual(frame.contentDocument.getElementById('customSideCount').textContent, '2',
+        'badge should show 2');
+      clearCards();
+      app.FilterUI.updateCustomCount();
+    });
+
+    it('R8: selecting custom loads the cards for study', () => {
+      app.CustomCardService.add('\u79e6', '\u7edf\u4e00\u4e2d\u56fd', 'q\u00edn');
+      app.AppController.switchMode('learn');
+      app.AppController.selectSemester('custom', 'custom');
+      const filtered = app.State.get('filteredChars');
+      assertEqual(filtered.length, 1, `should load 1 custom card, got ${filtered.length}`);
+      assertEqual(filtered[0].char, '\u79e6', 'the custom card should be loaded');
+    });
+
+    it('R8: 复习卡片 enters study mode instead of reopening the editor', () => {
+      // The sidebar handler intercepts the custom item to open the editor, so
+      // reviewCustomCards must NOT go through item.click() — that loops.
+      clearCards();
+      app.CustomCardService.add('\u79e6', '\u7edf\u4e00\u4e2d\u56fd', 'q\u00edn');
+      app.AppController.switchMode('dailyTask');
+      app.FilterUI.updateCustomCount();
+
+      app.AppController.showCustomCards();
+      frame.contentDocument.querySelector('[data-action="cc-review"]').click();
+
+      assertEqual(app.State.get('mode'), 'learn',
+        `复习卡片 should switch to learn mode, got ${app.State.get('mode')}`);
+      assert(!frame.contentDocument.getElementById('modalOverlay').classList.contains('show'),
+        'the modal should be closed, not reopened');
+      assertEqual(frame.contentDocument.getElementById('cardChar').textContent, '\u79e6',
+        'the custom card should be showing');
+      clearCards();
+    });
+
+    it('R8: sidebar loads cards into study mode, like its siblings', () => {
+      app.CustomCardService.add('\u79e6', '\u7edf\u4e00\u4e2d\u56fd', 'q\u00edn');
+      app.FilterUI.updateCustomCount();
+      app.AppController.switchMode('dailyTask');
+
+      frame.contentDocument.querySelector('.sidebar-item[data-grade="custom"]').click();
+      assertEqual(app.State.get('mode'), 'learn',
+        '\u81ea\u5b9a\u4e49 should enter study mode like \u7ec3\u751f\u5b57/\u7ec3\u9519\u9898/\u667a\u80fd\u590d\u4e60');
+      assert(!frame.contentDocument.getElementById('modalOverlay').classList.contains('show'),
+        'it should NOT open the editor when cards exist');
+      assertEqual(frame.contentDocument.getElementById('cardChar').textContent, '\u79e6',
+        'the card should be on screen');
+    });
+
+    it('R8: sidebar opens the editor only when empty', () => {
+      app.FilterUI.updateCustomCount();
+      app.AppController.switchMode('dailyTask');
+      frame.contentDocument.querySelector('.sidebar-item[data-grade="custom"]').click();
+      assert(frame.contentDocument.getElementById('modalOverlay').classList.contains('show'),
+        'with zero cards the editor is the only way to create the first one');
+      app.ModalUI.close();
+    });
+
+    it('R8: 🗑 shows on custom cards, ❤️ does not', () => {
+      studyOneCard('\u79e6', '\u7edf\u4e00\u4e2d\u56fd', 'q\u00edn');
+
+      const del = frame.contentDocument.getElementById('btnDeleteCard');
+      const fav = frame.contentDocument.getElementById('favBtn');
+      assert(del && !del.classList.contains('hidden'), '🗑 should be visible on a custom card');
+      assert(fav && fav.classList.contains('hidden'),
+        '❤️ should be hidden: favouriting a custom card would put it in 生字本 with no textbook context');
+    });
+
+    it('R8: 🗑 hidden on textbook characters, ❤️ shown', () => {
+      app.AppController.switchMode('learn');
+      app.AppController.selectSemester('1', '1');
+      app.LearnController.showCurrent();
+      const del = frame.contentDocument.getElementById('btnDeleteCard');
+      const fav = frame.contentDocument.getElementById('favBtn');
+      assert(del.classList.contains('hidden'), '🗑 must not appear on textbook characters');
+      assert(!fav.classList.contains('hidden'), '❤️ should be back');
+    });
+
+    it('R8: 🗑 needs two taps — first arms, second deletes', () => {
+      app.CustomCardService.add('\u5220', 'delete me', '');
+      studyOneCard('\u7559', 'keep me', '');
+
+      const before = app.CustomCardService.count();
+      const btn = frame.contentDocument.getElementById('btnDeleteCard');
+
+      app.LearnController.deleteCurrentCard();   // first tap: arm only
+      assertEqual(app.CustomCardService.count(), before,
+        'the first tap must not delete — deleting a custom card destroys the only copy');
+      assert(btn.textContent.includes('\u786e\u5b9a'), `button should ask for confirmation, got "${btn.textContent}"`);
+
+      app.LearnController.deleteCurrentCard();   // second tap: delete
+      assertEqual(app.CustomCardService.count(), before - 1, 'the second tap should delete');
+      clearCards();
+    });
+
+    it('R8: the confirmation resets when moving to another card', () => {
+      app.CustomCardService.add('\u4e00', 'a', '');
+      studyOneCard('\u4e8c', 'b', '');
+
+      app.LearnController.deleteCurrentCard();   // arm
+      app.LearnController.next();                // move on without confirming
+      const btn = frame.contentDocument.getElementById('btnDeleteCard');
+      assertEqual(btn.textContent, '\u{1F5D1}', `armed state must not carry over, got "${btn.textContent}"`);
+      assertEqual(app.CustomCardService.count(), 2, 'nothing should have been deleted');
+      clearCards();
+    });
+
+    it('R8: deleting the last card falls back to the editor', () => {
+      studyOneCard('\u552f', 'only one', '');
+
+      app.LearnController.deleteCurrentCard();   // arm
+      app.LearnController.deleteCurrentCard();   // confirm
+      assertEqual(app.CustomCardService.count(), 0, 'card should be gone');
+      assert(frame.contentDocument.getElementById('modalOverlay').classList.contains('show'),
+        'with nothing left to study it should offer the editor rather than an empty card');
+      app.ModalUI.close();
+    });
+
+    it('R8: ➕ 新建卡片 appears only while viewing custom cards', () => {
+      studyOneCard('\u65b0', 'new', '');
+      const btn = frame.contentDocument.getElementById('btnNewCard');
+      assert(btn && !btn.classList.contains('hidden'), '➕ should be visible on custom cards');
+
+      app.AppController.selectSemester('1', '1');
+      app.LearnController.showCurrent();
+      assert(btn.classList.contains('hidden'), '➕ must not appear on textbook characters');
+      clearCards();
+    });
+
+    it('R8: the JS main-content template carries the new buttons', () => {
+      // _getMainContentHTML() is a second copy of the main markup that replaces
+      // index.html's content on every startup. Adding a control to index.html
+      // alone silently has no effect — that cost 52 test failures to find.
+      const doc = frame.contentDocument;
+      for (const id of ['btnDeleteCard', 'btnNewCard', 'lessonFilter', 'favBtn']) {
+        assert(doc.getElementById(id), `#${id} missing after startup — is it in _getMainContentHTML()?`);
+      }
+    });
+
+    it('R8: adding keeps the form open and clears it for the next card', () => {
+      app.AppController.showCustomCards();
+      const doc = frame.contentDocument;
+      doc.getElementById('ccFront').value = '\u79e6';
+      doc.getElementById('ccPinyin').value = 'q\u00edn';
+      doc.getElementById('ccBack').value = '\u7edf\u4e00\u4e2d\u56fd';
+      doc.querySelector('[data-action="cc-add"]').click();
+
+      // Form must still be there — re-rendering the modal would lose it
+      assert(doc.getElementById('ccFront'), 'the form must stay open for the next card');
+      assertEqual(doc.getElementById('ccFront').value, '', '正面 should be cleared');
+      assertEqual(doc.getElementById('ccPinyin').value, '', '拼音 should be cleared');
+      assertEqual(doc.getElementById('ccBack').value, '', '反面 should be cleared');
+      assertEqual(app.CustomCardService.count(), 1, 'the card should be stored');
+    });
+
+    it('R8: several cards can be added in a row', () => {
+      app.AppController.showCustomCards();
+      const doc = frame.contentDocument;
+      for (const [front, back] of [['\u4e00', 'a'], ['\u4e8c', 'b'], ['\u4e09', 'c']]) {
+        doc.getElementById('ccFront').value = front;
+        doc.getElementById('ccBack').value = back;
+        doc.querySelector('[data-action="cc-add"]').click();
+      }
+      assertEqual(app.CustomCardService.count(), 3,
+        `three consecutive adds should give 3 cards, got ${app.CustomCardService.count()}`);
+      clearCards();
+    });
+
+    it('R8: the new card appears in the list without a full re-render', () => {
+      app.CustomCardService.add('\u65e7', 'existing', '');
+      app.AppController.showCustomCards();
+      const doc = frame.contentDocument;
+      const listBefore = doc.getElementById('ccList');
+      assert(listBefore, 'list container should exist when cards are present');
+
+      doc.getElementById('ccFront').value = '\u65b0';
+      doc.getElementById('ccBack').value = 'added';
+      doc.querySelector('[data-action="cc-add"]').click();
+
+      assert(doc.getElementById('ccList').innerHTML.includes('\u65b0'),
+        'the new card should show up in the list');
+      assert(doc.getElementById('ccList').innerHTML.includes('\u65e7'),
+        'the existing card should still be listed');
+      clearCards();
+    });
+
+    it('R8: a failed add keeps what was typed', () => {
+      app.CustomCardService.add('\u91cd', 'first', '');
+      app.AppController.showCustomCards();
+      const doc = frame.contentDocument;
+      doc.getElementById('ccFront').value = '\u91cd';   // duplicate
+      doc.getElementById('ccBack').value = 'typed text that must survive';
+      doc.querySelector('[data-action="cc-add"]').click();
+
+      assertEqual(doc.getElementById('ccFront').value, '\u91cd',
+        'the typed front must NOT be cleared on failure');
+      assertEqual(doc.getElementById('ccBack').value, 'typed text that must survive',
+        'the typed back must NOT be cleared on failure');
+      assert(doc.getElementById('ccMsg').textContent.length > 0, 'an error should be shown');
+      assertEqual(app.CustomCardService.count(), 1, 'nothing extra should be stored');
+      clearCards();
+    });
+
+    it('R8: success shows a confirmation, failure shows the reason', () => {
+      app.AppController.showCustomCards();
+      const doc = frame.contentDocument;
+      doc.getElementById('ccFront').value = '\u597d';
+      doc.getElementById('ccBack').value = 'ok';
+      doc.querySelector('[data-action="cc-add"]').click();
+      const okMsg = doc.getElementById('ccMsg').textContent;
+      assert(okMsg.includes('\u5df2\u52a0\u5165'), `expected a success note, got "${okMsg}"`);
+
+      doc.getElementById('ccFront').value = '\u597d';   // duplicate now
+      doc.getElementById('ccBack').value = 'again';
+      doc.querySelector('[data-action="cc-add"]').click();
+      const errMsg = doc.getElementById('ccMsg').textContent;
+      assert(errMsg.includes('\u5df2\u7ecf\u6709'), `expected the duplicate error, got "${errMsg}"`);
+      clearCards();
+    });
+
+    it('R8: Enter in the form submits', () => {
+      app.AppController.showCustomCards();
+      const doc = frame.contentDocument;
+      doc.getElementById('ccFront').value = '\u56de';
+      doc.getElementById('ccBack').value = 'via Enter';
+      const ev = new frame.contentWindow.KeyboardEvent('keydown',
+        { key: 'Enter', bubbles: true, cancelable: true });
+      doc.getElementById('ccBack').dispatchEvent(ev);
+      assertEqual(app.CustomCardService.count(), 1,
+        'Enter should add the card without reaching for the mouse');
+      clearCards();
+    });
+
+    it('R8: Shift+Enter does not submit (newline in 反面)', () => {
+      app.AppController.showCustomCards();
+      const doc = frame.contentDocument;
+      doc.getElementById('ccFront').value = '\u6362';
+      doc.getElementById('ccBack').value = 'line one';
+      const ev = new frame.contentWindow.KeyboardEvent('keydown',
+        { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true });
+      doc.getElementById('ccBack').dispatchEvent(ev);
+      assertEqual(app.CustomCardService.count(), 0,
+        'Shift+Enter must insert a newline, not submit');
+      clearCards();
+    });
+
+    it('R8: each listed card has 🔊 and ✕', () => {
+      app.CustomCardService.add('\u79e6', '\u7edf\u4e00\u4e2d\u56fd', 'q\u00edn');
+      const html = app.ModalUI.renderCustomCardList(app.CustomCardService.getAll());
+      assert(html.includes('cc-speak'), 'each card should offer 朗读 — phase-6 charges for this, we already have TTS');
+      assert(html.includes('cc-remove'), 'each card should offer delete');
+      clearCards();
+    });
+
+    it('R8: 🔊 asks Speech for the card front', () => {
+      app.CustomCardService.add('\u79e6', '\u7edf\u4e00\u4e2d\u56fd', 'q\u00edn');
+      app.AppController.showCustomCards();
+      const btn = frame.contentDocument.querySelector('[data-action="cc-speak"]');
+      assert(btn, '🔊 button should be in the list');
+
+      // A bare click() would pass even if nothing were wired up. Spy on Speech
+      // to prove the front text is what gets spoken.
+      const real = app.Speech.speak;
+      let spoken = null;
+      app.Speech.speak = (t) => { spoken = t; };
+      try { btn.click(); } finally { app.Speech.speak = real; }
+      assertEqual(spoken, '\u79e6', `should speak the front, got ${spoken}`);
+    });
+
+    it('R8: opening the panel focuses 正面', () => {
+      app.AppController.showCustomCards();
+      assertEqual(frame.contentDocument.activeElement.id, 'ccFront',
+        `cursor should start in 正面, was on "${frame.contentDocument.activeElement.id}"`);
+    });
+
+    it('R8: cards survive a reload (persisted, not in-memory)', () => {
+      app.CustomCardService.add('\u6301', '\u4e45', '');
+      const raw = app.State.load('customCards', null);
+      assert(Array.isArray(raw) && raw.length === 1, 'must be written to storage, not just memory');
+      assertEqual(raw[0].front, '\u6301', 'stored under its own key');
+      clearCards();
+    });
+
+    it('R8: corrupt stored data does not break the service', () => {
+      app.State.save('customCards', 'not-an-array');
+      assertEqual(app.CustomCardService.count(), 0, 'should fall back to empty, not throw');
+      assertEqual(app.CustomCardService.getAll().length, 0, 'getAll should be safe too');
+      clearCards();
     });
   });
 
@@ -1345,8 +2223,8 @@ async function runTests() {
     });
   });
 
-  // === 14. 生词本 Dropdown by Semester ===
-  describe('❤️ 生词本 — Dropdown Filter by Grade-Semester', () => {
+  // === 14. 生字本 Dropdown by Semester ===
+  describe('❤️ 生字本 — Dropdown Filter by Grade-Semester', () => {
 
     // Helper: seed favorites with chars from multiple grade-semesters
     function seedFavorites() {

@@ -219,13 +219,105 @@ const ProfileManager = (() => {
 })();
 
 const LearnController = (() => {
+  /** Delete button label in its unarmed state */
+  const DELETE_ICON = '🗑';
+  /** Delete button label once armed — second tap commits */
+  const DELETE_CONFIRM = '确定删除?';
+
   function showCurrent() {
     const chars = State.get('filteredChars');
-    if (!chars.length) return;
+    if (!chars.length) { _syncCustomCardControls(null); return; }
     let idx = State.get('currentIndex');
     // Clamp index to valid range
     if (idx >= chars.length) { idx = 0; State.set('currentIndex', 0); }
     CardUI.render(chars[idx], idx, chars.length);
+    _syncCustomCardControls(chars[idx]);
+  }
+
+  /**
+   * Show the custom-card controls only while studying custom cards.
+   *
+   * 🗑 replaces the ❤️ role for user-authored cards: un-hearting a textbook
+   * character only drops it from 生词本 — the character still exists in the
+   * data. Deleting a custom card destroys the only copy, so this one asks for
+   * confirmation (the button becomes 确定删除? on first tap).
+   *
+   * @param {Object|null} charData - the card on screen, or null if none
+   */
+  function _syncCustomCardControls(charData) {
+    // Two different conditions, deliberately kept apart:
+    //   per-card   — 🗑 / ❤️ depend on what is on screen right now
+    //   per-view   — ➕ depends on which collection is being studied
+    _syncPerCardControls(!!(charData && charData.isCustom));
+    _syncNewCardButton(State.get('selectedGrade') === 'custom');
+  }
+
+  /**
+   * 🗑 and ❤️ swap according to whether the card on screen is user-authored.
+   * @param {boolean} isCustom
+   */
+  function _syncPerCardControls(isCustom) {
+    const delBtn = document.getElementById('btnDeleteCard');
+    if (delBtn) {
+      delBtn.classList.toggle('hidden', !isCustom);
+      _disarmDelete(delBtn);
+    }
+    // Favouriting a custom card would file it in 生字本, which stores the
+    // grade/semester to return to — a custom card has none. Hide the heart.
+    const favBtn = document.getElementById('favBtn');
+    if (favBtn) favBtn.classList.toggle('hidden', isCustom);
+  }
+
+  /**
+   * ➕ 新建卡片 is only meaningful while the custom collection is on screen.
+   * @param {boolean} viewingCustom
+   */
+  function _syncNewCardButton(viewingCustom) {
+    const newBtn = document.getElementById('btnNewCard');
+    if (newBtn) newBtn.classList.toggle('hidden', !viewingCustom);
+  }
+
+  /** Return the delete button to its unarmed state. */
+  function _disarmDelete(btn) {
+    const el = btn || document.getElementById('btnDeleteCard');
+    if (!el) return;
+    el.textContent = DELETE_ICON;
+    el.dataset.confirming = '';
+  }
+
+  /**
+   * Delete the card on screen. First tap arms, second confirms.
+   * @returns {void}
+   */
+  function deleteCurrentCard() {
+    const chars = State.get('filteredChars');
+    const idx = State.get('currentIndex');
+    const charData = chars[idx];
+    if (!charData || !charData.isCustom) return;
+
+    const btn = document.getElementById('btnDeleteCard');
+    if (btn && btn.dataset.confirming !== 'yes') {
+      btn.dataset.confirming = 'yes';
+      btn.textContent = DELETE_CONFIRM;
+      return;
+    }
+
+    CustomCardService.remove(charData.char);
+    FilterUI.updateCustomCount();
+
+    const remaining = CustomCardService.asChars();
+    State.set('filteredChars', remaining);
+    if (!remaining.length) {
+      // Nothing left to study — fall back to the editor rather than an empty card
+      State.set('currentIndex', 0);
+      _syncCustomCardControls(null);
+      // showCustomCards lives on AppController; reach it via the global export
+      // rather than closing over a sibling module.
+      if (typeof AppController !== 'undefined') AppController.showCustomCards();
+      return;
+    }
+    State.set('currentIndex', Math.min(idx, remaining.length - 1));
+    showCurrent();
   }
 
   function next() {
@@ -312,7 +404,7 @@ const LearnController = (() => {
     Speech.speak(chars[State.get('currentIndex')].char);
   }
 
-  return { showCurrent, next, prev, resetShuffle, reinforce, flip, togglePinyin, toggleFavorite, speakCurrent };
+  return { showCurrent, next, prev, resetShuffle, reinforce, flip, togglePinyin, toggleFavorite, speakCurrent, deleteCurrentCard };
 })();
 
 const ChallengeController = (() => {
@@ -518,11 +610,33 @@ const ChallengeController = (() => {
 })();
 
 const AppController = (() => {
+  /**
+   * Show or hide the sidebar selection depending on mode.
+   *
+   * The sidebar picks which characters learn/challenge operate on. In 任务
+   * (dailyTask) mode it has no effect — the daily task drives its own lesson
+   * progression — so a highlighted item there claims a selection that is not
+   * in use. Startup used to activate 练生字 whenever favourites existed, even
+   * though 任务 is the default tab, and switchMode never cleared it.
+   *
+   * @param {string} mode - the mode being switched to
+   */
+  function _syncSidebarSelection(mode) {
+    const inUse = (mode === 'learn' || mode === 'challenge');
+    if (!inUse) {
+      document.querySelectorAll('.sidebar-item.active')
+        .forEach(i => i.classList.remove('active'));
+      document.querySelectorAll('.sidebar-grade-header.active')
+        .forEach(i => i.classList.remove('active'));
+    }
+  }
+
   function switchMode(newMode) {
     State.set('mode', newMode);
     document.querySelectorAll('.mode-tab').forEach(t => {
       t.classList.toggle('active', t.dataset.mode === newMode);
     });
+    _syncSidebarSelection(newMode);
     // Mode switch UI
     const learnEl = document.getElementById('learnMode');
     const challengeEl = document.getElementById('challengeMode');
@@ -685,6 +799,14 @@ const AppController = (() => {
       if (almostCount > 0) options += `<option value="srs_almost">🟣 快掌握了 (${almostCount}字)</option>`;
       if (masteredCount > 0) options += `<option value="srs_mastered">⭐ 已掌握 (${masteredCount}字)</option>`;
       sel.innerHTML = options;
+    } else if (grade === 'custom') {
+      // Special: user-authored cards. They already carry the textbook char
+      // shape, so nothing downstream needs to know they are custom.
+      const customChars = CustomCardService.asChars();
+      State.set('filteredChars', customChars);
+      State.set('currentIndex', 0);
+      const sel = document.getElementById('lessonFilter');
+      sel.innerHTML = `<option value="custom_all">✏️ 自定义字卡 (${customChars.length}张)</option>`;
     } else {
       FilterUI.renderLessons();
       DataService.applyFilter('all');
@@ -800,12 +922,110 @@ const AppController = (() => {
 
   function showFavorites() {
     const html = ModalUI.renderFavorites(FavoriteService.getAll());
-    ModalUI.show(`❤️ 生词本 (${FavoriteService.getAll().length}字)`, html);
+    ModalUI.show(`❤️ 生字本 (${FavoriteService.getAll().length}字)`, html);
   }
 
   function showErrorBook() {
     const html = ModalUI.renderErrorBook(ErrorBookService.getAll());
     ModalUI.show(`📖 错题本 (${ErrorBookService.count()}字)`, html);
+  }
+
+  function showCustomCards() {
+    ModalUI.show(`✏️ 自定义字卡 (${CustomCardService.count()}张)`,
+      ModalUI.renderCustomCards(CustomCardService.getAll()));
+    // Land the cursor where typing starts, so the keyboard flow works from the
+    // moment the panel opens
+    const f = document.getElementById('ccFront');
+    if (f) f.focus();
+  }
+
+  /**
+   * Add a card from the modal form.
+   *
+   * Does NOT re-render the modal on success: that would clear the form and
+   * scroll position, making a second card tedious. Instead it clears the three
+   * inputs, prepends the new card to the list and refocuses 正面, so cards can
+   * be entered one after another (Anki's Add-window behaviour).
+   */
+  function addCustomCard() {
+    const frontEl = document.getElementById('ccFront');
+    const pinyinEl = document.getElementById('ccPinyin');
+    const backEl = document.getElementById('ccBack');
+    const msgEl = document.getElementById('ccMsg');
+    if (!frontEl || !backEl) return;
+
+    const result = CustomCardService.add(frontEl.value, backEl.value, pinyinEl ? pinyinEl.value : '');
+    if (!result.ok) {
+      // Keep what was typed — re-rendering would discard it
+      _setFormMessage(result.error, false);
+      frontEl.focus();
+      return;
+    }
+
+    const okMessage = `已加入「${result.card.front}」✓`;
+    frontEl.value = '';
+    backEl.value = '';
+    if (pinyinEl) pinyinEl.value = '';
+    FilterUI.updateCustomCount();
+
+    // Update the list in place where possible. On the very first card the list
+    // container does not exist yet, so one full re-render is unavoidable — and
+    // that replaces the message element, hence setting the message afterwards
+    // in both paths rather than before.
+    const list = document.getElementById('ccList');
+    if (list) {
+      list.innerHTML = ModalUI.renderCustomCardList(CustomCardService.getAll());
+    } else {
+      showCustomCards();
+    }
+    _setFormMessage(okMessage, true);
+    const focusTarget = document.getElementById('ccFront');
+    if (focusTarget) focusTarget.focus();
+  }
+
+  /**
+   * Write the inline feedback line under the custom-card form.
+   * @param {string} text
+   * @param {boolean} ok - true for success styling, false for error
+   */
+  function _setFormMessage(text, ok) {
+    const el = document.getElementById('ccMsg');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('form-msg--ok', !!ok);
+    el.classList.toggle('form-msg--err', !ok);
+  }
+
+  function removeCustomCard(front) {
+    CustomCardService.remove(front);
+    FilterUI.updateCustomCount();
+    // In-place list update, same reason as addCustomCard: keep the form intact
+    const list = document.getElementById('ccList');
+    const remaining = CustomCardService.getAll();
+    if (list && remaining.length) {
+      list.innerHTML = ModalUI.renderCustomCardList(remaining);
+    } else {
+      showCustomCards(); // last card gone — fall back to the empty state
+    }
+    // Refresh the study view if it is currently showing custom cards
+    if (State.get('selectedGrade') === 'custom') selectSemester('custom', 'custom');
+  }
+
+  /** Close the modal and study the custom cards as flashcards */
+  function reviewCustomCards() {
+    if (!CustomCardService.count()) return;
+    ModalUI.close();
+    // Safe to go through the sidebar item now: it only intercepts when the
+    // collection is empty, and we just checked it is not.
+    const item = document.querySelector('.sidebar-item[data-grade="custom"]');
+    if (item) { item.click(); return; }
+    switchMode('learn');
+    selectSemester('custom', 'custom');
+  }
+
+  function showReport() {
+    const html = ModalUI.renderReport(ReportService.build());
+    ModalUI.show('📊 学习报告', html);
   }
 
   function showBadges() {
@@ -838,7 +1058,7 @@ const AppController = (() => {
     const allChars = State.get('allChars');
     const favorites = FavoriteService.getAll();
     const favChars = allChars.filter(c => favorites.includes(c.char));
-    if (favChars.length < 4) { alert('生词本中字数不足4个，无法开始挑战'); return; }
+    if (favChars.length < 4) { alert('生字本中字数不足4个，无法开始挑战'); return; }
     State.set('filteredChars', favChars);
     ModalUI.close();
     switchMode('challenge');
@@ -907,19 +1127,23 @@ const AppController = (() => {
           FilterUI.updateFavCount();
           FilterUI.updateErrCount();
           FilterUI.updateSrsCount();
+          FilterUI.updateCustomCount();
           FilterUI.updateStreakDisplay();
 
-          // Default view: show favorites if any, otherwise show 一上
+          // Default view: preload favorites if any, otherwise 一上.
+          // The highlight below is painted unconditionally, then dropped by
+          // _syncSidebarSelection if we booted into 任务 — where the sidebar
+          // selection is not used and a highlight claims one that is not.
           const favorites = FavoriteService.getAll();
           if (favorites.length > 0) {
             selectSemester('fav', 'fav');
-            // Update sidebar active state
             document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
             const favItem = document.querySelector('.sidebar-item[data-grade="fav"]');
             if (favItem) favItem.classList.add('active');
           } else {
             selectSemester('1', '1');
           }
+          _syncSidebarSelection(State.get('mode'));
         } catch (e) {
           console.warn('[App] Setup error (non-fatal):', e);
         }
@@ -965,6 +1189,7 @@ const AppController = (() => {
           <div class="card-face card-front">
             <button class="pinyin-toggle" id="btnPinyinToggle">拼音</button>
             <button class="fav-btn" id="favBtn">🤍</button>
+            <button class="fav-btn hidden" id="btnDeleteCard" title="删除这张卡片" aria-label="删除这张卡片">🗑</button>
             <div class="card-char char-display" id="cardChar">天</div>
             <div class="card-pinyin-small hidden" id="cardPinyinSmall">tiān</div>
             <div class="card-hint">点击翻转 →</div>
@@ -982,6 +1207,7 @@ const AppController = (() => {
         <button id="btnSpeak" aria-label="朗读">🔊 朗读</button>
         <button id="btnReinforce" aria-label="加强记忆" class="btn-reinforce">🔁 加强记忆</button>
         <button id="btnNext" aria-label="下一个">➡️ 下一个</button>
+        <button id="btnNewCard" class="hidden" aria-label="新建自定义卡片">➕ 新建卡片</button>
       </div>
       <div class="progress-container">
         <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:2%"></div></div>
@@ -1045,6 +1271,7 @@ const AppController = (() => {
     document.getElementById('btnFavorites').addEventListener('click', showFavorites);
     document.getElementById('btnErrorBook').addEventListener('click', showErrorBook);
     document.getElementById('btnBadges').addEventListener('click', showBadges);
+    document.getElementById('btnReport').addEventListener('click', showReport);
 
     // --- Navigation: sidebar ---
     // Review group toggle (collapsible)
@@ -1091,14 +1318,25 @@ const AppController = (() => {
         return;
       }
 
+      // 自定义 behaves like its siblings (练生字/练错题/智能复习): clicking it
+      // loads the cards into study mode. The one exception is an empty
+      // collection — there is nothing to study, and the editor is the only
+      // place a first card can be created, so open that instead.
+      if (item.dataset.grade === 'custom' && CustomCardService.count() === 0) {
+        showCustomCards();
+        return;
+      }
+
       // Handle grade/review item selection
       if (item.dataset.sem && item.dataset.grade) {
-        document.querySelectorAll('.sidebar-item').forEach(c => c.classList.remove('active'));
-        item.classList.add('active');
-        // If in daily task mode, switch to learn mode first
+        // Switch mode BEFORE painting the highlight: switchMode calls
+        // _syncSidebarSelection, which clears the selection in modes that do
+        // not use the sidebar. Painting first would immediately be undone.
         if (State.get('mode') === 'dailyTask') {
           switchMode('learn');
         }
+        document.querySelectorAll('.sidebar-item').forEach(c => c.classList.remove('active'));
+        item.classList.add('active');
         selectSemester(item.dataset.sem, item.dataset.grade);
       }
     });
@@ -1122,6 +1360,11 @@ const AppController = (() => {
     document.getElementById('btnSpeak').addEventListener('click', LearnController.speakCurrent);
     document.getElementById('btnReinforce').addEventListener('click', LearnController.reinforce);
     document.getElementById('btnNext').addEventListener('click', LearnController.next);
+    document.getElementById('btnDeleteCard').addEventListener('click', (e) => {
+      e.stopPropagation(); // the card itself flips on click
+      LearnController.deleteCurrentCard();
+    });
+    document.getElementById('btnNewCard').addEventListener('click', showCustomCards);
 
     // --- Challenge mode: quiz actions ---
     document.getElementById('quizTypeSelector').addEventListener('click', (e) => {
@@ -1148,6 +1391,17 @@ const AppController = (() => {
     document.getElementById('modalOverlay').addEventListener('click', (e) => {
       if (e.target === e.currentTarget) ModalUI.close();
     });
+    // Enter submits the custom-card form. Delegated because the modal content
+    // is replaced wholesale, so direct listeners would not survive a re-render.
+    // Shift+Enter still inserts a newline in the 反面 textarea.
+    document.getElementById('modalContent').addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.shiftKey) return;
+      const t = e.target;
+      if (!t || !['ccFront', 'ccPinyin', 'ccBack'].includes(t.id)) return;
+      e.preventDefault();
+      addCustomCard();
+    });
+
     document.getElementById('modalContent').addEventListener('click', (e) => {
       const removeFavBtn = e.target.closest('[data-action="remove-fav"]');
       if (removeFavBtn) { removeFavorite(removeFavBtn.dataset.char); return; }
@@ -1157,6 +1411,18 @@ const AppController = (() => {
 
       const reviewQuiz = e.target.closest('[data-action="review-quiz"]');
       if (reviewQuiz) { reviewFavoritesAsQuiz(); return; }
+
+      const ccAdd = e.target.closest('[data-action="cc-add"]');
+      if (ccAdd) { addCustomCard(); return; }
+
+      const ccRemove = e.target.closest('[data-action="cc-remove"]');
+      if (ccRemove) { removeCustomCard(ccRemove.dataset.front); return; }
+
+      const ccReview = e.target.closest('[data-action="cc-review"]');
+      if (ccReview) { reviewCustomCards(); return; }
+
+      const ccSpeak = e.target.closest('[data-action="cc-speak"]');
+      if (ccSpeak) { Speech.speak(ccSpeak.dataset.front); return; }
     });
 
     // --- Keyboard shortcuts ---
@@ -1168,5 +1434,6 @@ const AppController = (() => {
     });
   }
 
-  return { init, switchMode, selectSemester, selectLesson, showFavorites, showErrorBook, showBadges };
+  return { init, switchMode, selectSemester, selectLesson, showFavorites, showErrorBook,
+           showBadges, showReport, showCustomCards, addCustomCard, removeCustomCard };
 })();

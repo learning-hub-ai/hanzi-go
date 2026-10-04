@@ -5,7 +5,7 @@
  * - FilterUI: lesson dropdown and sidebar count updates
  * - CardUI: flash card rendering and flip
  * - QuizUI: quiz question rendering and feedback
- * - ModalUI: generic modal for favorites, error book, badges
+ * - ModalUI: generic modal for favorites, error book, badges, report, custom cards
  * - BadgePopupUI: badge unlock celebration
  */
 
@@ -77,7 +77,20 @@ const FilterUI = (() => {
     if (el) el.textContent = State.get('stats').consecutiveDays || 0;
   }
 
-  return { renderLessons, updateStripCounts, updateFavCount, updateErrCount, updateSrsCount, updateStreakDisplay };
+  /**
+   * Update the 自定义字卡 badge.
+   *
+   * Unlike the other review items this one is NEVER disabled at zero: with no
+   * cards the only way to create one is to click it and use the form, so
+   * disabling it would make the feature unreachable.
+   */
+  function updateCustomCount() {
+    const count = CustomCardService.count();
+    const el = document.getElementById('customSideCount');
+    if (el) el.textContent = count;
+  }
+
+  return { renderLessons, updateStripCounts, updateFavCount, updateErrCount, updateSrsCount, updateStreakDisplay, updateCustomCount };
 })();
 
 /** Card UI — flash card rendering, flip animation, state display */
@@ -92,12 +105,21 @@ const CardUI = (() => {
     card.offsetHeight;
     card.style.transition = '';
 
-    document.getElementById('cardChar').textContent = charData.char;
-    document.getElementById('cardPinyinSmall').textContent = charData.pinyin;
+    const charEl = document.getElementById('cardChar');
+    charEl.textContent = charData.char;
+    // Custom cards may have a multi-character front. Size via CSS classes, not
+    // an inline font-size, so .card-char's responsive clamp() still wins.
+    const frontLen = (charData.char || '').length;
+    charEl.classList.remove('card-char--len2', 'card-char--len4', 'card-char--long');
+    if (frontLen > 4) charEl.classList.add('card-char--long');
+    else if (frontLen > 2) charEl.classList.add('card-char--len4');
+    else if (frontLen > 1) charEl.classList.add('card-char--len2');
+    document.getElementById('cardPinyinSmall').textContent = charData.pinyin || '';
     document.getElementById('cardPinyinSmall').classList.toggle('hidden', !State.get('showPinyin'));
-    document.getElementById('cardPinyinBack').textContent = charData.pinyin;
-    document.getElementById('cardWords').textContent = charData.words.join(' · ');
-    document.getElementById('cardSentence').textContent = charData.sentence;
+    document.getElementById('cardPinyinBack').textContent = charData.pinyin || '';
+    // words/sentence are optional — error-book and custom cards may lack both
+    document.getElementById('cardWords').textContent = (charData.words || []).join(' · ');
+    document.getElementById('cardSentence').textContent = charData.sentence || '';
     document.getElementById('favBtn').textContent = FavoriteService.isFavorite(charData.char) ? '❤️' : '🤍';
     document.getElementById('progressBar').textContent = `${index + 1} / ${total}`;
     document.getElementById('progressFill').style.width = `${((index + 1) / total) * 100}%`;
@@ -214,7 +236,7 @@ const QuizUI = (() => {
     if (pct === 100) msg = State.config('encourageMessages.perfect', '太棒了！你是识字冠军！🏆');
     else if (pct >= 70) msg = State.config('encourageMessages.good', '很厉害！继续加油！💪');
     else if (pct >= 40) msg = State.config('encourageMessages.ok', '不错哦，再练习一下吧！📖');
-    else msg = State.config('encourageMessages.low', '别灰心，多看看生词卡片再来挑战！🌟');
+    else msg = State.config('encourageMessages.low', '别灰心，多看看生字卡片再来挑战！🌟');
     document.getElementById('endMsg').textContent = msg;
   }
 
@@ -246,7 +268,7 @@ const ModalUI = (() => {
     ).join('');
     html += `<div style="display:flex;gap:8px;margin-top:16px;justify-content:center">
       <button data-action="review-cards" class="btn-modal-action btn-modal-action--primary">📚 复习卡片</button>
-      <button data-action="review-quiz" class="btn-modal-action btn-modal-action--warning">🎮 生词挑战</button>
+      <button data-action="review-quiz" class="btn-modal-action btn-modal-action--warning">🎮 生字挑战</button>
     </div>`;
     return html;
   }
@@ -282,7 +304,154 @@ const ModalUI = (() => {
     return html;
   }
 
-  return { show, close, renderFavorites, renderErrorBook, renderBadges };
+  /**
+   * 学习报告 — read-only summary for a parent (and useful to the child).
+   *
+   * No action buttons by design: this panel answers "how is it going", and
+   * anything editable here would be editable by the child too.
+   *
+   * @param {Object} r - ReportService.build() output
+   * @returns {string} HTML
+   */
+  function renderReport(r) {
+    const GRADE = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+    const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
+
+    // Nothing learned yet — say so plainly instead of showing a wall of zeros
+    if (!r.totalSeen) {
+      return '<p style="color:#999">还没有学习记录。做一次每日任务或挑战，这里就会有数据。</p>';
+    }
+
+    const row = (label, value) =>
+      `<div class="modal-item"><span>${label}</span><span><strong>${value}</strong></span></div>`;
+
+    let html = '';
+
+    // Where they are in the textbook
+    if (r.position) {
+      const g = GRADE[r.position.grade] || r.position.grade;
+      const sem = r.position.semester === 1 ? '上册' : '下册';
+      html += row('📍 当前进度', `${g}年级${sem} 第 ${r.position.lessonIndex + 1} 课`);
+      html += row('✅ 学完的课', `${r.position.completedCount} 课`);
+    }
+
+    // Mastery, three coarse buckets — see getMasterySplit for why not per-box
+    const m = r.mastery;
+    html += row('⭐ 已掌握', `${m.mastered} 字`);
+    html += row('📘 在学', `${m.learning} 字`);
+    html += row('🔴 需加强', `${m.needsWork} 字`);
+    html += row('📚 学过的字', `${r.totalSeen} 字`);
+    html += row('📅 今天要复习', `${r.dueToday} 字`);
+
+    // This week, as seven dots
+    const dots = r.week.days.map(d => {
+      const wd = WEEKDAY[new Date(d.date).getDay()];
+      const mark = d.active ? '🟢' : '⚪';
+      return `<span title="${escapeHtml(d.date)}" style="display:inline-block;text-align:center;width:28px">
+        <span style="font-size:14px">${mark}</span><br><small style="color:#999">${wd}</small></span>`;
+    }).join('');
+    html += `<div class="modal-item"><span>🗓 最近七天</span><span>${r.week.activeCount}/7 天</span></div>`;
+    html += `<div style="text-align:center;margin:4px 0 12px">${dots}</div>`;
+
+    html += row('🔥 连续天数', `${r.streak.current} 天（最高 ${r.streak.best}）`);
+    const acc = r.totals.accuracy === null ? '—' : `${r.totals.accuracy}%`;
+    html += row('🎯 累计正确率', `${acc}（${r.totals.correct}/${r.totals.answered}）`);
+    html += row('🎮 完成轮数', `${r.totals.rounds} 轮`);
+
+    // Characters that are not sticking — the actionable part
+    html += '<hr style="margin:16px 0">';
+    if (r.stuck.length) {
+      html += `<p style="font-size:13px;color:#991b1b;margin:0 0 8px">
+        🔴 这些字反复出错，建议一起看看（错 ${r.stuck[0].wrongCount} 次起）</p>`;
+      html += '<div style="display:flex;flex-wrap:wrap;gap:8px">' + r.stuck.map(c =>
+        `<span style="border:1px solid #fecaca;border-radius:6px;padding:4px 8px;background:#fef2f2">
+          <span class="char-display" style="font-size:20px">${escapeHtml(c.char)}</span>
+          <small style="color:#991b1b">${escapeHtml(c.pinyin || '')} 错${c.wrongCount}次</small></span>`
+      ).join('') + '</div>';
+    } else if (r.errorBookCount) {
+      html += `<p style="font-size:13px;color:#666;margin:0">
+        错题本里有 ${r.errorBookCount} 个字，但都还没到反复出错的程度。</p>`;
+    } else {
+      html += '<p style="font-size:13px;color:#059669;margin:0">错题本是空的 👍</p>';
+    }
+
+    html += `<p style="font-size:11px;color:#bbb;margin-top:16px">
+      报告日期 ${escapeHtml(r.date)}　·　「最近七天」从启用本功能当天开始记录</p>`;
+    return html;
+  }
+
+  /**
+   * 自定义字卡 — add form plus the existing list.
+   *
+   * Three inputs, not two: 拼音 is separate because the quiz reads that field
+   * directly. Without it a card can only be flipped, never quizzed.
+   *
+   * Built for entering several cards in one sitting (the Anki model): the form
+   * stays put, clears after each add and returns focus to 正面, so adding ten
+   * cards is type-tab-type-Enter ten times. Quizlet's full-page editor solves
+   * the same problem but exists for long shared sets, which this is not.
+   *
+   * @param {Array} cards - CustomCardService.getAll()
+   * @returns {string} HTML
+   */
+  function renderCustomCards(cards) {
+    let html = `<div style="margin-bottom:16px">
+      <label for="ccFront" style="display:block;font-size:13px;color:#475569;margin-bottom:4px">正面（字或词，最多 8 个字）</label>
+      <input id="ccFront" type="text" maxlength="8" placeholder="例：秦" autocomplete="off"
+        style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:16px;box-sizing:border-box">
+
+      <label for="ccPinyin" style="display:block;font-size:13px;color:#475569;margin:10px 0 4px">拼音（可不填；填了才能用于挑战）</label>
+      <input id="ccPinyin" type="text" maxlength="60" placeholder="例：qín" autocomplete="off"
+        style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:16px;box-sizing:border-box">
+
+      <label for="ccBack" style="display:block;font-size:13px;color:#475569;margin:10px 0 4px">反面（意思、例句、翻译…）—— 按 Enter 直接加入</label>
+      <textarea id="ccBack" maxlength="200" rows="2" placeholder="例：秦始皇统一了中国。"
+        style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:15px;box-sizing:border-box;resize:vertical"></textarea>
+
+      <div id="ccMsg" class="form-msg"></div>
+      <button data-action="cc-add" class="btn-modal-action btn-modal-action--primary"
+        style="width:100%">➕ 加入（可连续添加）</button>
+    </div><hr style="margin:12px 0">`;
+
+    if (!cards.length) {
+      html += '<p style="color:#999">还没有自定义字卡。上面填好正反面就能加。</p>';
+      return html;
+    }
+
+    html += `<p style="font-size:13px;color:#64748b;margin:0 0 8px">共 ${cards.length} 张</p>`;
+    html += `<div id="ccList">${renderCustomCardList(cards)}</div>`;
+    html += `<div style="display:flex;gap:8px;margin-top:16px;justify-content:center">
+      <button data-action="cc-review" class="btn-modal-action btn-modal-action--primary">📚 复习卡片</button>
+    </div>`;
+    return html;
+  }
+
+  /**
+   * The card list on its own, so a new card can be prepended in place instead
+   * of re-rendering the whole modal (which would clear the form).
+   *
+   * 🔊 uses the TTS the app already has. phase-6 charges for automatic audio on
+   * self-made vocabulary; here it costs nothing and makes a hand-made card feel
+   * as finished as a textbook one.
+   *
+   * @param {Array} cards
+   * @returns {string} HTML
+   */
+  function renderCustomCardList(cards) {
+    return cards.map(c => `<div class="modal-item" data-cc-item="${escapeHtml(c.front)}">
+      <span>
+        <span class="char-display" style="font-size:20px">${escapeHtml(c.front)}</span>
+        ${c.pinyin ? `<small style="color:#64748b;margin-left:6px">${escapeHtml(c.pinyin)}</small>` : ''}
+        <br><small style="color:#94a3b8">${escapeHtml(c.back)}</small>
+      </span>
+      <span style="display:flex;gap:4px;flex-shrink:0">
+        <button data-action="cc-speak" data-front="${escapeHtml(c.front)}" aria-label="朗读" title="朗读">🔊</button>
+        <button data-action="cc-remove" data-front="${escapeHtml(c.front)}" aria-label="删除" title="删除">✕</button>
+      </span>
+    </div>`).join('');
+  }
+
+  return { show, close, renderFavorites, renderErrorBook, renderBadges, renderReport, renderCustomCards, renderCustomCardList };
 })();
 
 /** Badge Popup UI — celebration overlay when earning a new badge */

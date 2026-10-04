@@ -44,9 +44,10 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="streak-display" id="streakDisplay" title="连续学习天数">🔥 <span id="streakNumber">0</span></div>
   <div class="header-right">
-    <button id="btnFavorites" title="生词本" aria-label="生词本">❤️</button>
+    <button id="btnFavorites" title="生字本" aria-label="生字本">❤️</button>
     <button id="btnErrorBook" title="错题本" aria-label="错题本">📖</button>
     <button id="btnBadges" title="成就墙" aria-label="成就墙">🏆</button>
+    <button id="btnReport" title="学习报告" aria-label="学习报告">📊</button>
     <button id="btnProfile" class="profile-btn" title="切换用户" aria-label="切换用户">
       <span class="profile-avatar" id="profileAvatar">👧</span>
       <span class="profile-name" id="profileName"></span>
@@ -67,18 +68,23 @@ if ('serviceWorker' in navigator) {
       <div class="sidebar-group-items" id="reviewGroupItems">
         <div class="sidebar-item sidebar-subitem" data-sem="fav" data-grade="fav">
           <span class="sidebar-item-icon">❤️</span>
-          <span class="sidebar-item-label">生词本</span>
+          <span class="sidebar-item-label">练生字</span>
           <span class="sidebar-item-count" id="favSideCount">0</span>
         </div>
         <div class="sidebar-item sidebar-subitem" data-sem="err" data-grade="err">
           <span class="sidebar-item-icon">📖</span>
-          <span class="sidebar-item-label">错题本</span>
+          <span class="sidebar-item-label">练错题</span>
           <span class="sidebar-item-count" id="errSideCount">0</span>
         </div>
         <div class="sidebar-item sidebar-subitem" data-sem="srs" data-grade="srs">
           <span class="sidebar-item-icon">📈</span>
           <span class="sidebar-item-label">智能复习</span>
           <span class="sidebar-item-count" id="srsSideCount">0</span>
+        </div>
+        <div class="sidebar-item sidebar-subitem" data-sem="custom" data-grade="custom">
+          <span class="sidebar-item-icon">✏️</span>
+          <span class="sidebar-item-label">自定义</span>
+          <span class="sidebar-item-count" id="customSideCount">0</span>
         </div>
       </div>
     </div>
@@ -241,9 +247,6 @@ if ('serviceWorker' in navigator) {
         </div>
       </div>
     </div>
-    </div>
-    </div>
-    </div>
 
     <!-- 底部固定：成就 -->
     <div class="sidebar-footer">
@@ -261,7 +264,7 @@ if ('serviceWorker' in navigator) {
     <div id="dailyTaskMode"></div>
 
     <!-- Learning Mode -->
-    <div id="learnMode" class="hidden">>
+    <div id="learnMode" class="hidden">
       <div class="content-header">
         <label for="lessonFilter" class="hidden">选择课文</label>
         <select id="lessonFilter" aria-label="选择课文">
@@ -273,6 +276,7 @@ if ('serviceWorker' in navigator) {
           <div class="card-face card-front">
             <button class="pinyin-toggle" id="btnPinyinToggle">拼音</button>
             <button class="fav-btn" id="favBtn">🤍</button>
+          <button class="fav-btn hidden" id="btnDeleteCard" title="删除这张卡片" aria-label="删除这张卡片">🗑</button>
             <div class="card-char char-display" id="cardChar" role="button" aria-label="点击朗读" title="点击朗读">天</div>
             <div class="card-pinyin-small hidden" id="cardPinyinSmall">tiān</div>
             <div class="card-hint">点击翻转 →</div>
@@ -290,6 +294,7 @@ if ('serviceWorker' in navigator) {
         <button id="btnSpeak" aria-label="朗读">🔊 朗读</button>
         <button id="btnReinforce" aria-label="加强记忆" class="btn-reinforce">🔁 加强记忆</button>
         <button id="btnNext" aria-label="下一个">➡️ 下一个</button>
+        <button id="btnNewCard" class="hidden" aria-label="新建自定义卡片">➕ 新建卡片</button>
       </div>
       <div class="progress-container">
         <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:2%"></div></div>
@@ -342,7 +347,7 @@ if ('serviceWorker' in navigator) {
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal" id="modalBox">
     <button class="modal-close" id="btnModalClose">✕</button>
-    <h3 id="modalTitle">生词本</h3>
+    <h3 id="modalTitle">生字本</h3>
     <div id="modalContent"></div>
   </div>
 </div>
@@ -388,6 +393,11 @@ window.FavoriteService = FavoriteService;
 window.ErrorBookService = ErrorBookService;
 window.StatsService = StatsService;
 window.SpacedRepService = SpacedRepService;
+window.ReportService = ReportService;
+window.CustomCardService = CustomCardService;
+// ModalUI/CardUI were never exported, leaving the renderers untestable
+window.ModalUI = ModalUI;
+window.CardUI = CardUI;
 window.LearnController = LearnController;
 window.ChallengeController = ChallengeController;
 window.ProfileManager = ProfileManager;

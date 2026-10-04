@@ -118,7 +118,8 @@ const State = (() => {
     state.errorBook = load('errorBook', []);
     state.stats = load('stats', {
       totalRounds: 0, totalCorrect: 0, totalAnswered: 0,
-      streak: 0, lastPlayDate: '', consecutiveDays: 0
+      streak: 0, lastPlayDate: '', consecutiveDays: 0,
+      playDates: []
     });
     state.badges = load('badges', []);
   }
@@ -138,7 +139,7 @@ const State = (() => {
     lessons: [],
     favorites: [],
     errorBook: [],
-    stats: { totalRounds: 0, totalCorrect: 0, totalAnswered: 0, streak: 0, lastPlayDate: '', consecutiveDays: 0 },
+    stats: { totalRounds: 0, totalCorrect: 0, totalAnswered: 0, streak: 0, lastPlayDate: '', consecutiveDays: 0, playDates: [] },
     badges: [],
     quiz: { questions: [], current: 0, score: 0, streak: 0, isErrorReview: false }
   };
