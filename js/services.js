@@ -420,13 +420,28 @@ const StatsService = (() => {
       stats.perfectRounds = (stats.perfectRounds || 0) + 1;
     }
 
-    // Update daily streak
+    // Update daily streak.
+    // R5 grace day: missing ONE day does not reset the streak. A child in Swedish
+    // school has höstlov, jullov, sportlov and sick days — a 40-day streak is
+    // almost certain to break, and a reset to 1 is where motivation dies.
+    // Gap of 0 days (same day)  → no change, no double-count
+    // Gap of 1 day (yesterday)  → +1, normal continuation
+    // Gap of 2 days (grace day) → +1, the missed day is forgiven
+    // Gap of 3+ days            → reset to 1
     const today = new Date().toISOString().slice(0, 10);
     let milestone = null;
     if (stats.lastPlayDate !== today) {
-      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-      stats.consecutiveDays = (stats.lastPlayDate === yesterday)
-        ? stats.consecutiveDays + 1
+      const GRACE_DAYS = 1; // how many consecutive missed days are forgiven
+      let gapDays = Infinity;
+      if (stats.lastPlayDate) {
+        const lastMs = new Date(stats.lastPlayDate).getTime();
+        const todayMs = new Date(today).getTime();
+        if (!isNaN(lastMs)) gapDays = Math.round((todayMs - lastMs) / 86400000);
+      }
+      // gapDays uses calendar dates (both normalised to YYYY-MM-DD), so this is
+      // correct across month and year boundaries and unaffected by DST.
+      stats.consecutiveDays = (gapDays >= 1 && gapDays <= 1 + GRACE_DAYS)
+        ? (stats.consecutiveDays || 0) + 1
         : 1;
       stats.lastPlayDate = today;
 
@@ -482,14 +497,24 @@ const StatsService = (() => {
 })();
 
 /**
- * Spaced Repetition Service — Leitner Box System (5 boxes)
+ * Spaced Repetition Service — Leitner Box System (7 boxes)
  * Tracks mastery per character. Only characters that have been quizzed enter the system.
  *
- * Box intervals: Box1=0d, Box2=1d, Box3=3d, Box4=7d, Box5=14d
- * Correct → move up. Wrong → back to Box 1.
+ * Box intervals: Box1=0d, Box2=1d, Box3=3d, Box4=7d, Box5=14d, Box6=30d, Box7=60d
+ * Correct → move up one box. Wrong → move DOWN one box (not reset to Box 1).
+ *
+ * Why 7 boxes and not 5: with ~4000 characters and MAX_REVIEW=10/day, a 14-day
+ * ceiling means every character ever learned returns fortnightly forever, which
+ * saturates the daily review queue. Boxes 6-7 let mastered characters rest.
+ *
+ * Why demote one box instead of resetting: a character in Box 5 that is missed
+ * once is not forgotten, it slipped. Resetting to Box 1 forces a 14-day re-climb
+ * and reads as punishment to the learner. Anki uses the same partial-lapse idea.
  */
 const SpacedRepService = (() => {
-  const BOX_INTERVALS = [0, 1, 3, 7, 14]; // days until next review per box (0-indexed: box1=index0)
+  // days until next review per box (0-indexed: box1=index0)
+  const BOX_INTERVALS = [0, 1, 3, 7, 14, 30, 60];
+  const MAX_BOX = BOX_INTERVALS.length - 1; // highest box index, derived — never hardcode
   let _cache = null; // In-memory cache to avoid localStorage timing issues
 
   /** Get all spaced rep data for current profile */
@@ -527,18 +552,19 @@ const SpacedRepService = (() => {
     const lastMs = new Date(data[char].lastReview).getTime();
     const todayMs = new Date(today).getTime();
     const daysSince = Math.floor((todayMs - lastMs) / 86400000);
-    const interval = data[char].box < BOX_INTERVALS.length ? BOX_INTERVALS[data[char].box] : 14;
+    const interval = BOX_INTERVALS[Math.min(data[char].box, MAX_BOX)];
     const isDue = daysSince >= interval;
 
     if (correct) {
       data[char].correctStreak = (data[char].correctStreak || 0) + 1;
       // Only promote if the char is due (prevent same-day gaming)
-      if (isDue && data[char].box < 4) {
+      if (isDue && data[char].box < MAX_BOX) {
         data[char].box++;
       }
     } else {
-      // Drop back to Box 1 (always, regardless of due status)
-      data[char].box = 0;
+      // Demote one box, not reset to Box 1 (R4) — a missed Box 5 char slipped,
+      // it is not forgotten. Clamped at 0 so it never goes negative.
+      data[char].box = Math.max(0, data[char].box - 1);
       data[char].correctStreak = 0;
     }
 
@@ -559,7 +585,7 @@ const SpacedRepService = (() => {
     for (const [char, info] of Object.entries(data)) {
       const lastMs = new Date(info.lastReview).getTime();
       const daysSince = Math.floor((todayMs - lastMs) / 86400000);
-      const interval = info.box < BOX_INTERVALS.length ? BOX_INTERVALS[info.box] : 14;
+      const interval = BOX_INTERVALS[Math.min(info.box, MAX_BOX)];
 
       if (daysSince >= interval) {
         due.push(char);
@@ -587,13 +613,16 @@ const SpacedRepService = (() => {
 
   /**
    * Get box distribution stats.
-   * @returns {Object} {box1: N, box2: N, box3: N, box4: N, box5: N}
+   * Keys are derived from BOX_INTERVALS so adding a box needs no change here.
+   * @returns {Object} {box1: N, ... box7: N}
    */
   function getStats() {
     const data = _getData();
-    const stats = { box1: 0, box2: 0, box3: 0, box4: 0, box5: 0 };
+    const stats = {};
+    for (let i = 0; i < BOX_INTERVALS.length; i++) stats[`box${i + 1}`] = 0;
     for (const info of Object.values(data)) {
-      stats[`box${info.box + 1}`]++;
+      const box = Math.min(info.box, MAX_BOX);
+      stats[`box${box + 1}`]++;
     }
     return stats;
   }
@@ -616,7 +645,7 @@ const SpacedRepService = (() => {
     for (const [char, info] of Object.entries(data)) {
       const lastMs = new Date(info.lastReview).getTime();
       const daysSince = Math.floor((todayMs - lastMs) / 86400000);
-      const interval = info.box < BOX_INTERVALS.length ? BOX_INTERVALS[info.box] : 14;
+      const interval = BOX_INTERVALS[Math.min(info.box, MAX_BOX)];
       const isDue = daysSince >= interval;
 
       if (isDue) {
@@ -626,19 +655,28 @@ const SpacedRepService = (() => {
           result.scheduledReview.push(char);
         }
       } else {
+        // Not due — bucket by how far up the boxes the char has climbed.
+        // Box 1 not-due is impossible (interval=0); Box 2 not-due = just learned
+        // today, deliberately not shown. Boxes 5+ all count as mastered so that
+        // adding boxes 6-7 did not silently drop chars out of every category.
         if (info.box === 2) {
           result.familiar.push(char);
         } else if (info.box === 3) {
           result.almostMastered.push(char);
-        } else if (info.box === 4) {
+        } else if (info.box >= 4) {
           result.mastered.push(char);
         }
-        // Box 1 not-due is impossible (interval=0), Box 2 not-due = just learned today, not shown
       }
     }
 
     return result;
   }
 
-  return { recordAnswer, getDueChars, getDueCount, getTotalCount, getStats, getCategorizedChars, resetCache };
+  return {
+    recordAnswer, getDueChars, getDueCount, getTotalCount, getStats,
+    getCategorizedChars, resetCache,
+    // Exposed so tests assert against the real schedule instead of a copy of it
+    getBoxIntervals: () => [...BOX_INTERVALS],
+    getMaxBox: () => MAX_BOX
+  };
 })();

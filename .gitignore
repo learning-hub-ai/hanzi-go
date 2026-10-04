@@ -9,3 +9,6 @@ server.log
 
 # 调试页，本地用
 debug.html
+
+# 测试用虚拟环境（headless runner 需要 websocket-client）
+.venv/

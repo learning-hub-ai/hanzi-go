@@ -105,6 +105,28 @@ localStorage 存进度，service worker 做离线。IIFE 模块模式以兼容�
 
 浏览器要求：Chrome / Edge 88+、Safari 14+（iOS / macOS）、Firefox 85+、微信内置浏览器。
 
+## 测试
+
+两层：
+
+```bash
+bash pre-push.sh        # 15 项静态检查，推送前自动跑
+```
+
+```bash
+# 浏览器测试：153 项，用隐藏 iframe 加载真实 app
+python3 -m http.server 8080     # 然后开 http://localhost:8080/test.html 点 Run
+
+# 或者无头跑（需要 websocket-client）
+python3 -m venv .venv && .venv/bin/pip install websocket-client
+.venv/bin/python scripts/run_tests_headless.py
+```
+
+无头脚本自己起 http server、用 CDP 驱动 Chrome、全过返回 0。
+`test.html?autorun=1` 可以免点按钮。
+
+规矩：改了行为就改测试的预期值，不是放宽断言。
+
 `pre-push.sh` 在推送前跑 15 项检查（service worker 合法性、可点元素可达性等）。
 
 ## 许可
