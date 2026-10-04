@@ -258,6 +258,11 @@ main{
 .quiz-container{text-align:center;width:100%;position:relative;z-index:5}
 .quiz-char{font-size:72px;margin:var(--s4) 0;color:var(--text)}
 .quiz-options{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3);margin:var(--s4) 0}
+/* Keep the last option clear of anything pinned to the bottom of the viewport.
+   On a 568px screen the options ran to the very edge, so one stray fixed
+   element (the daily-task floating button) made the last answer unclickable.
+   Clearance belongs in the layout, not in remembering to remove overlays. */
+.quiz-options{padding-bottom:var(--s6, 32px)}
 .quiz-option{
   padding:var(--s3) var(--s4);border-radius:var(--radius-sm);border:1px solid var(--border);
   background:#fff;font-size:18px;cursor:pointer;transition:all var(--duration-fast) ease;
@@ -686,8 +691,77 @@ main{
 .form-msg--ok{color:var(--success,#059669)}
 .form-msg--err{color:var(--danger,#991b1b)}
 
-/* 使用说明 modal */
-.help-h{font-size:13px;color:var(--primary);margin:18px 0 6px;font-weight:700}
-.help-h:first-of-type{margin-top:0}
-.help-list{font-size:13px;color:var(--text-secondary);margin:0;padding-left:20px;line-height:1.7}
-.help-list li{margin-bottom:4px}
+/* Wider modal for reading-heavy panels (使用说明).
+   The default 380px makes prose wrap every few words. min() against the
+   viewport is what keeps it on screen — a plain max-width made the box 468px
+   wide on a 390px phone, i.e. wider than the device. */
+/* The reading panel gets more height than the default 80vh: at 80vh a 1080px
+   screen gives 864px of box for ~1128px of content, so it scrolled even with
+   room to spare on screen. */
+.modal.modal--wide{max-width:min(1180px, calc(100vw - 2 * var(--s4)));max-height:94vh}
+
+
+/* 说明页：开头一句定位（借 qinshihuang/how-to-use.html 的 .lead） */
+/* Same box as the sections below it, so the opening paragraph does not read
+   as a narrower, differently-shaped element. */
+.help-lead{font-size:14px;color:var(--text);background:var(--primary-bg,#eef2ff);
+  border:1px solid #c7d2fe;border-radius:var(--radius-sm);padding:11px 12px;margin:0 0 14px;line-height:1.7}
+/* 说明页：小节 = 带标题栏的方框
+   Bold alone did not separate the levels: section titles were 14px/700 and
+   item names 13px/600, too close to scan. Borrowed from
+   qinshihuang/how-to-use.html, which makes each h2 a tinted band on a
+   bordered section — structure you can see without reading. */
+.help-block{border:1px solid var(--border);border-radius:var(--radius-sm);margin:0 0 14px;overflow:hidden}
+/* Two columns on a wide screen so the whole panel fits one view. Stacked in a
+   1040px column it needed 1272px of height against ~720px available on a
+   laptop — the width was there, the layout was not using it.
+   `columns` keeps source order and lets blocks flow; break-inside stops a
+   section being split across the gap. */
+@media (min-width:900px){
+  .help-cols{columns:2;column-gap:14px}
+  .help-cols > .help-block{break-inside:avoid;-webkit-column-break-inside:avoid;margin:0 0 14px}
+}
+.help-sec{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;
+  background:var(--border);border-bottom:1px solid #cbd5e1;padding:8px 12px}
+.help-sec-t{font-size:14px;font-weight:700;color:var(--text)}
+.help-sec-s{font-size:12px;color:var(--text-muted)}
+.help-body{padding:4px 12px 8px}
+/* The closing note is not part of any block — give it room */
+.help-foot{font-size:12px;color:var(--text-muted);margin:14px 0 0}
+/* 说明页：每日任务五步，横排步骤条 */
+.help-steps{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:0 0 6px}
+.help-step{border:1px solid var(--border);border-top:3px solid var(--primary);
+  border-radius:0 0 4px 4px;padding:6px 7px;font-size:11px;line-height:1.4}
+.help-step-n{font-weight:700;color:var(--primary);font-size:11px}
+.help-step-t{font-weight:600;color:var(--text);margin-top:1px}
+@media (max-width:640px){.help-steps{grid-template-columns:repeat(2,1fr)}}
+/* 说明页：条目表 */
+.help-row{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--border-light)}
+.help-row:last-child{border-bottom:none}
+.help-row-k{flex:0 0 112px;font-size:13px;font-weight:600;color:var(--text)}
+@media (min-width:720px) and (max-width:899px){.help-row-k{flex:0 0 140px}}
+/* Cap the text measure so the extra desktop width does not produce
+   over-long lines. Expressed in em, NOT ch: `ch` is the width of the digit
+   zero (about half an em), so 62ch came out at 403px — narrower than before.
+   One CJK character is ~1em, so 50em ≈ 50 characters per line. */
+.help-row-v{flex:1;font-size:13px;color:var(--text-secondary);line-height:1.65;max-width:56em}
+/* In two-column mode each column is ~500px, so the cap is the column itself. */
+@media (min-width:900px){.help-row-v{max-width:none}}
+@media (max-width:560px){.help-row{flex-direction:column;gap:2px}.help-row-k{flex:none}}
+
+/* Tighten the reading panel on wide screens so the whole thing fits one view.
+   Two columns got content from 1272px to 1128px; this closes the last ~110px
+   without shrinking the body text. */
+@media (min-width:900px){
+  .modal.modal--wide{padding:var(--s4)}
+  .help-lead{padding:9px 11px;margin:0 0 11px;line-height:1.6}
+  .help-cols{column-gap:12px}
+  .help-cols > .help-block{margin:0 0 11px}
+  .help-sec{padding:6px 11px}
+  .help-body{padding:2px 11px 6px}
+  .help-row{padding:7px 0}
+  .help-row-v{line-height:1.6}
+  .help-steps{gap:5px}
+  .help-step{padding:5px 6px}
+  .help-foot{margin:9px 0 0}
+}

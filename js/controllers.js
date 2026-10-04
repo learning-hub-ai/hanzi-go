@@ -631,12 +631,31 @@ const AppController = (() => {
     }
   }
 
+  /**
+   * Remove the daily-task floating controls.
+   *
+   * These are appended to document.body with position:fixed, so they survive
+   * a mode switch — the daily task only cleared them on its own re-render.
+   * Left behind, the 「已看 N/M · 继续翻看」 button sat over the last quiz
+   * option in 挑战 and made it unclickable on short screens.
+   *
+   * @param {string} mode - the mode being switched to
+   */
+  function _clearDailyTaskOverlays(mode) {
+    if (mode === 'dailyTask') return;   // the daily task owns them
+    ['dtFloatingBtn', 'dtTaskBanner', 'dtReturnBtn'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.remove();
+    });
+  }
+
   function switchMode(newMode) {
     State.set('mode', newMode);
     document.querySelectorAll('.mode-tab').forEach(t => {
       t.classList.toggle('active', t.dataset.mode === newMode);
     });
     _syncSidebarSelection(newMode);
+    _clearDailyTaskOverlays(newMode);
     // Mode switch UI
     const learnEl = document.getElementById('learnMode');
     const challengeEl = document.getElementById('challengeMode');
@@ -1024,7 +1043,7 @@ const AppController = (() => {
   }
 
   function showHelp() {
-    ModalUI.show('❓ 使用说明', ModalUI.renderHelp());
+    ModalUI.show('❓ 使用说明', ModalUI.renderHelp(), { wide: true });
   }
 
   function showReport() {

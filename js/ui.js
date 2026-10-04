@@ -251,9 +251,21 @@ const QuizUI = (() => {
 /** Modal UI — generic modal for displaying lists and content */
 const ModalUI = (() => {
   /** Show a modal with given title and HTML content */
-  function show(title, html) {
+  /**
+   * Show the modal.
+   *
+   * @param {string} title
+   * @param {string} html
+   * @param {Object} [opts]
+   * @param {boolean} [opts.wide] - wider box for reading-heavy panels. The
+   *   default 380px suits character lists; prose at that width wraps every
+   *   few words and becomes a ribbon.
+   */
+  function show(title, html, opts) {
     document.getElementById('modalTitle').textContent = title;
     document.getElementById('modalContent').innerHTML = html;
+    const box = document.getElementById('modalBox');
+    if (box) box.classList.toggle('modal--wide', !!(opts && opts.wide));
     document.getElementById('modalOverlay').classList.add('show');
   }
 
@@ -471,60 +483,67 @@ const ModalUI = (() => {
   function renderHelp() {
     const perRound = State.config('questionsPerRound', 10);
     const toRemove = State.config('wrongAnswersToRemoveFromErrorBook', 2);
+    const schedule = (typeof SpacedRepService !== 'undefined')
+      ? SpacedRepService.getBoxIntervals().join('→') : '';
+
+    const row = (k, v) =>
+      `<div class="help-row"><div class="help-row-k">${k}</div><div class="help-row-v">${v}</div></div>`;
+    /** One section: a titled band over its own bordered box. */
+    const block = (title, subtitle, body) =>
+      `<div class="help-block">
+        <div class="help-sec"><span class="help-sec-t">${title}</span><span class="help-sec-s">${subtitle}</span></div>
+        <div class="help-body">${body}</div>
+      </div>`;
+
+    const STEPS = [
+      ['①', '复习', '该复习的字'],
+      ['②', '回顾上课', '上一课的字'],
+      ['③', '学习新字', '今天的新字'],
+      ['④', '闯关测验', '检查记住了没'],
+      ['⑤', '完成', '连续天数 +1']
+    ];
+    const steps = `<div class="help-steps">${STEPS.map(([n, t, d]) => `<div class="help-step">
+      <div class="help-step-n">${n}</div><div class="help-step-t">${t}</div><div>${d}</div></div>`).join('')}</div>
+      <p class="help-row-v" style="margin:6px 0 0">漏一天不要紧，第二天补上照样连着算；隔两天才从头数。</p>`;
+
     return `
-    <p style="color:#475569;margin:0 0 16px">每天打开先做 <strong>📖 任务</strong> —— 它会自己挑该学和该复习的字。
-    其它地方都是「想多练点什么」的时候才用。</p>
+    <p class="help-lead">每天打开先做 <strong>📖 任务</strong> —— 该学哪些新字、该复习哪些旧字，
+    它都替你排好了，照着做完就算一天，连续天数会自己往上加。
+    下面这些地方都不是必须的：等任务做完了，还想多练一会儿，再按自己的想法挑 ——
+    想把某一课再翻一遍、想专门补那几个总记不住的字、想加几个课本里没有的词，都在下面。</p>
 
-    <h4 class="help-h">上面三个标签</h4>
-    <div class="modal-item"><span><strong>📖 任务</strong><br>
-      <small>每天的主线，五步：复习 → 回顾上课 → 学习新字 → 闯关测验 → 完成。
-      做完就算一天，连续天数 +1。漏一天不要紧，第二天补上照样连着算。</small></span></div>
-    <div class="modal-item"><span><strong>📚 学习</strong><br>
-      <small>翻卡片。正面是字，点一下翻到背面看拼音、组词、例句；点字会朗读。
-      左边选哪一课，就只看那一课的字。</small></span></div>
-    <div class="modal-item"><span><strong>🎮 挑战</strong><br>
-      <small>做题，每轮 ${perRound} 道。四种题型可选：字→音、音→字、字→词、填空，
-      也可以混着来。答错的字会自动进错题本。</small></span></div>
+    <div class="help-cols">
+    ${block('📖 任务', '每天的主线，五步做完', steps)}
 
-    <h4 class="help-h">左边「复习区」四项</h4>
-    <div class="modal-item"><span><strong>📈 智能复习</strong><br>
-      <small>这一项是<strong>自动算出来的</strong>：哪个字该复习了，它说了算。
-      刚学会的字隔一天再问，记牢了就慢慢拉长到一周、两周、一个月。
-      所以它每天内容都不一样 —— 不用自己挑，照着练就行。</small></span></div>
-    <div class="modal-item"><span><strong>❤️ 练生字</strong><br>
-      <small>你自己❤️收藏的字。看卡片时点右上角的心就收进来，再点一下取消。</small></span></div>
-    <div class="modal-item"><span><strong>📖 练错题</strong><br>
-      <small>答错过的字。<strong>连续答对 ${toRemove} 次才会自动移出去</strong> ——
-      不能手动删，这正是它的用处：错过的字必须真正学会才算过关。</small></span></div>
-    <div class="modal-item"><span><strong>✏️ 自定义</strong><br>
-      <small>课本里没有、但你想记的词：故事里看到的、瑞典语课上的、人名都行。
-      填好正面和反面就能加，一张接一张，按 Enter 就行。
-      <strong>拼音填了才能用在挑战里</strong>（不填也能当卡片翻）。
-      卡片上的 🗑 要点两次才删 —— 自定义卡只有这一份，删了找不回来。</small></span></div>
+    ${block('📚 学习 和 🎮 挑战', '想多练的时候自己挑：一个看答案，一个考你',
+      row('📚 学习', '翻卡片。正面是字，点一下翻到背面看拼音、组词、例句；点字会朗读。选了哪一课，就只看那一课的字。') +
+      row('🎮 挑战', `做题，每轮 ${perRound} 道。四种题型：字→音、音→字、字→词、填空，也能混着来。答错的字自动进错题本。`))}
 
-    <h4 class="help-h">右上角几个按钮</h4>
-    <div class="modal-item"><span><strong>❤️ 生字本 / 📖 错题本</strong><br>
-      <small>看这两批字都有哪些、删掉收藏。想拿来练就点左边那两项。</small></span></div>
-    <div class="modal-item"><span><strong>🏆 成就墙</strong><br>
-      <small>徽章和累计数据。识字量到 50、100、200、500、1000、2000 各有一个。</small></span></div>
-    <div class="modal-item"><span><strong>👧 切换用户</strong><br>
-      <small>一台设备可以几个人分开用，各自的进度、收藏、错题互不影响。</small></span></div>
+    ${block('🎯 复习区', '四批字，来路不同 —— 两批自动挑，两批你自己挑',
+      row('📈 智能复习', '<strong>自动算出来的</strong> —— 哪个字该复习了，它说了算。刚学会的隔一天再问，记牢了拉长到一周、两周、一个月。每天内容都不一样，照着练就行。') +
+      row('❤️ 练生字', '你自己收藏的字。看卡片时点卡片上的 ❤️ 收进来，再点一下取消。') +
+      row('📖 练错题', `答错过的字。<strong>连续答对 ${toRemove} 次才自动移出去</strong> —— 不能手动删。这正是它的用处：错过的字得真学会才算过关。`) +
+      row('✏️ 自定义', '课本没有、但你想记的词 —— 故事里看到的、中文课上的、人名都行。填好正面反面就能加，一张接一张按 Enter。<strong>拼音填了才能用在挑战里</strong>（不填也能当卡片翻）。卡片上的 🗑 要点两次才删，因为只有这一份。'))}
 
-    <h4 class="help-h">给家长</h4>
-    <p style="font-size:13px;color:#475569;margin:0 0 10px"><strong>📊 学习报告</strong>
-    是给你看的，一屏读完：</p>
-    <ul class="help-list">
-      <li><strong>已掌握 / 在学 / 需加强</strong> —— 按复习间隔分的三档，不是正确率</li>
-      <li><strong>最近七天</strong> —— 哪天做了任务。从加这个功能那天开始记，之前没有数据</li>
-      <li><strong>这些字反复出错</strong> —— 真正值得一起看的字：既没升上去、又错过三次以上。
-          只看「刚学的字」会把今天刚学会的也算进来，所以要两个条件</li>
-    </ul>
-    <p style="font-size:13px;color:#475569;margin:10px 0 0">
-    复习间隔是 0→1→3→7→14→30→60 天：答对往上走一级，答错只退一级（不是回到头）。
-    所以偶尔手滑不会毁掉进度，但真没记住的字会一直回来。</p>
+    ${block('本子和设置', '看看自己已经学了多少 —— 攒徽章、换用户都在这',
+      row('❤️ 生字本<br>📖 错题本', '看这两批字都有哪些、取消收藏。想拿来练，就点复习区里的 练生字 / 练错题。') +
+      row('🏆 成就墙', '学到的字越多，徽章越多 —— 识字量 50、100、200、500、1000、2000 各有一个，还有连续天数和满分的徽章。累计数据也在这里。') +
+      row('👧 切换用户', '当前设备上几个人分开用，进度、收藏、错题互不影响。'))}
 
-    <p style="font-size:12px;color:#94a3b8;margin-top:16px">
-    手机上可以「添加到主屏幕」，之后没网也能用。</p>`;
+    ${block('给家长', '📊 学习报告 是给你看的',
+      row('已掌握 / 在学<br>需加强', '按复习间隔分的三档，不是正确率。') +
+      row('最近七天', '哪天做了任务。从加这个功能那天开始记，之前没有数据。') +
+      row('这些字反复出错', '真正值得一起看的字：既没升上去、又错过三次以上。只看「刚学的字」会把今天刚学会的也算进来，所以要两个条件。') +
+      row('复习间隔', `${schedule} 天。答对往上走一级，答错只退一级（不是回到头）—— 偶尔手滑不会毁掉进度，真没记住的字会一直回来。`))}
+
+    ${block('数据存在哪', '现在只存在当前设备上',
+      row('存在本机', '进度、收藏、错题、徽章、自定义卡片全都存在浏览器里（localStorage），<strong>不会上传</strong>。所以没网也能用，也没人能看到你的数据。') +
+      row('换设备不会跟过去', '换手机、换电脑、清掉浏览器数据，记录就没了 —— 这是现在的做法带来的代价。换用户只是在当前设备上分开记，不是云账号。') +
+      row('以后想做什么', '打算加一个后台存储：这样记录能跨设备跟着走，还能让几个小朋友看到彼此的进度、互相鼓劲。还在计划中，请再等等。')
+    )}
+    </div>
+
+    <p class="help-foot">手机上可以「添加到主屏幕」，之后没网也能用。</p>`;
   }
 
   return { show, close, renderFavorites, renderErrorBook, renderBadges, renderReport, renderCustomCards, renderCustomCardList, renderHelp };

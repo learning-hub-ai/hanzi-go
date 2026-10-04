@@ -1945,7 +1945,219 @@ async function runTests() {
       assert(html.includes('\u7ed9\u5bb6\u957f'), 'should have a 给家长 section');
       // Box levels are meaningless to a 10-year-old; they belong in that section
       const parentPart = html.slice(html.indexOf('\u7ed9\u5bb6\u957f'));
-      assert(parentPart.includes('\u95f4\u9694'), 'interval explanation belongs in the parent section');
+      assert(parentPart.includes('\u590d\u4e60\u95f4\u9694'), 'interval explanation belongs in the parent section');
+    });
+
+    it('Help: the text measure is capped so wide screens do not make long lines', () => {
+      // Extra desktop width should become margin, not 70-character lines.
+      // Expressed in em, not ch: `ch` is the width of "0" (~half an em), which
+      // once made the measure NARROWER than before the modal was widened.
+      frame.contentDocument.getElementById('btnHelp').click();
+      const row = frame.contentDocument.querySelector('.help-row-v');
+      const box = frame.contentDocument.getElementById('modalBox');
+      const rowW = row.getBoundingClientRect().width;
+      const fontPx = parseFloat(frame.contentWindow.getComputedStyle(row).fontSize);
+      const chars = rowW / fontPx;          // one CJK char ≈ 1em
+      assert(chars <= 56, `about ${Math.round(chars)} chars per line — too long to track`);
+
+      // Headless runs at a narrow viewport, so the rendered line is always
+      // short here and the check above cannot see a desktop regression.
+      // Assert the declared cap as well, which is viewport-independent.
+      const capChars = parseFloat(frame.contentWindow.getComputedStyle(row).maxWidth) / fontPx;
+      assert(capChars <= 58,
+        `the measure cap allows about ${Math.round(capChars)} chars per line — too long on a wide screen`);
+
+      // The lower bound cannot be checked at the current viewport (the modal is
+      // only as wide as the screen allows), so assert the declared cap instead.
+      // A `ch` unit here would compute to roughly half the intended width.
+      const declared = frame.contentWindow.getComputedStyle(row).maxWidth;
+      const capEm = parseFloat(declared) / fontPx;
+      // 50em resolves to 650px here; 62ch to 447px — a 45% difference, and the
+      // ch version computes to ~34 characters, so the bound has to sit above it.
+      assert(capEm >= 44,
+        `the measure cap resolves to about ${Math.round(capEm)} characters (${declared}) — ` +
+        'too narrow; note 1ch is about half a CJK character, so use em');
+      app.ModalUI.close();
+    });
+
+    it('Help: the wide modal never exceeds the viewport', () => {
+      // A plain max-width:640px made the box 468px on a 390px phone — wider
+      // than the screen. min() against 100vw is what prevents that.
+      frame.contentDocument.getElementById('btnHelp').click();
+      const box = frame.contentDocument.getElementById('modalBox');
+      const boxW = box.getBoundingClientRect().width;
+      const viewW = frame.contentWindow.innerWidth;
+      assert(boxW <= viewW,
+        `modal is ${Math.round(boxW)}px in a ${viewW}px viewport — it must fit`);
+      const content = frame.contentDocument.getElementById('modalContent');
+      assert(content.scrollWidth <= content.clientWidth + 1,
+        'help content must not scroll horizontally');
+      app.ModalUI.close();
+    });
+
+    it('Help: opens in the wide modal, other panels do not', () => {
+      // Prose at the default 380px wraps every few words. The wide variant is
+      // opt-in so character lists keep the narrow box.
+      frame.contentDocument.getElementById('btnHelp').click();
+      const box = frame.contentDocument.getElementById('modalBox');
+      assert(box.classList.contains('modal--wide'), 'help should use the wide modal');
+      assertGreater(box.getBoundingClientRect().width, 400,
+        `expected a wider box, got ${Math.round(box.getBoundingClientRect().width)}px`);
+      app.ModalUI.close();
+
+      app.AppController.showBadges();
+      assert(!frame.contentDocument.getElementById('modalBox').classList.contains('modal--wide'),
+        'the wide class must be removed again for normal panels');
+      app.ModalUI.close();
+    });
+
+    it('Help: the daily task is shown as five numbered steps', () => {
+      const html = app.ModalUI.renderHelp();
+      const steps = (html.match(/class="help-step"/g) || []).length;
+      assertEqual(steps, 5, `the daily task has 5 steps, help shows ${steps}`);
+      for (const t of ['\u590d\u4e60', '\u56de\u987e\u4e0a\u8bfe', '\u5b66\u4e60\u65b0\u5b57', '\u95ef\u5173\u6d4b\u9a8c']) {
+        assert(html.includes(t), `step "${t}" missing — must match the names in daily-task.js`);
+      }
+    });
+
+    it('Help: does not rely on where things sit on screen', () => {
+      // 上面/左边/右上角 are all wrong on a phone: the tabs move to the bottom
+      // bar and the sidebar becomes a drawer. Name things instead of pointing.
+      const html = app.ModalUI.renderHelp();
+      const positional = ['\u4e0a\u9762', '\u5de6\u8fb9', '\u53f3\u4e0a\u89d2'];
+      const found = positional.filter(w => html.includes(w));
+      assertEqual(found.length, 0,
+        `help text points at screen positions (${found.join(', ')}) — wrong on mobile`);
+    });
+
+    it('Help: says what separates 学习 from 挑战', () => {
+      // "想单独练的时候用" did not answer the actual question: one shows you the
+      // answer, the other asks for it.
+      const html = app.ModalUI.renderHelp();
+      assert(html.includes('\u770b\u7b54\u6848') && html.includes('\u8003\u4f60'),
+        'the 学习/挑战 section should contrast showing the answer with being tested');
+    });
+
+    it('Help: each section is a bordered block with a tinted title band', () => {
+      // Bold alone did not separate the levels — section titles were 14px/700
+      // and item names 13px/600, too close to scan. Structure is carried by
+      // shape (box + band), the way qinshihuang/how-to-use.html does it.
+      frame.contentDocument.getElementById('btnHelp').click();
+      const blocks = frame.contentDocument.querySelectorAll('.help-block');
+      assertEqual(blocks.length, 6, `expected 6 sections, got ${blocks.length}`);
+
+      const band = frame.contentWindow.getComputedStyle(
+        frame.contentDocument.querySelector('.help-sec'));
+      assert(band.backgroundColor !== 'rgba(0, 0, 0, 0)' && band.backgroundColor !== 'transparent',
+        'the title band needs a background to read as a band');
+      assert(parseFloat(band.borderBottomWidth) > 0,
+        'a rule under the band separates it from the body (the left accent rule was removed by request)');
+
+      const box = frame.contentWindow.getComputedStyle(blocks[0]);
+      assert(parseFloat(box.borderTopWidth) > 0, 'sections should be boxed');
+      app.ModalUI.close();
+    });
+
+    it('Help: the title band is actually distinguishable from the body', () => {
+      // #f1f5f9 on white is 1.10:1 — technically a colour, visually nothing.
+      frame.contentDocument.getElementById('btnHelp').click();
+      const win = frame.contentWindow;
+      const parse = (c) => (c.match(/\d+/g) || []).slice(0, 3).map(Number);
+      const lum = ([r, g, b]) => {
+        const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+      };
+      const bandBg = parse(win.getComputedStyle(frame.contentDocument.querySelector('.help-sec')).backgroundColor);
+      const l1 = lum(bandBg), l2 = lum([255, 255, 255]);
+      const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+      assert(ratio >= 1.18,
+        `band-to-body contrast is ${ratio.toFixed(2)}:1 — too faint to see the boundary`);
+      app.ModalUI.close();
+    });
+
+    it('Help: the opening paragraph is as wide as the sections below it', () => {
+      // It used to be a narrower, differently-shaped element, which read as if
+      // it belonged to something else.
+      frame.contentDocument.getElementById('btnHelp').click();
+      const lead = frame.contentDocument.querySelector('.help-lead').getBoundingClientRect();
+      const block = frame.contentDocument.querySelector('.help-block').getBoundingClientRect();
+      assert(Math.abs(lead.width - block.width) <= 2,
+        `lead is ${Math.round(lead.width)}px but sections are ${Math.round(block.width)}px`);
+      app.ModalUI.close();
+    });
+
+    it('Help: section bands have no left accent rule', () => {
+      // Removed by request — the band background and the rule beneath it carry
+      // the separation on their own.
+      frame.contentDocument.getElementById('btnHelp').click();
+      const band = frame.contentWindow.getComputedStyle(
+        frame.contentDocument.querySelector('.help-sec'));
+      assertEqual(parseFloat(band.borderLeftWidth), 0,
+        'the vertical accent rule should be gone');
+      app.ModalUI.close();
+    });
+
+    it('Help: 本子和设置 is described by what it is for, not what it lacks', () => {
+      // "只看不练" defined the section by subtraction. It is where the child
+      // sees how much they have learned and switches profile — encouragement
+      // and convenience, not an absence of practice.
+      const html = app.ModalUI.renderHelp();
+      assert(!html.includes('\u53ea\u770b\u4e0d\u7ec3'),
+        'drop 只看不练 — it says what the section is not');
+      assert(html.includes('\u5b66\u4e86\u591a\u5c11'),
+        'say what it is for: seeing how much has been learned');
+    });
+
+    it('Help: explains where data is stored and that it does not sync', () => {
+      // A child losing all progress by switching phones should not be a surprise.
+      const html = app.ModalUI.renderHelp();
+      assert(html.includes('\u6570\u636e\u5b58\u5728\u54ea'), 'should have a storage section');
+      assert(html.includes('localStorage'), 'should name where the data actually lives');
+      assert(html.includes('\u4e0d\u4f1a\u4e0a\u4f20'), 'should say nothing is uploaded today');
+      assert(html.includes('\u6362\u8bbe\u5907'), 'should warn that switching devices loses the record');
+      assert(html.includes('\u540e\u53f0\u5b58\u50a8'), 'should mention the planned backend');
+      // The wording may change; what must not is that the backend reads as a
+      // plan, not a feature. Accept any of the phrasings that say so.
+      assert(/\u8fd8\u5728\u8ba1\u5212|\u8ba1\u5212\u4e2d|\u8fd8\u6ca1\u505a|\u5c1a\u672a/.test(html),
+        'must be clear the backend does not exist yet');
+    });
+
+    it('Help: uses two columns on a wide screen, one on a narrow one', () => {
+      // Stacked single-file in a 1040px box the panel needed 1272px of height
+      // against ~720px available — the width was there, unused.
+      frame.contentDocument.getElementById('btnHelp').click();
+      const cols = frame.contentDocument.querySelector('.help-cols');
+      assert(cols, 'sections should be wrapped in a column container');
+      const count = frame.contentWindow.getComputedStyle(cols).columnCount;
+      const boxW = frame.contentDocument.getElementById('modalBox').getBoundingClientRect().width;
+      if (boxW >= 900) {
+        assertEqual(count, '2', `wide panel should use 2 columns, got ${count}`);
+      } else {
+        assert(count === 'auto' || count === '1',
+          `narrow panel should stay single-column, got ${count}`);
+      }
+      app.ModalUI.close();
+    });
+
+    it('Help: a section is never split across the column gap', () => {
+      frame.contentDocument.getElementById('btnHelp').click();
+      const blocks = Array.from(frame.contentDocument.querySelectorAll('.help-cols > .help-block'));
+      assertGreater(blocks.length, 0, 'blocks should be inside the column container');
+      const boxW = frame.contentDocument.getElementById('modalBox').getBoundingClientRect().width;
+      if (boxW >= 900) {
+        const bad = blocks.filter(b =>
+          frame.contentWindow.getComputedStyle(b).breakInside !== 'avoid');
+        assertEqual(bad.length, 0, `${bad.length} sections could break across columns`);
+      }
+      app.ModalUI.close();
+    });
+
+
+    it('Help: opens with an orienting line, not straight into a list', () => {
+      const html = app.ModalUI.renderHelp();
+      assert(html.includes('help-lead'), 'should open with a lead paragraph');
+      assert(html.indexOf('help-lead') < html.indexOf('help-sec'),
+        'the lead must come before the first section');
     });
 
     it('Help: is reachable from the mobile sheet too', () => {
@@ -1959,6 +2171,93 @@ async function runTests() {
     it('Help: no raw HTML injection from config values', () => {
       const html = app.ModalUI.renderHelp();
       assert(!html.includes('<script'), 'must not contain script tags');
+    });
+  });
+
+  describeWith('\u{1F4F1} Mode switch clears daily-task overlays', resetProfileData, () => {
+    function injectFloatingBtn() {
+      const doc = frame.contentDocument;
+      const old = doc.getElementById('dtFloatingBtn');
+      if (old) old.remove();
+      const b = doc.createElement('button');
+      b.id = 'dtFloatingBtn';
+      b.className = 'dt-floating-btn dt-floating-btn-disabled';
+      b.textContent = 'floating';
+      doc.body.appendChild(b);
+      return b;
+    }
+
+    it('leaving 任务 removes the floating button', () => {
+      // It is appended to document.body with position:fixed, so it survived a
+      // mode switch — the daily task only cleared it on its own re-render.
+      app.AppController.switchMode('dailyTask');
+      injectFloatingBtn();
+      app.AppController.switchMode('challenge');
+      assert(!frame.contentDocument.getElementById('dtFloatingBtn'),
+        'the 已看 N/M button must not follow the user into 挑战');
+    });
+
+    it('it does not cover the last quiz option', () => {
+      // Reported symptom: on a short phone the last answer was unclickable.
+      app.AppController.switchMode('dailyTask');
+      injectFloatingBtn();
+      app.AppController.switchMode('challenge');
+      app.ChallengeController.start();
+
+      const btn = frame.contentDocument.getElementById('dtFloatingBtn');
+      assert(!btn, 'precondition: the overlay should be gone');
+
+      const opts = Array.from(frame.contentDocument.querySelectorAll('#quizOptions > *'));
+      assertGreater(opts.length, 0, 'quiz should have rendered options');
+      // Nothing fixed to the viewport should intersect the options
+      const fixed = Array.from(frame.contentDocument.body.children).filter(el =>
+        frame.contentWindow.getComputedStyle(el).position === 'fixed' &&
+        el.offsetParent !== null);
+      const last = opts[opts.length - 1].getBoundingClientRect();
+      const covered = fixed.filter(el => {
+        const r = el.getBoundingClientRect();
+        if (!r.width || !r.height) return false;
+        return !(r.bottom < last.top || r.top > last.bottom ||
+                 r.right < last.left || r.left > last.right);
+      }).map(el => el.id || el.className);
+      assertEqual(covered.length, 0,
+        `these fixed elements cover the last option: ${covered.join(', ')}`);
+    });
+
+    it('the banner and return button are cleared too', () => {
+      const doc = frame.contentDocument;
+      app.AppController.switchMode('dailyTask');
+      for (const id of ['dtTaskBanner', 'dtReturnBtn']) {
+        const el = doc.createElement('div');
+        el.id = id;
+        doc.body.appendChild(el);
+      }
+      app.AppController.switchMode('learn');
+      for (const id of ['dtTaskBanner', 'dtReturnBtn']) {
+        assert(!doc.getElementById(id), `#${id} should be removed when leaving 任务`);
+      }
+    });
+
+    it('entering 任务 leaves overlay management to the daily task', () => {
+      // _clearDailyTaskOverlays deliberately does nothing for mode==='dailyTask':
+      // DailyTaskController.render() clears and recreates these itself
+      // (daily-task.js:380). Two owners would fight over them.
+      const doc = frame.contentDocument;
+      app.AppController.switchMode('challenge');
+      injectFloatingBtn();                       // stray overlay in 挑战
+      app.AppController.switchMode('dailyTask'); // render() should tidy up
+      assert(!doc.getElementById('dtFloatingBtn'),
+        'the daily task re-render is what clears its own controls');
+    });
+
+    it('quiz options keep clearance at the bottom of the layout', () => {
+      // Belt and braces: clearance in the layout means one stray fixed element
+      // cannot make an answer unreachable again.
+      app.AppController.switchMode('challenge');
+      app.ChallengeController.start();
+      const optsEl = frame.contentDocument.getElementById('quizOptions');
+      const pad = parseFloat(frame.contentWindow.getComputedStyle(optsEl).paddingBottom);
+      assertGreater(pad, 0, 'the options grid should reserve space below the last row');
     });
   });
 
