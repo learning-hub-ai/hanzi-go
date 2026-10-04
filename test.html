@@ -2120,7 +2120,10 @@ async function runTests() {
       const html = app.ModalUI.renderHelp();
       assert(html.includes('\u7248\u6743'), 'should have a copyright section');
       assert(html.includes('\u4fdd\u7559\u6240\u6709\u6743\u5229'), 'should say all rights reserved');
-      assert(html.includes('LICENSE'), 'should point at the full licence');
+      // The panel no longer points at LICENSE: the file and README carry the
+      // full text, and a child-facing panel repeating it added nothing.
+      assert(html.includes('\u672c\u9879\u76ee\u7684\u90e8\u5206'),
+        'should still say which part belongs to the project');
       assert(html.includes('\u8bf7\u6539\u4e3a\u653e\u94fe\u63a5'),
         'should say to link rather than copy — the practical ask');
       assert(!/\bMIT\b/.test(html), 'MIT was dropped; it permits what this forbids');
@@ -2156,8 +2159,11 @@ async function runTests() {
       const html = app.ModalUI.renderHelp();
       assert(html.includes('\u6559\u6750\u7f16\u8005\u53ca\u51fa\u7248\u793e'),
         'textbook content belongs to its publisher');
-      assert(html.includes('\u8bfe\u6587\u539f\u53e5'),
-        'should say the example sentences are taken from the textbook, not written here');
+      // The explicit 「例句是课文原句」 phrasing was trimmed, but the list must
+      // still name 例句 as textbook material rather than the project's work.
+      const textbookRow = html.slice(html.indexOf('\u6559\u6750\u90e8\u5206'));
+      assert(textbookRow.includes('\u4f8b\u53e5'),
+        'example sentences must be listed as textbook content');
       assert(!/\u7ec4\u8bcd\u548c\u4f8b\u53e5\u662f\u672c\u9879\u76ee\u5199\u7684/.test(html),
         'must not claim the words and sentences as original work');
       // And it must still say what IS the project's
