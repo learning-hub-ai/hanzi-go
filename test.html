@@ -92,10 +92,24 @@ function resetProfileData() {
   // custom card, say) leave filteredChars pointing at it, and the quiz draws
   // its pool from there — so a later test asking for 10 mixed questions got
   // one, from one character, and saw only one question type.
+  //
+  // Order matters: applyFilter() reads selectedGrade/selectedSemester, so those
+  // must be cleared BEFORE it runs. Setting them afterwards left it filtering
+  // by whatever the previous test had selected.
   if (app.DataService) {
-    app.DataService.applyFilter('all');
-    app.State.set('selectedGrade', '1');
+    app.State.set('selectedGrade', '');
+    app.State.set('selectedSemester', '');
     app.State.set('currentIndex', 0);
+    app.DataService.applyFilter('all');   // no grade/semester → the full set
+  }
+  // Fail loudly rather than letting a narrowed pool silently distort later
+  // assertions — that is exactly how this bug hid twice.
+  if (app.State.get('allChars') && app.State.get('allChars').length) {
+    const pool = app.State.get('filteredChars') || [];
+    if (pool.length < app.State.get('allChars').length) {
+      throw new Error(
+        `resetProfileData 没能恢复全量题库：filteredChars=${pool.length} / allChars=${app.State.get('allChars').length}`);
+    }
   }
   if (app.FilterUI) {
     app.FilterUI.updateFavCount();
@@ -2990,6 +3004,11 @@ async function runTests() {
   });
 
   renderResults();
+
+  // Leave the app in a usable state. Tests narrow filteredChars to tiny
+  // collections; without this the page you are looking at after a run has a
+  // one-character study set, which is confusing and looks like a bug.
+  try { resetProfileData(); } catch (e) { /* reporting already done */ }
 }
 
 // Allow headless/CI runs without a click: test.html?autorun=1
