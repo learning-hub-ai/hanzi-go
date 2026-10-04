@@ -1213,7 +1213,7 @@ const AppController = (() => {
             <button class="pinyin-toggle" id="btnPinyinToggle">拼音</button>
             <button class="fav-btn" id="favBtn">🤍</button>
             <button class="fav-btn hidden" id="btnDeleteCard" title="删除这张卡片" aria-label="删除这张卡片">🗑</button>
-            <div class="card-char char-display" id="cardChar">天</div>
+            <div class="card-char char-display" id="cardChar" role="button" aria-label="点击朗读" title="点击朗读">天</div>
             <div class="card-pinyin-small hidden" id="cardPinyinSmall">tiān</div>
             <div class="card-hint">点击翻转 →</div>
           </div>
@@ -1377,6 +1377,13 @@ const AppController = (() => {
 
     // --- Learning mode: card interactions ---
     document.getElementById('flashcard').addEventListener('click', LearnController.flip);
+    // Tapping the character speaks it. index.html has always declared this
+    // (role="button" title="点击朗读") but nothing was ever bound, so the card
+    // just flipped — stopPropagation keeps the flip handler above from firing.
+    document.getElementById('cardChar').addEventListener('click', (e) => {
+      e.stopPropagation();
+      LearnController.speakCurrent();
+    });
     document.getElementById('btnPinyinToggle').addEventListener('click', (e) => { e.stopPropagation(); LearnController.togglePinyin(); });
     document.getElementById('favBtn').addEventListener('click', (e) => { e.stopPropagation(); LearnController.toggleFavorite(); });
     document.getElementById('btnPrev').addEventListener('click', LearnController.prev);

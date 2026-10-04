@@ -1875,6 +1875,58 @@ async function runTests() {
     });
   });
 
+  describeWith('\u{1F50A} Tap the character to hear it', resetProfileData, () => {
+    function showACard() {
+      app.AppController.switchMode('learn');
+      app.AppController.selectSemester('1', '1');
+      app.LearnController.showCurrent();
+    }
+
+    it('tapping the character speaks it', () => {
+      // The help text claimed this and it was false: index.html declared
+      // role="button" title="点击朗读" but nothing was ever bound, so a tap
+      // only flipped the card. Found by checking the help text against the code.
+      showACard();
+      const real = app.Speech.speak;
+      let spoken = null;
+      app.Speech.speak = (t) => { spoken = t; };
+      try {
+        frame.contentDocument.getElementById('cardChar').click();
+      } finally { app.Speech.speak = real; }
+      assert(spoken, 'tapping the character should speak it');
+    });
+
+    it('tapping the character does not also flip the card', () => {
+      showACard();
+      const card = frame.contentDocument.getElementById('flashcard');
+      const before = card.classList.contains('flipped');
+      const real = app.Speech.speak;
+      app.Speech.speak = () => {};
+      try {
+        frame.contentDocument.getElementById('cardChar').click();
+      } finally { app.Speech.speak = real; }
+      assertEqual(card.classList.contains('flipped'), before,
+        'the flip handler on the card must not fire — needs stopPropagation');
+    });
+
+    it('tapping elsewhere on the card still flips it', () => {
+      showACard();
+      const card = frame.contentDocument.getElementById('flashcard');
+      const before = card.classList.contains('flipped');
+      card.click();
+      assert(card.classList.contains('flipped') !== before,
+        'the card should still flip when tapped away from the character');
+    });
+
+    it('the JS main-content template declares the speak affordance too', () => {
+      // index.html had role/title but _getMainContentHTML() did not, and that
+      // template replaces the markup at startup — so the hint was invisible.
+      const el = frame.contentDocument.getElementById('cardChar');
+      assertEqual(el.getAttribute('role'), 'button', 'should be announced as a button');
+      assert(el.getAttribute('title'), 'should carry the 点击朗读 hint');
+    });
+  });
+
   describeWith('\u2753 \u4f7f\u7528\u8bf4\u660e (Help)', resetProfileData, () => {
     it('Help: button exists and is wired', () => {
       assert(frame.contentDocument.getElementById('btnHelp'), '#btnHelp missing from header');
