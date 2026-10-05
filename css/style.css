@@ -723,10 +723,16 @@ main{
 
 
 /* 说明页：开头一句定位（借 qinshihuang/how-to-use.html 的 .lead） */
-/* Same box as the sections below it, so the opening paragraph does not read
-   as a narrower, differently-shaped element. */
+/* Boxed the same way as the sections below it (border/background/radius),
+   so it reads as part of the same page, not a differently-styled banner.
+   But its *text measure* is capped independently, same as .help-row-v: at
+   900px+ the sections flow into two ~500px columns while .help-lead stays
+   a single full-width paragraph outside .help-cols, so without its own cap
+   its lines would run to the full ~1130px modal width — far longer than the
+   ~56-char line the sections keep. 56em at this font-size tracks the same
+   character count as .help-row-v's cap. */
 .help-lead{font-size:14px;color:var(--text);background:var(--primary-bg,#eef2ff);
-  border:1px solid #c7d2fe;border-radius:var(--radius-sm);padding:11px 12px;margin:0 0 14px;line-height:1.7}
+  border:1px solid #c7d2fe;border-radius:var(--radius-sm);padding:11px 12px;margin:0 0 14px;line-height:1.7;max-width:56em}
 /* 说明页：小节 = 带标题栏的方框
    Bold alone did not separate the levels: section titles were 14px/700 and
    item names 13px/600, too close to scan. Borrowed from
@@ -764,10 +770,15 @@ main{
 /* Cap the text measure so the extra desktop width does not produce
    over-long lines. Expressed in em, NOT ch: `ch` is the width of the digit
    zero (about half an em), so 62ch came out at 403px — narrower than before.
-   One CJK character is ~1em, so 50em ≈ 50 characters per line. */
+   One CJK character is ~1em, so 50em ≈ 50 characters per line.
+   Left in place at every width, including the >=900px two-column layout:
+   each column is already narrower than 56em there, so the cap is inert —
+   but a column could widen in the future (fewer columns, wider modal), and
+   dropping the cap to `none` at that breakpoint previously left this with
+   no numeric max-width at all, which both looked wrong on a very wide
+   screen and made getComputedStyle(...).maxWidth resolve to "none" (NaN
+   once parsed as a number) instead of a measurable value. */
 .help-row-v{flex:1;font-size:13px;color:var(--text-secondary);line-height:1.65;max-width:56em}
-/* In two-column mode each column is ~500px, so the cap is the column itself. */
-@media (min-width:900px){.help-row-v{max-width:none}}
 @media (max-width:560px){.help-row{flex-direction:column;gap:2px}.help-row-k{flex:none}}
 
 /* Tighten the reading panel on wide screens so the whole thing fits one view.
