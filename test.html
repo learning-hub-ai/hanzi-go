@@ -1218,6 +1218,45 @@ async function runTests() {
       }
     });
 
+    it('R2: the three buckets are shown as a breakdown of the total', () => {
+      // They used to be four sibling rows: 已掌握 / 在学 / 需加强 / 学过的字,
+      // with nothing saying the first three sum to the fourth. Reported as
+      // confusing — 0 + 0 + 6 = 6 reads as four unrelated numbers.
+      seedSrs({ '\u7532': 0, '\u4e59': 3, '\u4e19': 6 });
+      const r = app.ReportService.build();
+      assertEqual(r.mastery.mastered + r.mastery.learning + r.mastery.needsWork,
+        r.totalSeen, 'the three buckets must sum to the total');
+
+      const html = app.ModalUI.renderReport(r);
+      // The total must come first, and the buckets must be visibly subordinate
+      const iTotal = html.indexOf('\u5b66\u8fc7\u7684\u5b57');
+      const iMastered = html.indexOf('\u5df2\u638c\u63e1');
+      assert(iTotal >= 0 && iMastered > iTotal,
+        'the total should be listed before its breakdown');
+      assert(html.includes('\u4e0b\u9762\u662f\u8fd9\u4e9b\u5b57\u7684\u5206\u5e03'),
+        'should say the rows beneath are a breakdown of the total');
+    });
+
+    it('R2: bucket hints come from the interval schedule, not hardcoded', () => {
+      // getMasterySplit derives the bucket lines from BOX_INTERVALS; a literal
+      // "14 天" in the hint would start lying as soon as that changes.
+      // Needs data: renderReport short-circuits to "还没有学习记录" on an empty
+      // profile, and resetProfileData empties it before every test.
+      seedSrs({ '\u4e01': 3 });
+      // build() must also run under the stub: getMasterySplit reads the schedule
+      // too, so building first would mix real buckets with stubbed hints.
+      const real = app.SpacedRepService.getBoxIntervals;
+      app.SpacedRepService.getBoxIntervals = () => [0, 1, 5, 9, 14, 30, 60];
+      let html;
+      try {
+        const data = app.ReportService.build();
+        html = app.ModalUI.renderReport(data);
+      } finally { app.SpacedRepService.getBoxIntervals = real; }
+      assert(html.includes('5\u20139'),
+        `the 在学 hint should follow the real schedule; got: ${
+          (html.match(/\u9694[^<]*\u5929\u518d\u95ee/) || ['(not found)'])[0]}`);
+    });
+
     it('R2: mastery split buckets every box, totals match', () => {
       seedSrs({ '\u95e8': 0, '\u95ea': 1, '\u95f2': 2, '\u95f4': 3, '\u9600': 4, '\u9601': 5, '\u9605': 6 });
       const m = app.ReportService.getMasterySplit();
@@ -1271,6 +1310,36 @@ async function runTests() {
       const hardest = app.ReportService.getHardestChars();
       assertEqual(hardest.length, 10, `should cap at 10, got ${hardest.length}`);
       assertEqual(hardest[0].wrongCount, 15, `worst first, got ${hardest[0].wrongCount}`);
+    });
+
+    it('R2: the week strip marks today and shows dates', () => {
+      // Reported as a bug: the weekday labels read 二三四五六日一, which looks
+      // shuffled. It is a rolling 7-day window ending today, not a Mon-Sun
+      // calendar — so it needs to say so visually.
+      // resetProfileData empties the SRS store, and renderReport short-circuits
+      // to "还没有学习记录" when nothing has been learned — so seed one char.
+      app.SpacedRepService.recordAnswer('\u5929', true);
+      app.AppController.showReport();
+      const doc = frame.contentDocument;
+      const cells = doc.querySelectorAll('.rep-day');
+      assertEqual(cells.length, 7, `expected 7 day cells, got ${cells.length}`);
+
+      const today = cells[cells.length - 1];
+      assert(today.classList.contains('rep-day--today'),
+        'the last cell is today and must be marked as such');
+      assertEqual(doc.querySelectorAll('.rep-day--today').length, 1,
+        'exactly one cell should be marked today');
+
+      // Day-of-month numbers make the window unambiguous
+      const dom = today.querySelector('.rep-day-dom');
+      assert(dom && dom.textContent.trim(),
+        'each cell should show the day of month');
+      assertEqual(parseInt(dom.textContent), new Date().getDate(),
+        'the last cell should carry today\u2019s date');
+
+      assert(doc.querySelector('.rep-week-note'),
+        'a note should state which end is today');
+      app.ModalUI.close();
     });
 
     it('R2: week activity reports 7 days, oldest first', () => {

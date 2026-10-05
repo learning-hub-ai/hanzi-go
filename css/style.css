@@ -770,3 +770,17 @@ main{
    同 qinshihuang/how-to-use.html 的 .lic ok / .lic no 做法。 */
 .help-row--ok .help-row-k{color:#2f5c37}
 .help-row--no .help-row-k{color:#7a3b3b}
+
+/* 学习报告的「最近七天」七格。这是滚动窗口（左=6 天前，右=今天），
+   不是周一到周日的日历格 —— 所以星期标签可能从周中开始。
+   标出今天并显示日期数字，避免看着像乱序。 */
+.rep-week{display:flex;justify-content:center;gap:4px;margin:6px 0 2px}
+.rep-day{display:flex;flex-direction:column;align-items:center;width:34px;
+  padding:3px 0;border-radius:6px;line-height:1.25}
+.rep-day--today{background:var(--primary-bg,#eef2ff);box-shadow:inset 0 0 0 1px #c7d2fe}
+.rep-day-mark{font-size:14px}
+.rep-day-wd{font-size:11px;color:var(--text-muted)}
+.rep-day-dom{font-size:10px;color:#cbd5e1}
+.rep-day--today .rep-day-wd{color:var(--primary);font-weight:700}
+.rep-day--today .rep-day-dom{color:var(--primary)}
+.rep-week-note{font-size:11px;color:var(--text-muted);text-align:center;margin:0 0 12px}

@@ -347,23 +347,41 @@ const ModalUI = (() => {
       html += row('✅ 学完的课', `${r.position.completedCount} 课`);
     }
 
-    // Mastery, three coarse buckets — see getMasterySplit for why not per-box
+    // 已掌握 + 在学 + 需加强 is exactly 学过的字 — they were four separate rows
+    // with nothing saying three of them summed to the fourth, which read as
+    // four unrelated numbers. One total, then its breakdown, with the dividing
+    // line (review interval) stated so the buckets are not arbitrary.
     const m = r.mastery;
-    html += row('⭐ 已掌握', `${m.mastered} 字`);
-    html += row('📘 在学', `${m.learning} 字`);
-    html += row('🔴 需加强', `${m.needsWork} 字`);
-    html += row('📚 学过的字', `${r.totalSeen} 字`);
+    // Interval hints are derived, not written in: getMasterySplit draws the
+    // bucket lines from BOX_INTERVALS, so hardcoding "14 天" here would quietly
+    // lie the moment that schedule changes.
+    const iv = (typeof SpacedRepService !== 'undefined') ? SpacedRepService.getBoxIntervals() : [];
+    const learnDays = iv.filter(d => d > 1 && d < 14);
+    const hint = (t) => `　<small style="color:#94a3b8">${t}</small>`;
+    html += row('📚 学过的字', `<strong>${r.totalSeen} 字</strong>${hint('下面是这些字的分布')}`);
+    html += row('　⭐ 已掌握', `${m.mastered} 字${hint('隔 14 天以上才再问')}`);
+    html += row('　📘 在学', `${m.learning} 字${hint(learnDays.length ? `隔 ${learnDays.join('–')} 天再问` : '间隔居中')}`);
+    html += row('　🔴 需加强', `${m.needsWork} 字${hint('今天或明天还要问')}`);
     html += row('📅 今天要复习', `${r.dueToday} 字`);
 
-    // This week, as seven dots
-    const dots = r.week.days.map(d => {
-      const wd = WEEKDAY[new Date(d.date).getDay()];
+    // The last seven days, oldest first — a rolling window, not a calendar week.
+    // That is why the weekday labels can start mid-week (today is the last cell,
+    // not the last column of a Mon-Sun grid). Showing the day-of-month and
+    // marking today makes the window self-evident instead of looking shuffled.
+    const dots = r.week.days.map((d, i) => {
+      const dt = new Date(d.date);
+      const wd = WEEKDAY[dt.getDay()];
+      const dom = dt.getDate();
+      const isToday = i === r.week.days.length - 1;
       const mark = d.active ? '🟢' : '⚪';
-      return `<span title="${escapeHtml(d.date)}" style="display:inline-block;text-align:center;width:28px">
-        <span style="font-size:14px">${mark}</span><br><small style="color:#999">${wd}</small></span>`;
+      return `<span class="rep-day${isToday ? ' rep-day--today' : ''}" title="${escapeHtml(d.date)}">
+        <span class="rep-day-mark">${mark}</span>
+        <small class="rep-day-wd">${wd}</small>
+        <small class="rep-day-dom">${dom}</small></span>`;
     }).join('');
     html += `<div class="modal-item"><span>🗓 最近七天</span><span>${r.week.activeCount}/7 天</span></div>`;
-    html += `<div style="text-align:center;margin:4px 0 12px">${dots}</div>`;
+    html += `<div class="rep-week">${dots}</div>
+      <p class="rep-week-note">左边最早，右边是今天</p>`;
 
     html += row('🔥 连续天数', `${r.streak.current} 天（最高 ${r.streak.best}）`);
     const acc = r.totals.accuracy === null ? '—' : `${r.totals.accuracy}%`;
@@ -532,7 +550,7 @@ const ModalUI = (() => {
 
     ${block('给家长', '📊 学习报告 是给你看的',
       row('已掌握 / 在学<br>需加强', '按复习间隔分的三档，不是正确率。') +
-      row('最近七天', '哪天做了任务。从加这个功能那天开始记，之前没有数据。') +
+      row('最近七天', '哪天做了任务 —— <strong>最右边是今天，往左数六天</strong>，所以星期标签可能从周中开始，不是周一到周日的日历。从加这个功能那天开始记，之前没有数据。') +
       row('这些字反复出错', '真正值得一起看的字：既没升上去、又错过三次以上。只看「刚学的字」会把今天刚学会的也算进来，所以要两个条件。') +
       row('复习间隔', `${schedule} 天。答对往上走一级，答错只退一级（不是回到头）—— 偶尔手滑不会毁掉进度，真没记住的字会一直回来。`))}
 
