@@ -1237,24 +1237,19 @@ async function runTests() {
         'should say the rows beneath are a breakdown of the total');
     });
 
-    it('R2: bucket hints come from the interval schedule, not hardcoded', () => {
-      // getMasterySplit derives the bucket lines from BOX_INTERVALS; a literal
-      // "14 天" in the hint would start lying as soon as that changes.
-      // Needs data: renderReport short-circuits to "还没有学习记录" on an empty
-      // profile, and resetProfileData empties it before every test.
-      seedSrs({ '\u4e01': 3 });
-      // build() must also run under the stub: getMasterySplit reads the schedule
-      // too, so building first would mix real buckets with stubbed hints.
-      const real = app.SpacedRepService.getBoxIntervals;
-      app.SpacedRepService.getBoxIntervals = () => [0, 1, 5, 9, 14, 30, 60];
-      let html;
-      try {
-        const data = app.ReportService.build();
-        html = app.ModalUI.renderReport(data);
-      } finally { app.SpacedRepService.getBoxIntervals = real; }
-      assert(html.includes('5\u20139'),
-        `the 在学 hint should follow the real schedule; got: ${
-          (html.match(/\u9694[^<]*\u5929\u518d\u95ee/) || ['(not found)'])[0]}`);
+    it('R2: buckets are described by mastery, not by scheduler intervals', () => {
+      // The hints used to read 隔 14 天以上才再问 / 隔 3–7 天再问 — that is the
+      // scheduler's behaviour, and a reader has to work backwards from
+      // "longer gap" to "knows it better" before it means anything.
+      seedSrs({ '\u7532': 0, '\u4e59': 3, '\u4e19': 6 });
+      const html = app.ModalUI.renderReport(app.ReportService.build());
+      const section = html.slice(html.indexOf('\u5b66\u8fc7\u7684\u5b57'),
+                                 html.indexOf('\u4eca\u5929\u8981\u590d\u4e60'));
+      assert(!/\u9694\s*\d+\s*\u5929|\u9694\s*\d+\u2013\d+\s*\u5929/.test(section),
+        `bucket hints should not quote interval days: ${section.replace(/<[^>]*>/g, ' ').slice(0, 120)}`);
+      // They should talk about remembering instead
+      assert(section.includes('\u8fd8\u8bb0\u5f97') || section.includes('\u8bb0\u4f4f'),
+        'hints should describe how well the character is known');
     });
 
     it('R2: mastery split buckets every box, totals match', () => {

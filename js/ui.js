@@ -352,16 +352,14 @@ const ModalUI = (() => {
     // four unrelated numbers. One total, then its breakdown, with the dividing
     // line (review interval) stated so the buckets are not arbitrary.
     const m = r.mastery;
-    // Interval hints are derived, not written in: getMasterySplit draws the
-    // bucket lines from BOX_INTERVALS, so hardcoding "14 天" here would quietly
-    // lie the moment that schedule changes.
-    const iv = (typeof SpacedRepService !== 'undefined') ? SpacedRepService.getBoxIntervals() : [];
-    const learnDays = iv.filter(d => d > 1 && d < 14);
+    // Describe how well the character is known, not when the scheduler will ask
+    // again. The interval is machine behaviour — a reader has to work backwards
+    // from "longer gap" to "knows it better" before it means anything.
     const hint = (t) => `　<small style="color:#94a3b8">${t}</small>`;
     html += row('📚 学过的字', `<strong>${r.totalSeen} 字</strong>${hint('下面是这些字的分布')}`);
-    html += row('　⭐ 已掌握', `${m.mastered} 字${hint('隔 14 天以上才再问')}`);
-    html += row('　📘 在学', `${m.learning} 字${hint(learnDays.length ? `隔 ${learnDays.join('–')} 天再问` : '间隔居中')}`);
-    html += row('　🔴 需加强', `${m.needsWork} 字${hint('今天或明天还要问')}`);
+    html += row('　⭐ 已掌握', `${m.mastered} 字${hint('隔很久再问也还记得')}`);
+    html += row('　📘 在学', `${m.learning} 字${hint('记住了，但还得再确认几次')}`);
+    html += row('　🔴 需加强', `${m.needsWork} 字${hint('刚学的，或者答错过')}`);
     html += row('📅 今天要复习', `${r.dueToday} 字`);
 
     // The last seven days, oldest first — a rolling window, not a calendar week.
@@ -549,7 +547,7 @@ const ModalUI = (() => {
       row('👧 切换用户', '当前设备上几个人分开用，进度、收藏、错题互不影响。'))}
 
     ${block('给家长', '📊 学习报告 是给你看的',
-      row('已掌握 / 在学<br>需加强', '按复习间隔分的三档，不是正确率。') +
+      row('已掌握 / 在学<br>需加强', '按<strong>掌握程度</strong>分的三档 —— 答对过几次、隔多久还记得，不是正确率。三档加起来就是学过的字总数。') +
       row('最近七天', '哪天做了任务 —— <strong>最右边是今天，往左数六天</strong>，所以星期标签可能从周中开始，不是周一到周日的日历。从加这个功能那天开始记，之前没有数据。') +
       row('这些字反复出错', '真正值得一起看的字：既没升上去、又错过三次以上。只看「刚学的字」会把今天刚学会的也算进来，所以要两个条件。') +
       row('复习间隔', `${schedule} 天。答对往上走一级，答错只退一级（不是回到头）—— 偶尔手滑不会毁掉进度，真没记住的字会一直回来。`))}
