@@ -22,12 +22,16 @@ const DataService = (() => {
   async function loadAll() {
     const allChars = [];
     const lessons = [];
+    const editions = {}; // "grade-semester" -> edition year string, e.g. "2024"
 
     for (const file of DATA_FILES) {
       try {
         const res = await fetch(file);
         if (!res.ok) continue;
         const data = await res.json();
+        if (data.edition) {
+          editions[`${data.grade}-${data.semester}`] = data.edition;
+        }
         data.lessons.forEach(lesson => {
           lesson.chars.forEach(char => {
             char.lesson = lesson.title;
@@ -45,8 +49,23 @@ const DataService = (() => {
     State.set('allChars', allChars);
     State.set('lessons', lessons);
     State.set('filteredChars', [...allChars]);
+    State.set('editions', editions);
     return { allChars, lessons };
   }
+
+  /**
+   * Get the textbook edition year for a grade/semester (e.g. "2024"),
+   * so the UI can show which print of the 统编版 textbook the data
+   * comes from. Returns null if unknown (e.g. 'custom'/'all' pseudo-grades).
+   * @param {number|string} grade
+   * @param {number|string} semester
+   * @returns {string|null}
+   */
+  function getEdition(grade, semester) {
+    const editions = State.get('editions') || {};
+    return editions[`${grade}-${semester}`] || null;
+  }
+
 
   /**
    * Get lessons matching the currently selected grade and semester.
@@ -97,12 +116,36 @@ const DataService = (() => {
   }
 
   /**
+   * Build the candidate pool for distractors, preferring characters the
+   * learner already knows (tracked by SpacedRepService) over the full
+   * 4000+ character set. A quiz where every wrong answer is unfamiliar
+   * lets the learner spot the right one by "this is the only one I
+   * recognize" rather than actually reading the question — biasing
+   * toward known characters removes that shortcut.
+   *
+   * Falls back to allChars when there are not enough known characters
+   * yet (new learner, or SpacedRepService unavailable e.g. in tests),
+   * so distractor count is never short.
+   * @param {Array} allChars - full character pool
+   * @param {number} minNeeded - distractor count being requested
+   * @returns {Array}
+   */
+  function _getDistractorPool(allChars, minNeeded) {
+    if (typeof SpacedRepService === 'undefined') return allChars;
+    const knownSet = new Set(SpacedRepService.getKnownChars());
+    if (knownSet.size < minNeeded + 5) return allChars;
+    const known = allChars.filter(c => knownSet.has(c.char));
+    return known.length >= minNeeded + 5 ? known : allChars;
+  }
+
+  /**
    * Get random distractor characters (different pinyin from target).
    * Uses allChars as pool to ensure enough distractors even for small lessons.
    */
   function getRandomDistractors(targetChar, count = 3) {
     const allChars = State.get('allChars');
-    const pool = allChars.filter(c => c.pinyin !== targetChar.pinyin && c.char !== targetChar.char);
+    const pool = _getDistractorPool(allChars, count)
+      .filter(c => c.pinyin !== targetChar.pinyin && c.char !== targetChar.char);
     const shuffled = [...pool].sort(() => Math.random() - 0.5);
     const result = [];
     const seen = new Set();
@@ -111,6 +154,20 @@ const DataService = (() => {
         seen.add(c.pinyin);
         result.push(c);
         if (result.length >= count) break;
+      }
+    }
+    // Known-char pool may be too thin on distinct pinyin to fill count —
+    // top up from the full set rather than returning short.
+    if (result.length < count) {
+      const fallback = allChars.filter(c =>
+        c.pinyin !== targetChar.pinyin && c.char !== targetChar.char && !seen.has(c.pinyin));
+      const shuffledFallback = [...fallback].sort(() => Math.random() - 0.5);
+      for (const c of shuffledFallback) {
+        if (!seen.has(c.pinyin)) {
+          seen.add(c.pinyin);
+          result.push(c);
+          if (result.length >= count) break;
+        }
       }
     }
     return result;
@@ -122,7 +179,7 @@ const DataService = (() => {
    */
   function getCharDistractors(targetChar, count = 3) {
     const allChars = State.get('allChars');
-    const pool = allChars.filter(c => c.char !== targetChar.char);
+    const pool = _getDistractorPool(allChars, count).filter(c => c.char !== targetChar.char);
     const shuffled = [...pool].sort(() => Math.random() - 0.5);
     const result = [];
     const seen = new Set();
@@ -131,6 +188,19 @@ const DataService = (() => {
         seen.add(c.char);
         result.push(c);
         if (result.length >= count) break;
+      }
+    }
+    // Known-char pool may be too small to fill count — top up from the
+    // full set rather than returning short.
+    if (result.length < count) {
+      const fallback = allChars.filter(c => c.char !== targetChar.char && !seen.has(c.char));
+      const shuffledFallback = [...fallback].sort(() => Math.random() - 0.5);
+      for (const c of shuffledFallback) {
+        if (!seen.has(c.char)) {
+          seen.add(c.char);
+          result.push(c);
+          if (result.length >= count) break;
+        }
       }
     }
     return result;
@@ -308,5 +378,5 @@ const DataService = (() => {
     return pairs.length >= 6 ? pairs : null;
   }
 
-  return { loadAll, getFilteredLessons, applyFilter, generateQuizQuestions, generateMatchPairs };
+  return { loadAll, getFilteredLessons, applyFilter, generateQuizQuestions, generateMatchPairs, getEdition };
 })();

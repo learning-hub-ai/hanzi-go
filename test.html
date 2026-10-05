@@ -236,6 +236,50 @@ async function runTests() {
       chars.forEach(c => { if (!c.sentence.includes(c.char)) missing++; });
       assertEqual(missing, 0, `${missing} chars not in their sentence`);
     });
+
+    it('DataService.getEdition returns the textbook print year for every grade/semester', () => {
+      // Source of truth: docs/data-generation-spec.md §2.1 (底本依据), cross-checked
+      // against the actual PDF filenames in keben/. Not every grade uses the same
+      // print year — e.g. grade 2/3/8's 下册 predate their 上册's 2024 revision —
+      // so this must be checked per grade+semester, not assumed uniform per grade.
+      const expected = {
+        '1-1': '2024', '1-2': '2024',
+        '2-1': '2024', '2-2': '2017',
+        '3-1': '2024', '3-2': '2018',
+        '4-1': '2019', '4-2': '2019',
+        '5-1': '2019', '5-2': '2019',
+        '6-1': '2019', '6-2': '2019',
+        '7-1': '2024', '7-2': '2024',
+        '8-1': '2024', '8-2': '2017',
+        '9-1': '2018', '9-2': '2018',
+      };
+      Object.entries(expected).forEach(([key, edition]) => {
+        const [grade, sem] = key.split('-');
+        const actual = app.DataService.getEdition(grade, sem);
+        assertEqual(actual, edition, `grade ${grade} semester ${sem}: expected ${edition}, got ${actual}`);
+      });
+    });
+
+    it('DataService.getEdition returns null for unknown grade/semester', () => {
+      assertEqual(app.DataService.getEdition('custom', 'custom'), null, 'should be null for pseudo-grade "custom"');
+      assertEqual(app.DataService.getEdition(99, 99), null, 'should be null for a grade that does not exist');
+    });
+
+    it('Sidebar shows the textbook edition next to each 上册/下册 item', () => {
+      // FilterUI.updateStripCounts() injects a .sidebar-item-edition tag per
+      // grade/semester item so parents can tell which print year the data
+      // comes from (see DataService.getEdition).
+      const items = app.document.querySelectorAll('[data-count-for]');
+      assertGreater(items.length, 10, `expected 18 grade/semester sidebar items, found ${items.length}`);
+      let withEdition = 0;
+      items.forEach(el => {
+        const parent = el.closest('.sidebar-item');
+        const tag = parent && parent.querySelector('.sidebar-item-edition');
+        if (tag && /^\d{4}版$/.test(tag.textContent)) withEdition++;
+      });
+      assertEqual(withEdition, items.length,
+        `expected all ${items.length} sidebar items to show an edition tag, got ${withEdition}`);
+    });
   });
 
   // === 2. HTML Structure ===
@@ -859,6 +903,107 @@ async function runTests() {
     });
   });
 
+  // Quiz distractors are biased toward characters the learner already knows,
+  // so a quiz can't be solved by "pick the only familiar-looking option" —
+  // see js/data.js _getDistractorPool(). Helper seeds spacedRep with a known
+  // set of a given size (box=2 so SpacedRepService.getKnownChars() counts it).
+  function seedKnownChars(count) {
+    const sample = app.State.get('allChars').slice(0, count);
+    const data = {};
+    const today = new Date().toISOString().slice(0, 10);
+    for (const c of sample) data[c.char] = { box: 2, lastReview: today };
+    app.State.save('spacedRep', data);
+    app.SpacedRepService.resetCache();
+    return sample.map(c => c.char);
+  }
+
+  describeWith('🎯 Distractor Bias (anti-recognition-shortcut)', resetProfileData, () => {
+    it('pickChar distractors come from known characters when enough are known', () => {
+      const known = new Set(seedKnownChars(30));
+      app.State.set('selectedGrade', 'all');
+      app.State.set('selectedSemester', 'all');
+      app.DataService.applyFilter('all');
+
+      const q = app.DataService.generateQuizQuestions(false, 'pickChar', 20);
+      assert(q !== null, 'should generate questions');
+      for (const item of q) {
+        const distractorChars = item.options.filter(o => o.char !== item.target.char).map(o => o.char);
+        for (const c of distractorChars) {
+          assert(known.has(c), `distractor ${c} is not from the known set (target was ${item.target.char})`);
+        }
+      }
+    });
+
+    it('pickPinyin distractors come from known characters when enough are known', () => {
+      // getRandomDistractors dedups by pinyin (not by char), so a 30-char known
+      // set can easily run out of distinct pinyins before filling 3 distractors
+      // — it then legitimately tops up from the full pool (see js/data.js). Seed
+      // enough known chars that running out of distinct known pinyins is very
+      // unlikely, and assert on the common case rather than a tight guarantee.
+      const known = new Set(seedKnownChars(300));
+      const knownPinyins = new Set(
+        [...known].map(c => app.State.get('allChars').find(a => a.char === c)?.pinyin)
+      );
+      app.State.set('selectedGrade', 'all');
+      app.State.set('selectedSemester', 'all');
+      app.DataService.applyFilter('all');
+
+      const q = app.DataService.generateQuizQuestions(false, 'pickPinyin', 20);
+      assert(q !== null, 'should generate questions');
+      let fromKnown = 0, total = 0;
+      for (const item of q) {
+        const distractorPinyins = item.options.filter(o => o.pinyin !== item.target.pinyin);
+        for (const opt of distractorPinyins) {
+          total++;
+          if (knownPinyins.has(opt.pinyin)) fromKnown++;
+        }
+      }
+      assertGreater(fromKnown / total, 0.8,
+        `expected most pinyin distractors to come from known chars, got ${fromKnown}/${total}`);
+    });
+
+    it('new learner (0 known chars) still gets full questions via fallback', () => {
+      app.State.save('spacedRep', {});
+      app.SpacedRepService.resetCache();
+      app.State.set('selectedGrade', 'all');
+      app.State.set('selectedSemester', 'all');
+      app.DataService.applyFilter('all');
+
+      const q = app.DataService.generateQuizQuestions(false, 'pickChar', 5);
+      assert(q !== null, 'should still generate questions with 0 known chars');
+      assertEqual(q.length, 5, `expected 5 questions, got ${q.length}`);
+      for (const item of q) {
+        assertEqual(item.options.length, 4, 'each question must still have 4 options');
+      }
+    });
+
+    it('thin known pool (fewer than distractor count + 5) falls back to full pool', () => {
+      seedKnownChars(2); // below the count(3)+5 threshold used by _getDistractorPool
+      app.State.set('selectedGrade', 'all');
+      app.State.set('selectedSemester', 'all');
+      app.DataService.applyFilter('all');
+
+      const q = app.DataService.generateQuizQuestions(false, 'pickChar', 5);
+      assert(q !== null, 'should still generate questions with a thin known pool');
+      for (const item of q) {
+        assertEqual(item.options.length, 4, 'each question must still have 4 options even with a thin known pool');
+      }
+    });
+
+    it('distractors never include the target character itself', () => {
+      seedKnownChars(30);
+      app.State.set('selectedGrade', 'all');
+      app.State.set('selectedSemester', 'all');
+      app.DataService.applyFilter('all');
+
+      const q = app.DataService.generateQuizQuestions(false, 'pickChar', 20);
+      for (const item of q) {
+        const occurrences = item.options.filter(o => o.char === item.target.char).length;
+        assertEqual(occurrences, 1, `target ${item.target.char} must appear exactly once among options`);
+      }
+    });
+  });
+
   // === 10. Config ===
   describeWith('\u{1F4C8} R3 \u2014 Extended Box Intervals (7 boxes)', resetProfileData, () => {
     it('R3: BOX_INTERVALS is [0,1,3,7,14,30,60]', () => {
@@ -1172,8 +1317,20 @@ async function runTests() {
   });
 
   describeWith('\u{1F4CA} R2 \u2014 \u5b66\u4e60\u62a5\u544a (Report)', resetProfileData, () => {
+    // playDates itself is written with the UTC-based "today" (see
+    // StatsService._advanceStreak), so assertions against what got written
+    // must use the same convention.
     const today = () => new Date().toISOString().slice(0, 10);
     const daysAgo = n => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+    // getWeekActivity() builds its display window from *local* Y/M/D (see
+    // that function for why) — assertions about which date lands in which
+    // slot of the display need the local convention instead.
+    const _localDateString = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const localToday = () => _localDateString(new Date());
+    const localDaysAgo = n => {
+      const now = new Date();
+      return _localDateString(new Date(now.getFullYear(), now.getMonth(), now.getDate() - n));
+    };
 
     function seedSrs(map) {
       app.SpacedRepService.resetCache();
@@ -1438,13 +1595,17 @@ async function runTests() {
     it('R2: week activity reports 7 days, oldest first', () => {
       const w = app.ReportService.getWeekActivity();
       assertEqual(w.days.length, 7, `expected 7 days, got ${w.days.length}`);
-      assertEqual(w.days[6].date, today(), 'last entry must be today');
-      assertEqual(w.days[0].date, daysAgo(6), 'first entry must be 6 days ago');
+      assertEqual(w.days[6].date, localToday(), 'last entry must be today');
+      assertEqual(w.days[0].date, localDaysAgo(6), 'first entry must be 6 days ago');
     });
 
     it('R2: week activity counts only recorded days', () => {
       const stats = app.State.get('stats');
-      stats.playDates = [today(), daysAgo(2), daysAgo(30)]; // the 30-day-old one is outside the window
+      // This test is about getWeekActivity()'s own window-building logic,
+      // not about how recordRound actually writes playDates in production —
+      // so seed with the same local-date convention getWeekActivity() uses
+      // to build its window, and assert against that same convention.
+      stats.playDates = [localToday(), localDaysAgo(2), localDaysAgo(30)]; // the 30-day-old one is outside the window
       app.State.set('stats', stats);
       app.State.persist('stats');
       const w = app.ReportService.getWeekActivity();

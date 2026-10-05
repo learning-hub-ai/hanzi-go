@@ -132,7 +132,17 @@ header{
   font-size:10px;color:var(--text-muted);background:var(--border-light);
   padding:1px 5px;border-radius:var(--radius-full);min-width:16px;text-align:center;
 }
+/* Grade/semester rows show their char count via the lesson dropdown's
+   "全部课文 (N字)" option already — hide the duplicate badge here to keep
+   the row simple now that it also shows the edition tag. The 练生字/练错题/
+   智能复习/自定义 rows use the same .sidebar-item-count class but have no
+   dropdown equivalent, so they're untouched (not matched by [data-count-for]). */
+.sidebar-item-count[data-count-for]{display:none}
 .sidebar-item.active .sidebar-item-count{background:rgba(255,255,255,.25);color:#fff}
+.sidebar-item-edition{
+  font-size:9px;color:var(--text-muted);opacity:.7;flex-shrink:0;white-space:nowrap;
+}
+.sidebar-item.active .sidebar-item-edition{color:#fff;opacity:.85}
 
 /* Grade groups (accordion) */
 .sidebar-grades{flex:1;overflow-y:auto;padding:0 var(--s2)}
@@ -682,6 +692,13 @@ main{
 @keyframes dtFloatPulse{0%,100%{box-shadow:0 4px 16px rgba(79,70,229,0.4)}50%{box-shadow:0 4px 24px rgba(79,70,229,0.6)}}
 @media(max-width:768px){
   .dt-floating-btn{bottom:72px}
+}
+/* Desktop: sit just below the progress bar instead of pinned to the
+   viewport bottom, so it doesn't float far below the card on tall screens. */
+@media(min-width:769px){
+  .dt-floating-btn{position:static;display:block;margin:26px auto 0;transform:none;animation:none}
+  .dt-floating-btn:hover{transform:scale(1.05)}
+  .dt-floating-btn-disabled:hover{transform:none}
 }
 
 .dt-return-btn{background:linear-gradient(135deg,#4f46e5,#7c3aed)!important;color:#fff!important;border:none!important;font-weight:700}

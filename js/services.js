@@ -638,6 +638,17 @@ const SpacedRepService = (() => {
   }
 
   /**
+   * Get the set of character strings the learner has already studied
+   * (i.e. present in the spaced-repetition box system, regardless of box).
+   * Used to bias quiz distractors toward characters the learner can
+   * actually recognize, instead of pulling from the full 4000+ char set.
+   * @returns {Array<string>}
+   */
+  function getKnownChars() {
+    return Object.keys(_getData());
+  }
+
+  /**
    * Get box distribution stats.
    * Keys are derived from BOX_INTERVALS so adding a box needs no change here.
    * @returns {Object} {box1: N, ... box7: N}
@@ -699,7 +710,7 @@ const SpacedRepService = (() => {
   }
 
   return {
-    recordAnswer, getDueChars, getDueCount, getTotalCount, getStats,
+    recordAnswer, getDueChars, getDueCount, getTotalCount, getKnownChars, getStats,
     getCategorizedChars, resetCache,
     // Exposed so tests assert against the real schedule instead of a copy of it
     getBoxIntervals: () => [...BOX_INTERVALS],
@@ -771,8 +782,19 @@ const ReportService = (() => {
     const stats = State.get('stats') || {};
     const played = new Set(Array.isArray(stats.playDates) ? stats.playDates : []);
     const days = [];
+    const now = new Date();
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      // Local Y/M/D, not Date.now() + toISOString() (UTC) — otherwise the
+      // window is off by one date for 1-2 hours every night in timezones
+      // ahead of UTC (e.g. CEST), where the local calendar day has already
+      // advanced but the UTC one hasn't. playDates itself is still written
+      // with the UTC-based "today" elsewhere (_advanceStreak) — during that
+      // same window a same-day entry could in theory miss this local-dated
+      // window by one slot. That's a pre-existing, narrower mismatch in the
+      // write side and out of scope here; this fixes the display, which is
+      // what parents actually look at and what R2 specifies.
+      const local = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      const d = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}-${String(local.getDate()).padStart(2, '0')}`;
       days.push({ date: d, active: played.has(d) });
     }
     return { days, activeCount: days.filter(d => d.active).length };

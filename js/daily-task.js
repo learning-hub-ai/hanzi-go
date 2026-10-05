@@ -936,7 +936,17 @@ const DailyTaskController = (() => {
     btn.className = 'dt-floating-btn dt-floating-btn-disabled';
     btn.disabled = true;
     btn.innerHTML = `📖 已看 0/${totalChars} · 继续翻看`;
-    document.body.appendChild(btn);
+
+    // On desktop the button is positioned in-flow right after the progress
+    // bar (via CSS, see .dt-floating-btn @media(min-width:769px)) so it
+    // doesn't float far below the card on tall viewports. On mobile it stays
+    // position:fixed, where document position doesn't matter.
+    const learnMode = document.getElementById('learnMode');
+    if (learnMode) {
+      learnMode.appendChild(btn);
+    } else {
+      document.body.appendChild(btn);
+    }
 
     btn.addEventListener('click', () => {
       if (btn.disabled) return;

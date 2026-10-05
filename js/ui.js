@@ -34,6 +34,7 @@ const FilterUI = (() => {
       // Disable sidebar items with no characters
       const item = el.closest('.sidebar-item');
       if (item) item.classList.toggle('disabled', count === 0);
+      _renderEditionTag(item, grade, sem);
     });
 
     // Set first available item as active
@@ -44,6 +45,30 @@ const FilterUI = (() => {
 
     updateFavCount();
     updateErrCount();
+  }
+
+  /**
+   * Show which textbook print year (统编版 2017/2018/2019/2024...) a
+   * grade/semester's data comes from, so parents can tell whether it
+   * matches the book their child actually has. Shown as a small tag
+   * next to the 上册/下册 label in the sidebar.
+   */
+  function _renderEditionTag(item, grade, sem) {
+    if (!item) return;
+    const label = item.querySelector('.sidebar-item-label');
+    if (!label) return;
+    let tag = item.querySelector('.sidebar-item-edition');
+    const edition = typeof DataService !== 'undefined' ? DataService.getEdition(grade, sem) : null;
+    if (!edition) {
+      if (tag) tag.remove();
+      return;
+    }
+    if (!tag) {
+      tag = document.createElement('span');
+      tag.className = 'sidebar-item-edition';
+      label.after(tag);
+    }
+    tag.textContent = `${edition}版`;
   }
 
   function updateFavCount() {
@@ -387,7 +412,13 @@ const ModalUI = (() => {
     // column of a Mon-Sun grid). The day-of-month and the marked today cell
     // make the window self-evident instead of looking shuffled.
     const dots = r.week.days.map((d, i) => {
-      const dt = new Date(d.date);
+      // d.date is now a local-calendar-day string ("YYYY-MM-DD") from
+      // ReportService.getWeekActivity(). Parse the Y/M/D fields directly
+      // rather than `new Date(d.date)`, which the spec treats as UTC
+      // midnight and would reintroduce a UTC/local mismatch when read
+      // back with .getDate()/.getDay().
+      const [y, m, dayNum] = d.date.split('-').map(Number);
+      const dt = new Date(y, m - 1, dayNum);
       const wd = WEEKDAY[dt.getDay()];
       const dom = dt.getDate();
       const isToday = i === r.week.days.length - 1;
