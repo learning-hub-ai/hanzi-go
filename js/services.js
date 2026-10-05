@@ -844,6 +844,10 @@ const ReportService = (() => {
         accuracy: answered ? Math.round((stats.totalCorrect || 0) / answered * 100) : null
       },
       stuck: getStuckChars(),
+      // Not currently rendered — the panel shows `stuck` instead, which also
+      // requires a low box. Kept because getHardestChars is a tested public
+      // method and a plain "most-missed" list is the obvious next thing to
+      // surface in 错题本.
       hardest: getHardestChars(),
       errorBookCount: ErrorBookService.count(),
       position: getPosition()

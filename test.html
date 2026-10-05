@@ -1222,19 +1222,19 @@ async function runTests() {
       // They used to be four sibling rows: 已掌握 / 在学 / 需加强 / 学过的字,
       // with nothing saying the first three sum to the fourth. Reported as
       // confusing — 0 + 0 + 6 = 6 reads as four unrelated numbers.
+      // The sum identity is checked by "mastery split buckets every box" and is
+      // self-fulfilling here anyway (both sides count the same store). What
+      // this test guards is the LAYOUT: total first, buckets visibly under it.
       seedSrs({ '\u7532': 0, '\u4e59': 3, '\u4e19': 6 });
-      const r = app.ReportService.build();
-      assertEqual(r.mastery.mastered + r.mastery.learning + r.mastery.needsWork,
-        r.totalSeen, 'the three buckets must sum to the total');
-
-      const html = app.ModalUI.renderReport(r);
-      // The total must come first, and the buckets must be visibly subordinate
+      const html = app.ModalUI.renderReport(app.ReportService.build());
       const iTotal = html.indexOf('\u5b66\u8fc7\u7684\u5b57');
       const iMastered = html.indexOf('\u5df2\u638c\u63e1');
       assert(iTotal >= 0 && iMastered > iTotal,
         'the total should be listed before its breakdown');
-      assert(html.includes('\u4e0b\u9762\u662f\u8fd9\u4e9b\u5b57\u7684\u5206\u5e03'),
-        'should say the rows beneath are a breakdown of the total');
+      // The bucket rows are indented with a full-width space; that is what makes
+      // them read as subordinate rather than as four sibling rows.
+      assert(/\u3000[^<]*\u5df2\u638c\u63e1/.test(html),
+        'bucket rows should be indented under the total');
     });
 
     it('R2: the numbers line up in one column', () => {
@@ -1279,8 +1279,10 @@ async function runTests() {
                                  html.indexOf('\u4eca\u5929\u8981\u590d\u4e60'));
       assert(!/\u9694\s*\d+\s*\u5929|\u9694\s*\d+\u2013\d+\s*\u5929/.test(section),
         `bucket hints should not quote interval days: ${section.replace(/<[^>]*>/g, ' ').slice(0, 120)}`);
-      // They should talk about remembering instead
-      assert(section.includes('\u8fd8\u8bb0\u5f97') || section.includes('\u8bb0\u4f4f'),
+      // The negative check above is the real guard. This only confirms the hints
+      // still talk about remembering — deliberately loose, so rewording the
+      // phrasing does not produce a false failure.
+      assert(/\u8bb0/.test(section),
         'hints should describe how well the character is known');
     });
 
@@ -1487,15 +1489,42 @@ async function runTests() {
     });
 
     it('R2: renderReport puts the real numbers on screen', () => {
-      // length > 0 would pass for "x"; assert the values actually appear.
-      seedSrs({ '\u7532': 5, '\u4e59': 5, '\u4e19': 0 });
-      const r = app.ReportService.build();
-      const html = app.ModalUI.renderReport(r);
-      assert(html.includes(`${r.mastery.mastered} \u5b57`),
-        `mastered count ${r.mastery.mastered} should be rendered`);
-      assert(html.includes(`${r.totalSeen} \u5b57`),
-        `totalSeen ${r.totalSeen} should be rendered`);
+      // Asserting against r.mastery.* would be self-fulfilling: the renderer
+      // prints that same object, so any internally-consistent wrong value would
+      // pass. Seed a known distribution and expect literal counts.
+      //  box5,5 → mastered (interval 14) ; box3 → learning ; box0 → needsWork
+      seedSrs({ '\u7532': 5, '\u4e59': 5, '\u4e19': 3, '\u4e01': 0 });
+      const html = app.ModalUI.renderReport(app.ReportService.build());
+      assert(html.includes('4 \u5b57'), 'total should render as 4 字');
+      assert(html.includes('2 \u5b57'), 'mastered should render as 2 字');
+      assert(html.includes('1 \u5b57'), 'learning and needsWork should render as 1 字');
       assert(html.includes('/7'), 'the week strip should be rendered');
+    });
+
+    it('R2: accuracy shows a dash, not 0% or NaN, before any quiz', () => {
+      // services.js computes `answered ? ... : null` and the renderer turns null
+      // into '—'. Nothing asserted that branch, so a regression to 0% or NaN%
+      // would have gone unnoticed.
+      app.SpacedRepService.recordAnswer('\u5929', true);
+      const r = app.ReportService.build();
+      assertEqual(r.totals.answered, 0, 'precondition: no questions answered yet');
+      assertEqual(r.totals.accuracy, null, 'accuracy should be null, not 0');
+      const html = app.ModalUI.renderReport(r);
+      assert(html.includes('\u2014'), 'should render an em dash for unknown accuracy');
+      assert(!/NaN/.test(html), 'must never render NaN');
+    });
+
+    it('R2: a char in the error book but not in the SRS store still counts as stuck', () => {
+      // getStuckChars defaults box=0 for a char missing from spacedRep. That
+      // cross-store path was never exercised.
+      app.SpacedRepService.recordAnswer('\u5929', true);   // so the report renders
+      app.State.set('errorBook', [
+        { char: '\u9b3c', pinyin: 'gu\u01d0', wrongCount: 4, consecutiveCorrect: 0 }
+      ]);
+      app.State.persist('errorBook');
+      const stuck = app.ReportService.getStuckChars().map(c => c.char);
+      assert(stuck.includes('\u9b3c'),
+        'a repeatedly-missed char absent from the SRS store should still be reported');
     });
 
     it('R2: empty profile shows a message, not a wall of zeros', () => {

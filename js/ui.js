@@ -363,15 +363,14 @@ const ModalUI = (() => {
     // from "longer gap" to "knows it better" before it means anything.
     //
     // The hint belongs with the label, not with the value: .modal-item uses
-    // space-between, so a hint inside the value span shifted each number by
-    // the hint's width (measured 681/721/857px — a 176px spread) and the column
-    // of numbers no longer lined up.
+    // space-between, so a hint inside the value span pushes the number left by
+    // the hint's own width and the column of numbers stops lining up.
     const lab = (name, note) =>
       `${name}<small class="rep-note">${note}</small>`;
     html += row(lab('📚 学过的字', '下面是这些字的分布'), `${r.totalSeen} 字`);
     html += row(lab('　⭐ 已掌握', '隔很久再问也还记得'), `${m.mastered} 字`);
     html += row(lab('　📘 在学', '记住了，但还得再确认几次'), `${m.learning} 字`);
-    html += row(lab('　🔴 需加强', '刚学的，或者答错过'), `${m.needsWork} 字`);
+    html += row(lab('　🔴 需加强', '还没记住，马上要再问'), `${m.needsWork} 字`);
     html += row('📅 今天要复习', `${r.dueToday} 字`);
 
     html += row('🔥 连续天数', `${r.streak.current} 天（最高 ${r.streak.best}）`);
