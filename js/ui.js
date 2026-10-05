@@ -361,11 +361,17 @@ const ModalUI = (() => {
     // Describe how well the character is known, not when the scheduler will ask
     // again. The interval is machine behaviour — a reader has to work backwards
     // from "longer gap" to "knows it better" before it means anything.
-    const hint = (t) => `　<small style="color:#94a3b8">${t}</small>`;
-    html += row('📚 学过的字', `<strong>${r.totalSeen} 字</strong>${hint('下面是这些字的分布')}`);
-    html += row('　⭐ 已掌握', `${m.mastered} 字${hint('隔很久再问也还记得')}`);
-    html += row('　📘 在学', `${m.learning} 字${hint('记住了，但还得再确认几次')}`);
-    html += row('　🔴 需加强', `${m.needsWork} 字${hint('刚学的，或者答错过')}`);
+    //
+    // The hint belongs with the label, not with the value: .modal-item uses
+    // space-between, so a hint inside the value span shifted each number by
+    // the hint's width (measured 681/721/857px — a 176px spread) and the column
+    // of numbers no longer lined up.
+    const lab = (name, note) =>
+      `${name}<small class="rep-note">${note}</small>`;
+    html += row(lab('📚 学过的字', '下面是这些字的分布'), `${r.totalSeen} 字`);
+    html += row(lab('　⭐ 已掌握', '隔很久再问也还记得'), `${m.mastered} 字`);
+    html += row(lab('　📘 在学', '记住了，但还得再确认几次'), `${m.learning} 字`);
+    html += row(lab('　🔴 需加强', '刚学的，或者答错过'), `${m.needsWork} 字`);
     html += row('📅 今天要复习', `${r.dueToday} 字`);
 
     // The last seven days, oldest first — a rolling window, not a calendar week.

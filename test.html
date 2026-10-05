@@ -1237,6 +1237,38 @@ async function runTests() {
         'should say the rows beneath are a breakdown of the total');
     });
 
+    it('R2: the numbers line up in one column', () => {
+      // The hints used to live inside the value span. .modal-item uses
+      // space-between, so each number was pushed left by its own hint's width
+      // — measured 681/721/857px, a 176px spread in a column meant to be
+      // scanned. Moving the hint next to the label fixes the alignment.
+      seedSrs({ '\u7532': 0, '\u4e59': 1, '\u4e19': 3, '\u4e01': 5, '\u620a': 6 });
+      app.AppController.showReport();
+      // Compare only the "N 字" rows: 连续天数 and 累计正确率 carry longer
+      // strings, so their left edge legitimately differs once right-aligned.
+      const xs = Array.from(frame.contentDocument.querySelectorAll('#modalContent .modal-item strong'))
+        .filter(el => /^\d+\s*\u5b57$/.test(el.textContent.trim()))
+        .map(el => Math.round(el.getBoundingClientRect().left));
+      assertGreater(xs.length, 3, `expected several "N 字" rows, got ${xs.length}`);
+      const spread = Math.max(...xs) - Math.min(...xs);
+      assert(spread <= 2, `numbers are ${spread}px out of line: ${xs.join(', ')}`);
+      app.ModalUI.close();
+    });
+
+    it('R2: the explanation sits with the label, not in the value', () => {
+      seedSrs({ '\u7532': 0, '\u4e59': 3 });
+      app.AppController.showReport();
+      const rows = Array.from(frame.contentDocument.querySelectorAll('#modalContent .modal-item'));
+      const withNote = rows.filter(r => r.querySelector('.rep-note'));
+      assertGreater(withNote.length, 2, 'the mastery rows should carry hints');
+      for (const r of withNote) {
+        const note = r.querySelector('.rep-note');
+        assertEqual(note.closest('span'), r.firstElementChild,
+          'the hint must be in the label span so it cannot shift the number');
+      }
+      app.ModalUI.close();
+    });
+
     it('R2: buckets are described by mastery, not by scheduler intervals', () => {
       // The hints used to read 隔 14 天以上才再问 / 隔 3–7 天再问 — that is the
       // scheduler's behaviour, and a reader has to work backwards from

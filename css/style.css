@@ -788,3 +788,11 @@ main{
 .rep-day--today .rep-day-wd{color:var(--primary);font-weight:700}
 .rep-day--today .rep-day-dom{color:var(--primary)}
 .rep-week-note{font-size:11px;color:var(--text-muted);text-align:center;margin:0 0 12px}
+
+/* 学习报告行内的小字说明：跟在功能名后面，不进数值列 ——
+   数值列要能当成一列来扫，说明长短不该推动数字的位置。
+   窄屏上换到第二行，避免把数字挤出去。 */
+.rep-note{display:inline-block;margin-left:8px;font-size:11px;color:#94a3b8;font-weight:400}
+@media (max-width:420px){
+  .rep-note{display:block;margin-left:0;margin-top:1px;line-height:1.3}
+}
