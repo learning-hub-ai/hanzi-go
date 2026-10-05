@@ -1048,7 +1048,7 @@ const AppController = (() => {
 
   function showReport() {
     const html = ModalUI.renderReport(ReportService.build());
-    ModalUI.show('📊 学习报告', html);
+    ModalUI.show('📊 学习报告', html, { report: true });
   }
 
   function showBadges() {

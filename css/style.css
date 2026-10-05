@@ -700,6 +700,10 @@ main{
    room to spare on screen. */
 .modal.modal--wide{max-width:min(1180px, calc(100vw - 2 * var(--s4)));max-height:94vh}
 
+/* 学习报告：比默认 380px 宽，但不必像使用说明那么宽 —— 它是一张短列表，
+   不是长篇说明。给它自己一档，并一样放宽高度上限。 */
+.modal.modal--report{max-width:min(620px, calc(100vw - 2 * var(--s4)));max-height:94vh}
+
 
 /* 说明页：开头一句定位（借 qinshihuang/how-to-use.html 的 .lead） */
 /* Same box as the sections below it, so the opening paragraph does not read

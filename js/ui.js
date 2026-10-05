@@ -257,15 +257,21 @@ const ModalUI = (() => {
    * @param {string} title
    * @param {string} html
    * @param {Object} [opts]
-   * @param {boolean} [opts.wide] - wider box for reading-heavy panels. The
+   * @param {boolean} [opts.wide] - widest box, for reading-heavy panels. The
    *   default 380px suits character lists; prose at that width wraps every
    *   few words and becomes a ribbon.
+   * @param {boolean} [opts.report] - middle width, for the 学习报告: a short
+   *   list of labelled numbers, which needs room for label and value on one
+   *   line but not the full reading width.
    */
   function show(title, html, opts) {
     document.getElementById('modalTitle').textContent = title;
     document.getElementById('modalContent').innerHTML = html;
     const box = document.getElementById('modalBox');
-    if (box) box.classList.toggle('modal--wide', !!(opts && opts.wide));
+    if (box) {
+      box.classList.toggle('modal--wide', !!(opts && opts.wide));
+      box.classList.toggle('modal--report', !!(opts && opts.report));
+    }
     document.getElementById('modalOverlay').classList.add('show');
   }
 

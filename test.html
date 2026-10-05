@@ -1307,6 +1307,48 @@ async function runTests() {
       assertEqual(hardest[0].wrongCount, 15, `worst first, got ${hardest[0].wrongCount}`);
     });
 
+    it('R2: the report gets its own width tier, wider than the default modal', () => {
+      // It was on the default 380px: rows wrapped and a 1366x768 laptop had to
+      // scroll. 620px is enough for label and value on one line without
+      // needing the full reading width of the help panel.
+      app.SpacedRepService.recordAnswer('\u5929', true);
+      app.AppController.showReport();
+      const box = frame.contentDocument.getElementById('modalBox');
+      assert(box.classList.contains('modal--report'), 'report should use its own size class');
+      const reportW = box.getBoundingClientRect().width;
+      app.ModalUI.close();
+
+      app.AppController.showBadges();
+      const normalW = frame.contentDocument.getElementById('modalBox').getBoundingClientRect().width;
+      app.ModalUI.close();
+
+      assertGreater(reportW, normalW,
+        `report (${Math.round(reportW)}px) should be wider than a normal panel (${Math.round(normalW)}px)`);
+    });
+
+    it('R2: the size class is removed again for other panels', () => {
+      app.SpacedRepService.recordAnswer('\u5929', true);
+      app.AppController.showReport();
+      app.ModalUI.close();
+      app.AppController.showBadges();
+      assert(!frame.contentDocument.getElementById('modalBox').classList.contains('modal--report'),
+        'modal--report must not leak into the next panel');
+      app.ModalUI.close();
+    });
+
+    it('R2: the report never exceeds the viewport', () => {
+      app.SpacedRepService.recordAnswer('\u5929', true);
+      app.AppController.showReport();
+      const box = frame.contentDocument.getElementById('modalBox');
+      const boxW = box.getBoundingClientRect().width;
+      assert(boxW <= frame.contentWindow.innerWidth,
+        `report is ${Math.round(boxW)}px in a ${frame.contentWindow.innerWidth}px viewport`);
+      const content = frame.contentDocument.getElementById('modalContent');
+      assert(content.scrollWidth <= content.clientWidth + 1,
+        'report content must not scroll sideways');
+      app.ModalUI.close();
+    });
+
     it('R2: the week strip marks today and shows dates', () => {
       // Reported as a bug: the weekday labels read 二三四五六日一, which looks
       // shuffled. It is a rolling 7-day window ending today, not a Mon-Sun
