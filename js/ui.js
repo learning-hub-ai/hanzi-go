@@ -374,10 +374,19 @@ const ModalUI = (() => {
     html += row(lab('　🔴 需加强', '刚学的，或者答错过'), `${m.needsWork} 字`);
     html += row('📅 今天要复习', `${r.dueToday} 字`);
 
-    // The last seven days, oldest first — a rolling window, not a calendar week.
-    // That is why the weekday labels can start mid-week (today is the last cell,
-    // not the last column of a Mon-Sun grid). Showing the day-of-month and
-    // marking today makes the window self-evident instead of looking shuffled.
+    html += row('🔥 连续天数', `${r.streak.current} 天（最高 ${r.streak.best}）`);
+    const acc = r.totals.accuracy === null ? '—' : `${r.totals.accuracy}%`;
+    html += row('🎯 累计正确率', `${acc}（${r.totals.correct}/${r.totals.answered}）`);
+    html += row('🎮 完成轮数', `${r.totals.rounds} 轮`);
+
+    // The last seven days go after the number rows, not between them: the dot
+    // grid is the only non-tabular element here, and sitting mid-list it broke
+    // the run of 今天要复习 / 连续天数 / 正确率 / 轮数 in two.
+    //
+    // Oldest first — a rolling window, not a calendar week. That is why the
+    // weekday labels can start mid-week (today is the last cell, not the last
+    // column of a Mon-Sun grid). The day-of-month and the marked today cell
+    // make the window self-evident instead of looking shuffled.
     const dots = r.week.days.map((d, i) => {
       const dt = new Date(d.date);
       const wd = WEEKDAY[dt.getDay()];
@@ -392,11 +401,6 @@ const ModalUI = (() => {
     html += `<div class="modal-item"><span>🗓 最近七天</span><span>${r.week.activeCount}/7 天</span></div>`;
     html += `<div class="rep-week">${dots}</div>
       <p class="rep-week-note">左边最早，右边是今天</p>`;
-
-    html += row('🔥 连续天数', `${r.streak.current} 天（最高 ${r.streak.best}）`);
-    const acc = r.totals.accuracy === null ? '—' : `${r.totals.accuracy}%`;
-    html += row('🎯 累计正确率', `${acc}（${r.totals.correct}/${r.totals.answered}）`);
-    html += row('🎮 完成轮数', `${r.totals.rounds} 轮`);
 
     // Characters that are not sticking — the actionable part
     html += '<hr style="margin:16px 0">';

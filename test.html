@@ -1381,6 +1381,28 @@ async function runTests() {
       app.ModalUI.close();
     });
 
+    it('R2: the week grid comes after the number rows, not between them', () => {
+      // It used to sit between 今天要复习 and 连续天数, splitting the run of
+      // table rows with the only non-tabular element in the panel.
+      app.SpacedRepService.recordAnswer('\u5929', true);
+      app.AppController.showReport();
+      const content = frame.contentDocument.getElementById('modalContent');
+      const html = content.innerHTML;
+      const iRounds = html.indexOf('\u5b8c\u6210\u8f6e\u6570');
+      const iWeek = html.indexOf('\u6700\u8fd1\u4e03\u5929');
+      assert(iRounds > 0 && iWeek > 0, 'both rows should be present');
+      assert(iWeek > iRounds,
+        '最近七天 should follow 完成轮数, so the number rows stay contiguous');
+
+      // And the grid itself must be the last thing before the error-book part
+      const grid = content.querySelector('.rep-week');
+      const rows = Array.from(content.querySelectorAll('.modal-item'));
+      const lastRow = rows[rows.length - 1];
+      assert(grid.compareDocumentPosition(lastRow) & Node.DOCUMENT_POSITION_PRECEDING,
+        'the dot grid should come after every table row');
+      app.ModalUI.close();
+    });
+
     it('R2: the week strip marks today and shows dates', () => {
       // Reported as a bug: the weekday labels read 二三四五六日一, which looks
       // shuffled. It is a rolling 7-day window ending today, not a Mon-Sun
