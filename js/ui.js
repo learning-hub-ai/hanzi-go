@@ -288,6 +288,10 @@ const ModalUI = (() => {
    * @param {boolean} [opts.report] - middle width, for the 学习报告: a short
    *   list of labelled numbers, which needs room for label and value on one
    *   line but not the full reading width.
+   * @param {boolean} [opts.cc] - 自定义字卡 layout: fixed-height flex column
+   *   with its own independently-scrolling list, so 复习卡片/搜索 (top) and
+   *   the add form (bottom) stay reachable without scrolling past however
+   *   many cards are in between.
    */
   function show(title, html, opts) {
     document.getElementById('modalTitle').textContent = title;
@@ -296,6 +300,7 @@ const ModalUI = (() => {
     if (box) {
       box.classList.toggle('modal--wide', !!(opts && opts.wide));
       box.classList.toggle('modal--report', !!(opts && opts.report));
+      box.classList.toggle('modal--cc', !!(opts && opts.cc));
     }
     document.getElementById('modalOverlay').classList.add('show');
   }
@@ -455,10 +460,30 @@ const ModalUI = (() => {
   }
 
   /**
-   * 自定义字卡 — add form plus the existing list.
+   * 自定义字卡 — fixed header (count + 复习卡片 + search) and fixed footer
+   * (add form) around an independently-scrolling card list.
    *
-   * Three inputs, not two: 拼音 is separate because the quiz reads that field
-   * directly. Without it a card can only be flipped, never quizzed.
+   * This replaced two earlier, each incomplete fixes: first 复习卡片 sat
+   * below the whole list (scroll past 100+ cards just to review); moving it
+   * above the list fixed that but pushed the add form itself below the list
+   * instead — same problem, different button. Scrolling the list on its own
+   * inside a bounded box, with the header and footer outside that scroll
+   * area, is what actually keeps every frequently-used control reachable
+   * regardless of list length — put 复习卡片 and the add button on their own
+   * and the next-longest list just creates the same complaint about
+   * whichever one is not pinned.
+   *
+   * 复习卡片 and the search box share one row (both are "find/get to what I
+   * already have" actions) rather than search getting a sticky row of its
+   * own, which previously overclaimed otherwise-usable list height.
+   *
+   * 反面's textarea is 1 row, not 2: the fixed footer was taking roughly
+   * half the modal's height on its own, which is exactly what you do not
+   * want while scanning search results — less list is visible per pixel of
+   * modal. Still resizable by drag for anyone typing a longer sentence.
+   *
+   * Three inputs in the form, not two: 拼音 is separate because the quiz reads
+   * that field directly. Without it a card can only be flipped, never quizzed.
    *
    * Built for entering several cards in one sitting (the Anki model): the form
    * stays put, clears after each add and returns focus to 正面, so adding ten
@@ -469,7 +494,7 @@ const ModalUI = (() => {
    * @returns {string} HTML
    */
   function renderCustomCards(cards) {
-    let html = `<div style="margin-bottom:16px">
+    const formHtml = `<div class="cc-footer">
       <label for="ccFront" style="display:block;font-size:13px;color:#475569;margin-bottom:4px">正面（字或词，最多 8 个字）</label>
       <input id="ccFront" type="text" maxlength="8" placeholder="例：秦" autocomplete="off"
         style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:16px;box-sizing:border-box">
@@ -479,25 +504,35 @@ const ModalUI = (() => {
         style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:16px;box-sizing:border-box">
 
       <label for="ccBack" style="display:block;font-size:13px;color:#475569;margin:10px 0 4px">反面（意思、例句、翻译…）—— 按 Enter 直接加入</label>
-      <textarea id="ccBack" maxlength="200" rows="2" placeholder="例：秦始皇统一了中国。"
+      <textarea id="ccBack" maxlength="200" rows="1" placeholder="例：秦始皇统一了中国。"
         style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:15px;box-sizing:border-box;resize:vertical"></textarea>
 
       <div id="ccMsg" class="form-msg"></div>
       <button data-action="cc-add" class="btn-modal-action btn-modal-action--primary"
         style="width:100%">➕ 加入（可连续添加）</button>
-    </div><hr style="margin:12px 0">`;
+    </div>`;
 
     if (!cards.length) {
-      html += '<p style="color:#999">还没有自定义字卡。上面填好正反面就能加。</p>';
-      return html;
+      return '<p style="color:#999">还没有自定义字卡。下面填好正反面就能加。</p>' + formHtml;
     }
 
-    html += `<p style="font-size:13px;color:#64748b;margin:0 0 8px">共 ${cards.length} 张</p>`;
-    html += `<div id="ccList">${renderCustomCardList(cards)}</div>`;
-    html += `<div style="display:flex;gap:8px;margin-top:16px;justify-content:center">
-      <button data-action="cc-review" class="btn-modal-action btn-modal-action--primary">📚 复习卡片</button>
+    // Search shares the header row with 复习卡片 rather than claiming a row
+    // of its own — both are "get to a card I already have" actions, and a
+    // handful of cards is fast enough to scan by eye without it.
+    const searchHtml = cards.length > 8
+      ? `<input id="ccSearch" type="text" placeholder="🔍 搜索…" autocomplete="off"
+          style="flex:1;min-width:0;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;box-sizing:border-box">`
+      : '';
+    let html = `<div class="cc-header">
+      <span style="font-size:13px;color:#64748b;flex-shrink:0">共 ${cards.length} 张</span>
+      <button data-action="cc-review" class="btn-modal-action btn-modal-action--primary" style="flex:1">📚 复习卡片</button>
+      ${searchHtml}
     </div>`;
-    return html;
+    html += `<div id="ccListWrap" class="cc-list-wrap">
+      <div id="ccList">${renderCustomCardList(cards)}</div>
+      <p id="ccNoMatch" class="hidden" style="color:#999;text-align:center;padding:12px 0">没有匹配的卡片</p>
+    </div>`;
+    return html + formHtml;
   }
 
   /**
@@ -523,6 +558,26 @@ const ModalUI = (() => {
         <button data-action="cc-remove" data-front="${escapeHtml(c.front)}" aria-label="删除" title="删除">✕</button>
       </span>
     </div>`).join('');
+  }
+
+  /**
+   * Filter the already-rendered card list by 正面, in place.
+   * Called on every keystroke in #ccSearch — cheap even for a few hundred
+   * .modal-item rows, so no debouncing.
+   * @param {string} query
+   */
+  function filterCustomCardList(query) {
+    const list = document.getElementById('ccList');
+    const noMatch = document.getElementById('ccNoMatch');
+    if (!list) return;
+    const q = query.trim();
+    let visibleCount = 0;
+    list.querySelectorAll('[data-cc-item]').forEach(item => {
+      const match = !q || item.dataset.ccItem.includes(q);
+      item.classList.toggle('hidden', !match);
+      if (match) visibleCount++;
+    });
+    if (noMatch) noMatch.classList.toggle('hidden', visibleCount > 0);
   }
 
   /**
@@ -615,7 +670,7 @@ const ModalUI = (() => {
     <p class="help-foot">手机上可以「添加到主屏幕」，之后没网也能用。</p>`;
   }
 
-  return { show, close, renderFavorites, renderErrorBook, renderBadges, renderReport, renderCustomCards, renderCustomCardList, renderHelp };
+  return { show, close, renderFavorites, renderErrorBook, renderBadges, renderReport, renderCustomCards, renderCustomCardList, filterCustomCardList, renderHelp };
 })();
 
 /** Badge Popup UI — celebration overlay when earning a new badge */

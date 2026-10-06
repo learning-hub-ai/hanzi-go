@@ -951,7 +951,7 @@ const AppController = (() => {
 
   function showCustomCards() {
     ModalUI.show(`✏️ 自定义字卡 (${CustomCardService.count()}张)`,
-      ModalUI.renderCustomCards(CustomCardService.getAll()));
+      ModalUI.renderCustomCards(CustomCardService.getAll()), { cc: true });
     // Land the cursor where typing starts, so the keyboard flow works from the
     // moment the panel opens
     const f = document.getElementById('ccFront');
@@ -994,6 +994,14 @@ const AppController = (() => {
     const list = document.getElementById('ccList');
     if (list) {
       list.innerHTML = ModalUI.renderCustomCardList(CustomCardService.getAll());
+      // Clear any active search so the card just added is not hidden by a
+      // filter that does not happen to match it — "I just added it, where
+      // did it go?" would be a confusing thing to hit right after adding.
+      const searchEl = document.getElementById('ccSearch');
+      if (searchEl && searchEl.value) {
+        searchEl.value = '';
+        ModalUI.filterCustomCardList('');
+      }
     } else {
       showCustomCards();
     }
@@ -1023,6 +1031,12 @@ const AppController = (() => {
     const remaining = CustomCardService.getAll();
     if (list && remaining.length) {
       list.innerHTML = ModalUI.renderCustomCardList(remaining);
+      // Re-apply whatever search was active — deleting a card out of a
+      // filtered-down list should not silently reset the filter.
+      const searchEl = document.getElementById('ccSearch');
+      if (searchEl && searchEl.value) {
+        ModalUI.filterCustomCardList(searchEl.value);
+      }
     } else {
       showCustomCards(); // last card gone — fall back to the empty state
     }
@@ -1431,6 +1445,14 @@ const AppController = (() => {
       if (!t || !['ccFront', 'ccPinyin', 'ccBack'].includes(t.id)) return;
       e.preventDefault();
       addCustomCard();
+    });
+
+    // Filter the custom-card list as you type. Delegated for the same reason
+    // as the keydown handler above.
+    document.getElementById('modalContent').addEventListener('input', (e) => {
+      if (e.target && e.target.id === 'ccSearch') {
+        ModalUI.filterCustomCardList(e.target.value);
+      }
     });
 
     document.getElementById('modalContent').addEventListener('click', (e) => {

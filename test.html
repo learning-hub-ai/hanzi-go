@@ -2223,6 +2223,250 @@ async function runTests() {
       assertEqual(app.CustomCardService.getAll().length, 0, 'getAll should be safe too');
       clearCards();
     });
+
+    it('R8: the card list (and 复习卡片) come before the add form, not after', () => {
+      // Used to be form -> list -> 复习卡片, which put 复习卡片 below the
+      // entire list — with 100+ cards you had to scroll past all of them
+      // just to start reviewing, every time the panel opened.
+      app.CustomCardService.add('\u4e00', 'one', '');
+      const html = app.ModalUI.renderCustomCards(app.CustomCardService.getAll());
+      const listPos = html.indexOf('id="ccList"');
+      const reviewPos = html.indexOf('cc-review');
+      const formPos = html.indexOf('id="ccFront"');
+      assert(listPos !== -1 && reviewPos !== -1 && formPos !== -1,
+        'expected to find the list, the review button and the form');
+      assert(reviewPos < formPos, '复习卡片 must come before the add form');
+      assert(listPos < formPos, 'the card list must come before the add form');
+      clearCards();
+    });
+
+    it('R8: 复习卡片 is reachable without scrolling past a long list', () => {
+      // Direct version of the test above: the review button's position in
+      // the HTML must not depend on how many cards are in the list before it.
+      for (let i = 0; i < 20; i++) app.CustomCardService.add(`\u5b57${i}`, `back${i}`, '');
+      const html = app.ModalUI.renderCustomCards(app.CustomCardService.getAll());
+      const reviewPos = html.indexOf('cc-review');
+      const firstCardPos = html.indexOf('\u5b570'); // the first card added
+      assert(reviewPos !== -1, '复习卡片 button missing');
+      assert(reviewPos < firstCardPos, '复习卡片 must render before the card list, regardless of list length');
+      clearCards();
+    });
+
+    it('R8: no search box for a short list', () => {
+      for (let i = 0; i < 5; i++) app.CustomCardService.add(`\u5b57${i}`, `back${i}`, '');
+      const html = app.ModalUI.renderCustomCards(app.CustomCardService.getAll());
+      assert(!html.includes('ccSearch'), 'a handful of cards is fast enough to scan by eye, no search needed');
+      clearCards();
+    });
+
+    it('R8: search box appears once the list is long enough to need it', () => {
+      for (let i = 0; i < 9; i++) app.CustomCardService.add(`\u5b57${i}`, `back${i}`, '');
+      const html = app.ModalUI.renderCustomCards(app.CustomCardService.getAll());
+      assert(html.includes('ccSearch'), 'expected a search box once the list is long');
+      clearCards();
+    });
+
+    it('R8: filterCustomCardList hides non-matching cards by 正面 only', () => {
+      app.CustomCardService.add('\u6625', 'spring', 'ch\u016bn');
+      app.CustomCardService.add('\u590f', 'summer', 'xi\xe0');
+      app.CustomCardService.add('\u6625\u5929', 'springtime', '');
+      app.AppController.showCustomCards();
+
+      app.ModalUI.filterCustomCardList('\u6625'); // matches 春 and 春天, not 夏
+      const items = [...frame.contentDocument.querySelectorAll('[data-cc-item]')];
+      const visible = items.filter(el => !el.classList.contains('hidden')).map(el => el.dataset.ccItem);
+      const hidden = items.filter(el => el.classList.contains('hidden')).map(el => el.dataset.ccItem);
+      assert(visible.includes('\u6625') && visible.includes('\u6625\u5929'),
+        `expected 春 and 春天 visible, got visible=${visible}`);
+      assert(hidden.includes('\u590f'), `expected 夏 hidden, got hidden=${hidden}`);
+
+      const noMatch = frame.contentDocument.getElementById('ccNoMatch');
+      assert(noMatch.classList.contains('hidden'), 'there are matches, so the no-match message must stay hidden');
+      clearCards();
+    });
+
+    it('R8: filterCustomCardList does not match against 反面 or 拼音', () => {
+      // Finding a card to delete is "I know what I typed on the front" —
+      // matching the free-text back too would surface noisy results.
+      app.CustomCardService.add('\u6625', '\u590f\u5929\u5f88\u70ed', ''); // back text contains 夏
+      app.AppController.showCustomCards();
+      app.ModalUI.filterCustomCardList('\u590f'); // only appears in 反面, not 正面
+      const item = frame.contentDocument.querySelector('[data-cc-item]');
+      assert(item.classList.contains('hidden'), '夏 only appears in 反面 and must not match');
+      clearCards();
+    });
+
+    it('R8: filterCustomCardList shows the no-match message when nothing matches', () => {
+      app.CustomCardService.add('\u6625', 'spring', '');
+      app.AppController.showCustomCards();
+      app.ModalUI.filterCustomCardList('\u4e0d\u5b58\u5728\u7684\u5b57');
+      const noMatch = frame.contentDocument.getElementById('ccNoMatch');
+      assert(!noMatch.classList.contains('hidden'), 'should show the no-match message');
+      clearCards();
+    });
+
+    it('R8: clearing the search shows every card again', () => {
+      app.CustomCardService.add('\u6625', 'spring', '');
+      app.CustomCardService.add('\u590f', 'summer', '');
+      app.AppController.showCustomCards();
+      app.ModalUI.filterCustomCardList('\u6625');
+      app.ModalUI.filterCustomCardList('');
+      const hiddenCount = frame.contentDocument.querySelectorAll('[data-cc-item].hidden').length;
+      assertEqual(hiddenCount, 0, 'an empty query must show everything again');
+      clearCards();
+    });
+
+    it('R8: adding a card while a search is active clears the search, so the new card is visible', () => {
+      for (let i = 0; i < 9; i++) app.CustomCardService.add(`\u65e7${i}`, `old${i}`, '');
+      app.AppController.showCustomCards();
+      const searchEl = frame.contentDocument.getElementById('ccSearch');
+      searchEl.value = '\u65e7'; // matches none of the about-to-be-added 新 card
+      app.ModalUI.filterCustomCardList('\u65e7');
+
+      frame.contentDocument.getElementById('ccFront').value = '\u65b0';
+      frame.contentDocument.getElementById('ccBack').value = 'brand new';
+      frame.contentDocument.querySelector('[data-action="cc-add"]').click();
+
+      assertEqual(searchEl.value, '', 'the search box should be cleared after adding');
+      const newItem = frame.contentDocument.querySelector('[data-cc-item="\u65b0"]');
+      assert(newItem && !newItem.classList.contains('hidden'),
+        'the newly added card must be visible, not hidden by a stale filter');
+      clearCards();
+    });
+
+    it('R8: removing a card while a search is active keeps the search applied', () => {
+      for (let i = 0; i < 9; i++) app.CustomCardService.add(`\u5b57${i}`, `back${i}`, '');
+      app.CustomCardService.add('\u6625', 'spring', '');
+      app.AppController.showCustomCards();
+      // Type into the real box (not just calling the filter function), so
+      // the .value this test later asserts on is actually set — same as a
+      // real user typing, which is what removeCustomCard reads from.
+      const searchBox = frame.contentDocument.getElementById('ccSearch');
+      searchBox.value = '\u6625'; // only 春 matches
+      app.ModalUI.filterCustomCardList(searchBox.value);
+
+      // Remove one of the non-matching cards — the filter should still apply
+      // to what remains, not reset to showing everything.
+      frame.contentDocument.querySelector('[data-cc-item="\u5b570"] [data-action="cc-remove"]').click();
+
+      const searchEl = frame.contentDocument.getElementById('ccSearch');
+      assertEqual(searchEl.value, '\u6625', 'the search text itself must survive a remove');
+      const visibleItems = [...frame.contentDocument.querySelectorAll('[data-cc-item]')]
+        .filter(el => !el.classList.contains('hidden'));
+      assertEqual(visibleItems.length, 1, 'only 春 should still be visible after the filter is re-applied');
+      assertEqual(visibleItems[0].dataset.ccItem, '\u6625');
+      clearCards();
+    });
+
+    it('R8: 复习卡片 and the search box share one row', () => {
+      // Search used to get a row of its own below 复习卡片 — both are
+      // "get to a card I already have" actions and fit on one line.
+      for (let i = 0; i < 9; i++) app.CustomCardService.add(`\u5b57${i}`, `back${i}`, '');
+      app.AppController.showCustomCards();
+      const review = frame.contentDocument.querySelector('[data-action="cc-review"]');
+      const search = frame.contentDocument.getElementById('ccSearch');
+      assert(review && search, 'expected both the review button and the search box');
+      const reviewRect = review.getBoundingClientRect();
+      const searchRect = search.getBoundingClientRect();
+      // Same row: search starts at or after where review ends (allowing a
+      // small gap), not on a lower line.
+      assert(searchRect.left >= reviewRect.right - 5,
+        `expected search to sit beside 复习卡片 on the same row, got review.right=${Math.round(reviewRect.right)} search.left=${Math.round(searchRect.left)}`);
+      clearCards();
+    });
+
+    it('R8: 复习卡片 stays visible without scrolling, even with a long list', () => {
+      // The fix that put 复习卡片 above the list (see the ordering test
+      // above) was not enough on its own: with the whole modal scrolling as
+      // one block, a long enough list still eventually pushes the *bottom*
+      // of the modal — and anything anchored there, like the add-card
+      // button — out of view. The real fix bounds the list's own height so
+      // it scrolls independently, leaving 复习卡片 (top) and 加入 (bottom)
+      // always within the modal's fixed viewport regardless of list length.
+      //
+      // This test suite's iframe is deliberately height:0 (hidden off-screen
+      // during automated runs), so the modal's own vh-based height resolves
+      // to near nothing there — give the iframe a real height just for this
+      // geometry-dependent check, then restore it.
+      const prevHeight = frame.style.height;
+      frame.style.height = '800px';
+      try {
+        for (let i = 0; i < 60; i++) app.CustomCardService.add(`\u5b57${i}`, `back${i}`, '');
+        app.AppController.showCustomCards();
+        const modal = frame.contentDocument.getElementById('modalBox');
+        const review = frame.contentDocument.querySelector('[data-action="cc-review"]');
+        const modalRect = modal.getBoundingClientRect();
+        const reviewRect = review.getBoundingClientRect();
+        assert(reviewRect.top >= modalRect.top && reviewRect.bottom <= modalRect.bottom,
+          `复习卡片 must be within the modal's own bounds without scrolling, got review.top=${Math.round(reviewRect.top)} modal=[${Math.round(modalRect.top)},${Math.round(modalRect.bottom)}]`);
+      } finally {
+        app.ModalUI.close();
+        frame.style.height = prevHeight;
+        clearCards();
+      }
+    });
+
+    it('R8: 加入 (add) button stays visible without scrolling, even with a long list', () => {
+      // The actual bug this guards against: an earlier fix moved 复习卡片
+      // above the list, which fixed that button but pushed the add form
+      // (and its 加入 button) below the list instead — same complaint,
+      // different button. Both must be reachable at once.
+      const prevHeight = frame.style.height;
+      frame.style.height = '800px';
+      try {
+        for (let i = 0; i < 60; i++) app.CustomCardService.add(`\u5b57${i}`, `back${i}`, '');
+        app.AppController.showCustomCards();
+        const modal = frame.contentDocument.getElementById('modalBox');
+        const addBtn = frame.contentDocument.querySelector('[data-action="cc-add"]');
+        const modalRect = modal.getBoundingClientRect();
+        const addRect = addBtn.getBoundingClientRect();
+        assert(addRect.top >= modalRect.top && addRect.bottom <= modalRect.bottom,
+          `加入 button must be within the modal's own bounds without scrolling, got add.top=${Math.round(addRect.top)} modal=[${Math.round(modalRect.top)},${Math.round(modalRect.bottom)}]`);
+      } finally {
+        app.ModalUI.close();
+        frame.style.height = prevHeight;
+        clearCards();
+      }
+    });
+
+    it('R8: scrolling the card list does not move 复习卡片 or the add form', () => {
+      const prevHeight = frame.style.height;
+      frame.style.height = '800px';
+      try {
+        for (let i = 0; i < 60; i++) app.CustomCardService.add(`\u5b57${i}`, `back${i}`, '');
+        app.AppController.showCustomCards();
+        const review = frame.contentDocument.querySelector('[data-action="cc-review"]');
+        const addBtn = frame.contentDocument.querySelector('[data-action="cc-add"]');
+        const reviewTopBefore = review.getBoundingClientRect().top;
+        const addTopBefore = addBtn.getBoundingClientRect().top;
+
+        const listWrap = frame.contentDocument.getElementById('ccListWrap');
+        listWrap.scrollTop = listWrap.scrollHeight;
+        assertGreater(listWrap.scrollTop, 0, 'precondition: the list must actually have scrolled');
+
+        assertEqual(review.getBoundingClientRect().top, reviewTopBefore,
+          '复习卡片 must not move when the list scrolls');
+        assertEqual(addBtn.getBoundingClientRect().top, addTopBefore,
+          '加入 button must not move when the list scrolls');
+      } finally {
+        app.ModalUI.close();
+        frame.style.height = prevHeight;
+        clearCards();
+      }
+    });
+
+    it('R8: 反面 textarea is a single row, so the fixed form leaves more room for the list', () => {
+      // Reported directly: while searching, the fixed footer's full-size
+      // textarea ate so much of the modal's height that search results
+      // ("the full frame") were barely visible above it. The field is still
+      // resizable by drag for a longer sentence; it just does not default
+      // to claiming two rows' worth of fixed footer height.
+      const html = app.ModalUI.renderCustomCards(app.CustomCardService.getAll());
+      assert(html.includes('rows="1"'), 'the 反面 textarea should default to 1 row, not 2');
+      app.AppController.showCustomCards();
+      assertEqual(frame.contentDocument.getElementById('ccBack').rows, 1,
+        'the rendered textarea must actually have rows=1');
+    });
   });
 
   describeWith('\u{1F50A} Tap the character to hear it', resetProfileData, () => {

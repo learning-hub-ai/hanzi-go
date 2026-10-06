@@ -322,6 +322,15 @@ main{
 .modal-item .char-display{font-size:22px}
 .modal-item button{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px}
 
+/* 自定义字卡：复习/搜索固定在上，加卡表单固定在下，中间的卡片列表自己
+   滚动。原来整个弹窗一起滚（.modal 的 overflow-y），列表一长，不管把
+   复习按钮还是加卡按钮放在列表哪一侧，另一侧都会被挤到看不见——这里改
+   成列表自己有固定高度和滚动条，常用的两个按钮都在滚动区域外，不随列表
+   长度变化。 */
+.cc-header{display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex-shrink:0;padding-bottom:10px;border-bottom:1px solid var(--border-light)}
+.cc-list-wrap{flex:1;min-height:80px;max-height:38vh;overflow-y:auto;margin:10px 0}
+.cc-footer{flex-shrink:0;padding-top:12px;border-top:1px solid var(--border-light)}
+
 /* === 12. Badge Popup === */
 .badge-popup{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--card);border-radius:var(--radius-lg);padding:var(--s6);text-align:center;z-index:300;box-shadow:var(--shadow-lg);animation:badgePop .5s var(--ease-bounce)}
 @keyframes badgePop{from{transform:translate(-50%,-50%) scale(0)}to{transform:translate(-50%,-50%) scale(1)}}
@@ -720,6 +729,17 @@ main{
 /* 学习报告：比默认 380px 宽，但不必像使用说明那么宽 —— 它是一张短列表，
    不是长篇说明。给它自己一档，并一样放宽高度上限。 */
 .modal.modal--report{max-width:min(620px, calc(100vw - 2 * var(--s4)));max-height:94vh}
+/* 自定义字卡：弹窗本身不再滚动（原来 .modal 的 overflow-y 会让复习/加卡
+   按钮跟着列表一起被推走），改成固定高度的 flex 列，内容区
+   (#modalContent) 跟着拉成 flex 列，让 .cc-header/.cc-list-wrap/.cc-footer
+   三段各自归位，只有中间的列表自己滚动。
+   94vh（跟 .modal--wide/.modal--report 一样）而不是默认的 80vh：加卡表单
+   本身就有三个输入框和一段文字框，天生比其他弹窗的内容高，80vh 留给列表
+   的空间几乎被表单吃完，变成列表区高度趋近于零——这个布局比其他弹窗更
+   需要纵向空间。 */
+.modal.modal--cc{display:flex;flex-direction:column;height:min(640px, 94vh);max-height:94vh;max-width:460px;overflow:hidden}
+.modal.modal--cc #modalContent{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.modal.modal--cc .modal-close,.modal.modal--cc #modalTitle{flex-shrink:0}
 
 
 /* 说明页：开头一句定位（借 qinshihuang/how-to-use.html 的 .lead） */
