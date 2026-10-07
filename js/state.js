@@ -135,29 +135,73 @@ const State = (() => {
 
   /**
    * Export the current profile's full data as a plain object, for backup/transfer
-   * to another device. Does not touch shared keys (profile list, active profile).
-   * @returns {Object} { profileId, exportedAt, data: { <key>: <value>, ... } }
+   * to another device. Does not touch shared keys (profile list, active profile),
+   * but DOES include the profile's name/avatar so importProfileData() can offer
+   * to recreate the profile on a device where it doesn't exist yet.
+   * @returns {Object} { profileId, profileName, profileAvatar, exportedAt, data: {...} }
    */
   function exportProfileData() {
     const data = {};
     for (const key of EXPORT_KEYS) {
       data[key] = load(key, null);
     }
-    return { profileId: _profileId, exportedAt: new Date().toISOString(), data };
+    const profiles = loadShared('profiles', []);
+    const current = profiles.find(p => p.id === _profileId);
+    return {
+      profileId: _profileId,
+      profileName: current ? current.name : _profileId,
+      profileAvatar: current ? current.avatar : '🧒',
+      exportedAt: new Date().toISOString(),
+      data
+    };
   }
 
   /**
-   * Import previously exported data into the CURRENT profile, overwriting
-   * whatever is currently stored under each key. Caller is responsible for
-   * confirming this with the user first — this function does not ask.
+   * Check whether a profile with the given id already exists on this device.
+   * Used by the import flow to decide whether to offer "create this profile".
+   * @param {string} profileId
+   * @returns {boolean}
+   */
+  function profileExists(profileId) {
+    const profiles = loadShared('profiles', []);
+    return profiles.some(p => p.id === profileId);
+  }
+
+  /**
+   * Create a new profile from exported data's name/avatar, if one with that
+   * id doesn't already exist. Does not switch to it or touch its data —
+   * callers should follow up with importProfileData(payload) targeting the
+   * same id to actually fill in the learning data.
+   * @param {string} profileId
+   * @param {string} name
+   * @param {string} avatar
+   * @returns {{ok: boolean, error?: string}}
+   */
+  function createProfileFromImport(profileId, name, avatar) {
+    const profiles = loadShared('profiles', []);
+    if (profiles.some(p => p.id === profileId)) {
+      return { ok: false, error: 'profile_already_exists' };
+    }
+    profiles.push({ id: profileId, name: name || profileId, avatar: avatar || '🧒' });
+    saveShared('profiles', profiles);
+    return { ok: true };
+  }
+
+  /**
+   * Import previously exported data, writing it into the profile identified
+   * by payload.profileId (NOT necessarily the currently active profile).
+   * Overwrites whatever is currently stored under each key for that profile.
+   * Caller is responsible for confirming this with the user first, and for
+   * creating the target profile first via createProfileFromImport() if it
+   * doesn't exist yet — this function does not create profiles itself.
    *
-   * Also updates the in-memory `state` object for the keys it tracks
-   * (favorites/errorBook/stats/badges — see setProfile()), so callers that
-   * don't force a full page reload still see consistent data via State.get().
-   * spacedRep/customCards/favContext are read fresh from localStorage by their
-   * own services on each call, so no in-memory sync is needed for those here —
-   * except SpacedRepService, which keeps its own cache; callers should call
-   * SpacedRepService.resetCache() after a successful import.
+   * If the target profile IS the currently active one, also updates the
+   * in-memory `state` object for the keys it tracks (favorites/errorBook/
+   * stats/badges — see setProfile()), so callers that don't force a full
+   * page reload still see consistent data via State.get(). If importing into
+   * a DIFFERENT (non-active) profile, in-memory state is correctly left alone —
+   * the imported data is only visible after switching to that profile (which
+   * reloads it from localStorage via setProfile()).
    *
    * @param {Object} payload - the object produced by exportProfileData()
    * @returns {{ok: boolean, error?: string}}
@@ -166,11 +210,24 @@ const State = (() => {
     if (!payload || typeof payload !== 'object' || typeof payload.data !== 'object' || payload.data === null) {
       return { ok: false, error: 'invalid_format' };
     }
+    if (!payload.profileId) {
+      return { ok: false, error: 'invalid_format' };
+    }
+    if (!profileExists(payload.profileId)) {
+      return { ok: false, error: 'profile_not_found' };
+    }
+    const targetId = payload.profileId;
+    const isActiveProfile = targetId === _profileId;
     const STATE_TRACKED_KEYS = ['favorites', 'errorBook', 'stats', 'badges'];
+
     for (const key of EXPORT_KEYS) {
       if (payload.data[key] !== undefined && payload.data[key] !== null) {
-        save(key, payload.data[key]);
-        if (STATE_TRACKED_KEYS.includes(key)) {
+        // Write directly under the TARGET profile's namespace, not necessarily
+        // the currently active one — _key() always uses _profileId, so for a
+        // non-active target we build the storage key explicitly here.
+        const storageKey = STORAGE_PREFIX + targetId + '_' + key;
+        localStorage.setItem(storageKey, JSON.stringify(payload.data[key]));
+        if (isActiveProfile && STATE_TRACKED_KEYS.includes(key)) {
           state[key] = payload.data[key];
         }
       }
@@ -208,6 +265,8 @@ const State = (() => {
     setProfile,
     getProfileId,
     exportProfileData,
-    importProfileData
+    importProfileData,
+    profileExists,
+    createProfileFromImport
   };
 })();

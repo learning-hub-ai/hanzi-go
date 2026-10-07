@@ -691,10 +691,11 @@ const ModalUI = (() => {
     </div>
 
     <div class="help-block">
-      <div class="help-sec"><span class="help-sec-t">⬆️ 导入</span><span class="help-sec-s">用备份文件覆盖当前进度</span></div>
+      <div class="help-sec"><span class="help-sec-t">⬆️ 导入</span><span class="help-sec-s">恢复备份，或从别的设备转移过来</span></div>
       <div class="help-body">
-        <p class="help-row-v" style="margin:0 0 10px"><strong>⚠️ 会覆盖「${escapeHtml(profileName || '')}」当前的数据</strong>，
-        导入前最好先导出一份当前的作为备份。</p>
+        <p class="help-row-v" style="margin:0 0 10px">导入会按备份文件里记的用户名字处理：
+        <strong>这台设备上已经有同名用户</strong>——会覆盖那个用户当前的数据，建议先导出一份当前数据再导入；
+        <strong>还没有同名用户</strong>——会提示你新建一个同名用户，再把数据放进去，不用自己先手动建。</p>
         <input type="file" id="xferImportFile" accept="application/json" style="display:none">
         <button id="xferImportBtn" class="xfer-btn">⬆️ 选择备份文件导入</button>
         <p id="xferImportMsg" class="help-row-v" style="margin:10px 0 0"></p>

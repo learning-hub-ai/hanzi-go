@@ -1108,14 +1108,12 @@ const AppController = (() => {
     URL.revokeObjectURL(url);
   }
 
-  /** Handle a chosen backup file: confirm overwrite, then import and reload the view. */
+  /** Handle a chosen backup file: resolve the target profile (creating it if
+   * it doesn't exist on this device yet), confirm overwrite, then import. */
   function _importData(event, msgEl) {
     const file = event.target.files && event.target.files[0];
     event.target.value = ''; // allow re-selecting the same file later
     if (!file) return;
-
-    const confirmed = window.confirm('导入会覆盖当前用户的生字本、错题本、复习进度、徽章和自定义卡片，确定要继续吗？');
-    if (!confirmed) return;
 
     const reader = new FileReader();
     reader.onload = () => {
@@ -1126,13 +1124,40 @@ const AppController = (() => {
         if (msgEl) msgEl.textContent = '❌ 这不是一个有效的备份文件';
         return;
       }
-      const result = State.importProfileData(payload);
-      if (!result.ok) {
+      if (!payload || typeof payload !== 'object' || !payload.profileId || typeof payload.data !== 'object') {
         if (msgEl) msgEl.textContent = '❌ 文件格式不对，不是从这个应用导出的备份';
         return;
       }
+
+      const displayName = payload.profileName || payload.profileId;
+      const exists = State.profileExists(payload.profileId);
+
+      if (!exists) {
+        const createConfirmed = window.confirm(
+          `这台设备上还没有「${displayName}」这个用户。要新建一个「${displayName}」并导入这份备份吗？`
+        );
+        if (!createConfirmed) return;
+        const createResult = State.createProfileFromImport(payload.profileId, payload.profileName, payload.profileAvatar);
+        if (!createResult.ok) {
+          if (msgEl) msgEl.textContent = '❌ 新建用户失败，请重试';
+          return;
+        }
+      } else {
+        const overwriteConfirmed = window.confirm(
+          `导入会覆盖「${displayName}」当前的生字本、错题本、复习进度、徽章和自定义卡片，确定要继续吗？`
+        );
+        if (!overwriteConfirmed) return;
+      }
+
+      const result = State.importProfileData(payload);
+      if (!result.ok) {
+        if (msgEl) msgEl.textContent = '❌ 导入失败：' + (result.error || '未知错误');
+        return;
+      }
       if (typeof SpacedRepService !== 'undefined') SpacedRepService.resetCache();
-      if (msgEl) msgEl.textContent = '✅ 导入成功，正在刷新…';
+      if (msgEl) msgEl.textContent = exists
+        ? '✅ 导入成功，正在刷新…'
+        : `✅ 已新建「${displayName}」并导入数据，正在刷新…`;
       setTimeout(() => window.location.reload(), 600);
     };
     reader.onerror = () => {

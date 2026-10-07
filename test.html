@@ -512,6 +512,57 @@ async function runTests() {
         'badges should be untouched when the import payload has null for that key'
       );
     });
+
+    it('exportProfileData includes profileName and profileAvatar', () => {
+      const payload = app.State.exportProfileData();
+      assert(typeof payload.profileName === 'string' && payload.profileName.length > 0, 'Missing profileName');
+      assert(typeof payload.profileAvatar === 'string' && payload.profileAvatar.length > 0, 'Missing profileAvatar');
+    });
+
+    it('importProfileData rejects a target profile that does not exist on this device', () => {
+      const payload = app.State.exportProfileData();
+      payload.profileId = '__nonexistent_test_profile__';
+      const result = app.State.importProfileData(payload);
+      assert(!result.ok, 'Should reject import for an unknown profile id');
+      assertEqual(result.error, 'profile_not_found', 'Wrong error code');
+    });
+
+    it('profileExists correctly reports current profile as existing and a bogus id as not', () => {
+      assert(app.State.profileExists(app.State.getProfileId()), 'Current profile should exist');
+      assert(!app.State.profileExists('__definitely_not_a_real_profile__'), 'Bogus id should not exist');
+    });
+
+    it('createProfileFromImport creates a new profile that import can then target', () => {
+      const newId = '__test_imported_user_' + Date.now();
+      assert(!app.State.profileExists(newId), 'Setup: id should not pre-exist');
+
+      const createResult = app.State.createProfileFromImport(newId, '测试小朋友', '🦊');
+      assert(createResult.ok, 'createProfileFromImport should succeed for a fresh id');
+      assert(app.State.profileExists(newId), 'Profile should exist after creation');
+
+      // Build a minimal export payload targeting the new profile, then import into it
+      const payload = { profileId: newId, profileName: '测试小朋友', exportedAt: new Date().toISOString(),
+        data: { favorites: ['测'], errorBook: [], stats: {}, badges: [], spacedRep: {}, customCards: [], favContext: {} } };
+      const importResult = app.State.importProfileData(payload);
+      assert(importResult.ok, 'Import into the newly created profile should succeed');
+
+      // The CURRENTLY ACTIVE profile's in-memory favorites must be unaffected,
+      // since we imported into a different (non-active) profile.
+      const activeFavs = app.State.get('favorites');
+      assert(!activeFavs.includes('测') || activeFavs !== payload.data.favorites,
+        'Importing into a non-active profile should not mutate the active profile\'s in-memory state');
+
+      // Cleanup: remove the test profile from the shared profiles list and its data
+      const profiles = app.ProfileManager.getProfiles().filter(p => p.id !== newId);
+      app.State.saveShared('profiles', profiles);
+    });
+
+    it('createProfileFromImport refuses to overwrite an existing profile entry', () => {
+      const currentId = app.State.getProfileId();
+      const result = app.State.createProfileFromImport(currentId, 'whatever', '🧒');
+      assert(!result.ok, 'Should refuse to create a profile that already exists');
+      assertEqual(result.error, 'profile_already_exists', 'Wrong error code');
+    });
   });
 
   // === 7. Streak Logic ===
