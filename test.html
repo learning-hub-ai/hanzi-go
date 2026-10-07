@@ -2697,7 +2697,7 @@ async function runTests() {
         '\u4efb\u52a1', '\u5b66\u4e60', '\u6311\u6218',               // the three tabs
         '\u667a\u80fd\u590d\u4e60', '\u7ec3\u751f\u5b57', '\u7ec3\u9519\u9898', '\u81ea\u5b9a\u4e49', // sidebar
         '\u751f\u5b57\u672c', '\u9519\u9898\u672c', '\u6210\u5c31\u5899', '\u5b66\u4e60\u62a5\u544a', // header
-        '\u5207\u6362\u7528\u6237', '\u5bfc\u51fa', '\u5bfc\u5165'    // 💾 backup/transfer button
+        '\u5207\u6362\u7528\u6237', '\u5bfc\u51fa', '\u5bfc\u5165', '\u5207\u6362\u8bfe\u6587'    // 💾 backup/transfer, 🔄 switch lesson
       ];
       const missing = mustMention.filter(t => !html.includes(t));
       assertEqual(missing.length, 0, `help text does not mention: ${missing.join(', ')}`);
@@ -2756,6 +2756,12 @@ async function runTests() {
         'help should mention both export and import');
       assert(html.includes('\u65b0\u5efa') || html.includes('\u8986\u76d6'),
         'help should explain the create-vs-overwrite behavior when importing');
+    });
+
+    it('Help: mentions 切换课文 (jump to another lesson) in the task flow', () => {
+      const html = app.ModalUI.renderHelp();
+      assert(html.includes('\u5207\u6362\u8bfe\u6587'), 'help should mention the 切换课文 button');
+      assert(html.includes('\u4e0d\u4f1a\u4e22'), 'help should reassure that completed-lesson history is preserved when switching');
     });
 
     it('Help: has a parent section, kept separate from the child-facing text', () => {

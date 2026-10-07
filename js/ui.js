@@ -621,7 +621,8 @@ const ModalUI = (() => {
     ];
     const steps = `<div class="help-steps">${STEPS.map(([n, t, d]) => `<div class="help-step">
       <div class="help-step-n">${n}</div><div class="help-step-t">${t}</div><div>${d}</div></div>`).join('')}</div>
-      <p class="help-row-v" style="margin:6px 0 0">漏一天不要紧，第二天补上照样连着算；隔两天才从头数。</p>`;
+      <p class="help-row-v" style="margin:6px 0 0">漏一天不要紧，第二天补上照样连着算；隔两天才从头数。</p>
+      <p class="help-row-v" style="margin:6px 0 0">🔄 <strong>切换课文</strong>：任务页顶部的按钮，能跳到本学期任意一课重新开始，也能选「从头开始」。切换前会先把当前学期已学完的课记进历史，不会丢。</p>`;
 
     return `
     <p class="help-lead">每天打开先做 <strong>📖 任务</strong> —— 该学哪些新字、该复习哪些旧字，
