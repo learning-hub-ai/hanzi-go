@@ -581,6 +581,13 @@ main{
 .dt-step-btn:hover{background:var(--primary-dark)}
 .dt-step-btn:active{transform:scale(.95)}
 
+/* Backup/transfer (export/import) buttons — see ModalUI.renderDataTransfer */
+.xfer-btn{padding:var(--s2) var(--s4);border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;transition:all var(--duration-fast) ease}
+.xfer-btn:hover{background:var(--border-light)}
+.xfer-btn:active{transform:scale(.97)}
+.xfer-btn-primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+.xfer-btn-primary:hover{background:var(--primary-dark)}
+
 /* Card screens (review & learn) */
 .dt-card-screen{display:flex;flex-direction:column;align-items:center;width:100%}
 .dt-card-header{display:flex;justify-content:space-between;align-items:center;width:100%;margin-bottom:var(--s3);font-size:14px;font-weight:600;color:var(--text-secondary)}

@@ -670,7 +670,39 @@ const ModalUI = (() => {
     <p class="help-foot">手机上可以「添加到主屏幕」，之后没网也能用。</p>`;
   }
 
-  return { show, close, renderFavorites, renderErrorBook, renderBadges, renderReport, renderCustomCards, renderCustomCardList, filterCustomCardList, renderHelp };
+  /**
+   * Render the backup/transfer screen: export current profile's data as a
+   * downloadable JSON file, or import a previously exported file to restore
+   * it (overwriting current data after an explicit confirm in the controller).
+   * @param {string} profileName - current profile's display name, for the filename hint
+   */
+  function renderDataTransfer(profileName) {
+    return `
+    <p class="help-lead">换设备、清了浏览器数据，或者想先存一份备份 —— 导出一个文件，
+    到另一台设备上导入回来就行。不需要网络，也不会上传到任何地方。</p>
+
+    <div class="help-block">
+      <div class="help-sec"><span class="help-sec-t">⬇️ 导出</span><span class="help-sec-s">存一份当前进度到文件</span></div>
+      <div class="help-body">
+        <p class="help-row-v" style="margin:0 0 10px">把「<strong>${escapeHtml(profileName || '')}</strong>」的生字本、错题本、
+        复习进度、徽章、自定义卡片打包成一个文件，下载到你的设备上。</p>
+        <button id="xferExportBtn" class="xfer-btn xfer-btn-primary">⬇️ 导出数据</button>
+      </div>
+    </div>
+
+    <div class="help-block">
+      <div class="help-sec"><span class="help-sec-t">⬆️ 导入</span><span class="help-sec-s">用备份文件覆盖当前进度</span></div>
+      <div class="help-body">
+        <p class="help-row-v" style="margin:0 0 10px"><strong>⚠️ 会覆盖「${escapeHtml(profileName || '')}」当前的数据</strong>，
+        导入前最好先导出一份当前的作为备份。</p>
+        <input type="file" id="xferImportFile" accept="application/json" style="display:none">
+        <button id="xferImportBtn" class="xfer-btn">⬆️ 选择备份文件导入</button>
+        <p id="xferImportMsg" class="help-row-v" style="margin:10px 0 0"></p>
+      </div>
+    </div>`;
+  }
+
+  return { show, close, renderFavorites, renderErrorBook, renderBadges, renderReport, renderCustomCards, renderCustomCardList, filterCustomCardList, renderHelp, renderDataTransfer };
 })();
 
 /** Badge Popup UI — celebration overlay when earning a new badge */

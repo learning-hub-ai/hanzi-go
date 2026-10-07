@@ -127,6 +127,57 @@ const State = (() => {
   /** @returns {string} Current profile ID */
   function getProfileId() { return _profileId; }
 
+  // Keys that make up a profile's full learning data (not shared/profile-list keys).
+  // Kept as one explicit list so export/import can't silently drift from what
+  // the app actually persists — if a new per-profile key is ever added, it needs
+  // to be added here too for backup/restore to include it.
+  const EXPORT_KEYS = ['favorites', 'errorBook', 'stats', 'badges', 'spacedRep', 'customCards', 'favContext'];
+
+  /**
+   * Export the current profile's full data as a plain object, for backup/transfer
+   * to another device. Does not touch shared keys (profile list, active profile).
+   * @returns {Object} { profileId, exportedAt, data: { <key>: <value>, ... } }
+   */
+  function exportProfileData() {
+    const data = {};
+    for (const key of EXPORT_KEYS) {
+      data[key] = load(key, null);
+    }
+    return { profileId: _profileId, exportedAt: new Date().toISOString(), data };
+  }
+
+  /**
+   * Import previously exported data into the CURRENT profile, overwriting
+   * whatever is currently stored under each key. Caller is responsible for
+   * confirming this with the user first — this function does not ask.
+   *
+   * Also updates the in-memory `state` object for the keys it tracks
+   * (favorites/errorBook/stats/badges — see setProfile()), so callers that
+   * don't force a full page reload still see consistent data via State.get().
+   * spacedRep/customCards/favContext are read fresh from localStorage by their
+   * own services on each call, so no in-memory sync is needed for those here —
+   * except SpacedRepService, which keeps its own cache; callers should call
+   * SpacedRepService.resetCache() after a successful import.
+   *
+   * @param {Object} payload - the object produced by exportProfileData()
+   * @returns {{ok: boolean, error?: string}}
+   */
+  function importProfileData(payload) {
+    if (!payload || typeof payload !== 'object' || typeof payload.data !== 'object' || payload.data === null) {
+      return { ok: false, error: 'invalid_format' };
+    }
+    const STATE_TRACKED_KEYS = ['favorites', 'errorBook', 'stats', 'badges'];
+    for (const key of EXPORT_KEYS) {
+      if (payload.data[key] !== undefined && payload.data[key] !== null) {
+        save(key, payload.data[key]);
+        if (STATE_TRACKED_KEYS.includes(key)) {
+          state[key] = payload.data[key];
+        }
+      }
+    }
+    return { ok: true };
+  }
+
   // Initial state (profile data loaded after setProfile is called)
   const state = {
     mode: 'dailyTask',
@@ -155,6 +206,8 @@ const State = (() => {
     loadConfig,
     config,
     setProfile,
-    getProfileId
+    getProfileId,
+    exportProfileData,
+    importProfileData
   };
 })();

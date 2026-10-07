@@ -449,6 +449,71 @@ async function runTests() {
     });
   });
 
+  // === 6b. Data Export / Import ===
+  describe('💾 Data Transfer', () => {
+    it('exportProfileData includes all seven known keys', () => {
+      const payload = app.State.exportProfileData();
+      const expectedKeys = ['favorites', 'errorBook', 'stats', 'badges', 'spacedRep', 'customCards', 'favContext'];
+      for (const k of expectedKeys) {
+        assert(k in payload.data, `Export missing key: ${k}`);
+      }
+    });
+
+    it('exportProfileData tags the current profile id and a timestamp', () => {
+      const payload = app.State.exportProfileData();
+      assertEqual(payload.profileId, app.State.getProfileId(), 'profileId mismatch');
+      assert(payload.exportedAt && payload.exportedAt.length > 0, 'Missing exportedAt');
+    });
+
+    it('round-trip: export then import restores the same favorites', () => {
+      const before = app.State.get('favorites').slice();
+      app.FavoriteService.toggle('导');  // ensure a known, distinctive change
+      const afterToggle = app.State.get('favorites').slice();
+
+      const payload = app.State.exportProfileData();
+      // Mutate local state further, to prove import actually overwrites it
+      app.FavoriteService.toggle('入');
+      assert(app.State.get('favorites').length !== afterToggle.length, 'Setup: toggle should have changed favorites');
+
+      const result = app.State.importProfileData(payload);
+      assert(result.ok, 'Import should succeed for its own export');
+      assertEqual(
+        JSON.stringify(app.State.get('favorites').slice().sort()),
+        JSON.stringify(afterToggle.slice().sort()),
+        'Favorites after import should match the exported snapshot, not the later mutation'
+      );
+
+      // Cleanup: restore original favorites
+      app.State.set('favorites', before);
+      app.State.persist('favorites');
+    });
+
+    it('importProfileData rejects a payload with no data object', () => {
+      const result = app.State.importProfileData({ profileId: 'x', exportedAt: 'y' });
+      assert(!result.ok, 'Should reject payload without a data object');
+      assertEqual(result.error, 'invalid_format', 'Wrong error code');
+    });
+
+    it('importProfileData rejects null/garbage input', () => {
+      assert(!app.State.importProfileData(null).ok, 'Should reject null');
+      assert(!app.State.importProfileData('not an object').ok, 'Should reject a string');
+      assert(!app.State.importProfileData(42).ok, 'Should reject a number');
+    });
+
+    it('importProfileData leaves existing keys alone when the export has null for them', () => {
+      const originalBadges = app.State.get('badges').slice();
+      const payload = app.State.exportProfileData();
+      payload.data.badges = null; // simulate a partial/older export
+      const result = app.State.importProfileData(payload);
+      assert(result.ok, 'Import should still succeed overall');
+      assertEqual(
+        JSON.stringify(app.State.get('badges').slice().sort()),
+        JSON.stringify(originalBadges.slice().sort()),
+        'badges should be untouched when the import payload has null for that key'
+      );
+    });
+  });
+
   // === 7. Streak Logic ===
   describe('🔥 Streak', () => {
     it('Stats has consecutiveDays field', () => {

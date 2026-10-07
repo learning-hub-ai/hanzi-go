@@ -1072,6 +1072,75 @@ const AppController = (() => {
     ModalUI.show('🏆 成就墙', html);
   }
 
+  function showDataTransfer() {
+    const profiles = ProfileManager.getProfiles();
+    const current = profiles.find(p => p.id === State.getProfileId());
+    ModalUI.show('💾 备份与转移', ModalUI.renderDataTransfer(current ? current.name : ''));
+
+    const exportBtn = document.getElementById('xferExportBtn');
+    const importBtn = document.getElementById('xferImportBtn');
+    const importFile = document.getElementById('xferImportFile');
+    const importMsg = document.getElementById('xferImportMsg');
+
+    if (exportBtn) exportBtn.addEventListener('click', _exportData);
+    if (importBtn && importFile) {
+      importBtn.addEventListener('click', () => importFile.click());
+      importFile.addEventListener('change', (e) => _importData(e, importMsg));
+    }
+  }
+
+  /** Trigger a browser download of the current profile's exported data as JSON. */
+  function _exportData() {
+    const payload = State.exportProfileData();
+    const profiles = ProfileManager.getProfiles();
+    const current = profiles.find(p => p.id === payload.profileId);
+    const safeName = (current ? current.name : '备份').replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '');
+    const dateStr = payload.exportedAt.slice(0, 10);
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `hanzigo-备份-${safeName}-${dateStr}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  /** Handle a chosen backup file: confirm overwrite, then import and reload the view. */
+  function _importData(event, msgEl) {
+    const file = event.target.files && event.target.files[0];
+    event.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+
+    const confirmed = window.confirm('导入会覆盖当前用户的生字本、错题本、复习进度、徽章和自定义卡片，确定要继续吗？');
+    if (!confirmed) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      let payload;
+      try {
+        payload = JSON.parse(reader.result);
+      } catch (_e) {
+        if (msgEl) msgEl.textContent = '❌ 这不是一个有效的备份文件';
+        return;
+      }
+      const result = State.importProfileData(payload);
+      if (!result.ok) {
+        if (msgEl) msgEl.textContent = '❌ 文件格式不对，不是从这个应用导出的备份';
+        return;
+      }
+      if (typeof SpacedRepService !== 'undefined') SpacedRepService.resetCache();
+      if (msgEl) msgEl.textContent = '✅ 导入成功，正在刷新…';
+      setTimeout(() => window.location.reload(), 600);
+    };
+    reader.onerror = () => {
+      if (msgEl) msgEl.textContent = '❌ 读取文件失败，请重试';
+    };
+    reader.readAsText(file);
+  }
+
   function removeFavorite(char) {
     FavoriteService.remove(char);
     showFavorites();
@@ -1309,6 +1378,7 @@ const AppController = (() => {
     document.getElementById('btnErrorBook').addEventListener('click', showErrorBook);
     document.getElementById('btnBadges').addEventListener('click', showBadges);
     document.getElementById('btnReport').addEventListener('click', showReport);
+    document.getElementById('btnDataTransfer').addEventListener('click', showDataTransfer);
     document.getElementById('btnHelp').addEventListener('click', showHelp);
 
     // --- Navigation: sidebar ---
@@ -1488,5 +1558,5 @@ const AppController = (() => {
   }
 
   return { init, switchMode, selectSemester, selectLesson, showFavorites, showErrorBook,
-           showBadges, showReport, showHelp, showCustomCards, addCustomCard, removeCustomCard };
+           showBadges, showReport, showHelp, showDataTransfer, showCustomCards, addCustomCard, removeCustomCard };
 })();
