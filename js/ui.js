@@ -517,12 +517,12 @@ const ModalUI = (() => {
     }
 
     // Search shares the header row with 复习卡片 rather than claiming a row
-    // of its own — both are "get to a card I already have" actions, and a
-    // handful of cards is fast enough to scan by eye without it.
-    const searchHtml = cards.length > 8
-      ? `<input id="ccSearch" type="text" placeholder="🔍 搜索…" autocomplete="off"
-          style="flex:1;min-width:0;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;box-sizing:border-box">`
-      : '';
+    // of its own — both are "get to a card I already have" actions.
+    // Always shown once there is at least one card: a per-count threshold
+    // (previously >8) meant the control appeared and disappeared as the
+    // collection grew, which is more surprising than just always having it.
+    const searchHtml = `<input id="ccSearch" type="text" placeholder="🔍 搜索…" autocomplete="off"
+          style="flex:1;min-width:0;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;box-sizing:border-box">`;
     let html = `<div class="cc-header">
       <span style="font-size:13px;color:#64748b;flex-shrink:0">共 ${cards.length} 张</span>
       <button data-action="cc-review" class="btn-modal-action btn-modal-action--primary" style="flex:1">📚 复习卡片</button>

@@ -2252,17 +2252,20 @@ async function runTests() {
       clearCards();
     });
 
-    it('R8: no search box for a short list', () => {
+    it('R8: search box is shown even for a short list', () => {
+      // Used to only appear once the list grew past 8 cards, which meant
+      // the control appeared/disappeared as the collection changed size —
+      // more surprising than just always having it available.
       for (let i = 0; i < 5; i++) app.CustomCardService.add(`\u5b57${i}`, `back${i}`, '');
       const html = app.ModalUI.renderCustomCards(app.CustomCardService.getAll());
-      assert(!html.includes('ccSearch'), 'a handful of cards is fast enough to scan by eye, no search needed');
+      assert(html.includes('ccSearch'), 'the search box should be present regardless of list length');
       clearCards();
     });
 
-    it('R8: search box appears once the list is long enough to need it', () => {
+    it('R8: search box is shown for a long list too', () => {
       for (let i = 0; i < 9; i++) app.CustomCardService.add(`\u5b57${i}`, `back${i}`, '');
       const html = app.ModalUI.renderCustomCards(app.CustomCardService.getAll());
-      assert(html.includes('ccSearch'), 'expected a search box once the list is long');
+      assert(html.includes('ccSearch'), 'expected a search box for a long list');
       clearCards();
     });
 
