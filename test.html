@@ -451,12 +451,45 @@ async function runTests() {
 
   // === 6b. Data Export / Import ===
   describe('💾 Data Transfer', () => {
-    it('exportProfileData includes all seven known keys', () => {
+    it('exportProfileData includes all eleven known keys', () => {
       const payload = app.State.exportProfileData();
-      const expectedKeys = ['favorites', 'errorBook', 'stats', 'badges', 'spacedRep', 'customCards', 'favContext'];
+      const expectedKeys = ['favorites', 'errorBook', 'stats', 'badges', 'spacedRep', 'customCards', 'favContext',
+        'lessonProgress', 'dailyTask', 'growthPoints', 'completedLessonsHistory'];
       for (const k of expectedKeys) {
         assert(k in payload.data, `Export missing key: ${k}`);
       }
+    });
+
+    it('exportProfileData does NOT include derived/transient keys', () => {
+      const payload = app.State.exportProfileData();
+      const shouldNotBeExported = ['allChars', 'editions', 'lessons', 'filteredChars',
+        'currentIndex', 'mode', 'quiz', 'selectedGrade', 'selectedSemester', 'showPinyin'];
+      for (const k of shouldNotBeExported) {
+        assert(!(k in payload.data), `Export should not include derived/transient key: ${k}`);
+      }
+    });
+
+    it('round-trip: export then import restores lessonProgress (current lesson + completed lessons)', () => {
+      const before = app.State.load('lessonProgress', null);
+      const probeProgress = { grade: 1, semester: 1, lessonIndex: 11, completedLessons: ['1-1-01','1-1-02','1-1-03'] };
+      app.State.save('lessonProgress', probeProgress);
+
+      const payload = app.State.exportProfileData();
+      assertEqual(JSON.stringify(payload.data.lessonProgress), JSON.stringify(probeProgress), 'Export should capture lessonProgress as-is');
+
+      // Mutate it further to prove import restores the exported snapshot, not this mutation
+      app.State.save('lessonProgress', { grade: 1, semester: 1, lessonIndex: 99, completedLessons: [] });
+
+      const result = app.State.importProfileData(payload);
+      assert(result.ok, 'Import should succeed');
+      assertEqual(
+        JSON.stringify(app.State.load('lessonProgress', null)),
+        JSON.stringify(probeProgress),
+        'lessonProgress after import should match the exported snapshot'
+      );
+
+      // Cleanup
+      if (before !== null) app.State.save('lessonProgress', before);
     });
 
     it('exportProfileData tags the current profile id and a timestamp', () => {
@@ -2664,7 +2697,7 @@ async function runTests() {
         '\u4efb\u52a1', '\u5b66\u4e60', '\u6311\u6218',               // the three tabs
         '\u667a\u80fd\u590d\u4e60', '\u7ec3\u751f\u5b57', '\u7ec3\u9519\u9898', '\u81ea\u5b9a\u4e49', // sidebar
         '\u751f\u5b57\u672c', '\u9519\u9898\u672c', '\u6210\u5c31\u5899', '\u5b66\u4e60\u62a5\u544a', // header
-        '\u5207\u6362\u7528\u6237'
+        '\u5207\u6362\u7528\u6237', '\u5bfc\u51fa', '\u5bfc\u5165'    // 💾 backup/transfer button
       ];
       const missing = mustMention.filter(t => !html.includes(t));
       assertEqual(missing.length, 0, `help text does not mention: ${missing.join(', ')}`);
@@ -2703,6 +2736,26 @@ async function runTests() {
       const html = app.ModalUI.renderHelp();
       assert(html.includes('\u62fc\u97f3\u586b\u4e86\u624d\u80fd\u7528\u5728\u6311\u6218\u91cc'),
         'a custom card without pinyin cannot be quizzed — users need to know');
+    });
+
+    it('Help: mentions 加强记忆 (reinforce/shuffle-triple) in learn mode', () => {
+      const html = app.ModalUI.renderHelp();
+      assert(html.includes('\u52a0\u5f3a\u8bb0\u5fc6'), 'help should mention the 加强记忆 button');
+    });
+
+    it('Help: mentions the challenge-mode time limit and that timeout counts as wrong', () => {
+      const html = app.ModalUI.renderHelp();
+      assert(html.includes('\u6311\u6218\u9650\u65f6') || html.includes('5/10/15'),
+        'help should mention the challenge time-limit feature');
+      assert(html.includes('\u81ea\u52a8\u7b97\u9519'), 'help should state that a timeout counts as a wrong answer');
+    });
+
+    it('Help: mentions the export/import (备份与转移) feature and what it covers', () => {
+      const html = app.ModalUI.renderHelp();
+      assert(html.includes('\u5bfc\u51fa') && html.includes('\u5bfc\u5165'),
+        'help should mention both export and import');
+      assert(html.includes('\u65b0\u5efa') || html.includes('\u8986\u76d6'),
+        'help should explain the create-vs-overwrite behavior when importing');
     });
 
     it('Help: has a parent section, kept separate from the child-facing text', () => {

@@ -127,11 +127,23 @@ const State = (() => {
   /** @returns {string} Current profile ID */
   function getProfileId() { return _profileId; }
 
-  // Keys that make up a profile's full learning data (not shared/profile-list keys).
+  // Keys that make up a profile's full learning data (not shared/profile-list keys,
+  // and not transient UI/runtime state — see the exclusion note below).
   // Kept as one explicit list so export/import can't silently drift from what
   // the app actually persists — if a new per-profile key is ever added, it needs
   // to be added here too for backup/restore to include it.
-  const EXPORT_KEYS = ['favorites', 'errorBook', 'stats', 'badges', 'spacedRep', 'customCards', 'favContext'];
+  //
+  // Deliberately EXCLUDED (not user data, or not meaningful across devices):
+  //   allChars, editions, lessons, filteredChars — derived from the loaded
+  //     textbook JSON on every page load; re-generated fresh on the target
+  //     device, not something to transfer.
+  //   currentIndex, mode, quiz, selectedGrade, selectedSemester, showPinyin —
+  //     transient UI/session state (which card you're looking at, which quiz
+  //     is mid-flight); meaningless to restore on a different device/session.
+  const EXPORT_KEYS = [
+    'favorites', 'errorBook', 'stats', 'badges', 'spacedRep', 'customCards', 'favContext',
+    'lessonProgress', 'dailyTask', 'growthPoints', 'completedLessonsHistory'
+  ];
 
   /**
    * Export the current profile's full data as a plain object, for backup/transfer
