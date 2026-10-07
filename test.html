@@ -2905,31 +2905,25 @@ async function runTests() {
       app.ModalUI.close();
     });
 
-    it('Help: the opening paragraph has the same text measure as the sections below it', () => {
-      // It used to have no cap of its own, so on a wide screen its lines ran
-      // to the full modal width while the sections below it (in two-column
-      // mode) stayed capped at a readable ~56 characters — the lead read as
-      // a differently-shaped element with much longer lines.
-      // Box width is not the right thing to assert here: .help-lead sits
-      // outside the two-column flow and uses a different font-size than
-      // .help-row-v, so matching pixel-for-pixel box width is neither what
-      // the two previous versions of this test's own history were actually
-      // protecting nor achievable without also matching font-size. What
-      // matters for reading is the character count per line, which is
-      // viewport-independent via the declared max-width/font-size ratio.
+    it('Help: the opening paragraph has no width cap of its own', () => {
+      // Reverted the opposite way twice now (see css/style.css's comment on
+      // .help-lead for the full history) — pin down the CURRENT intent so a
+      // future pass doesn't silently flip it back without reading why.
+      // Current reason: the modal has a fixed max-height and scrolls
+      // vertically when content overflows; a narrower lead wraps onto more
+      // lines, which pushes the sections below it down and makes that
+      // scroll happen sooner. Width is deliberately NOT capped so the lead
+      // uses the same available width as .help-cols and wraps as little as
+      // the sections below it do.
       frame.contentDocument.getElementById('btnHelp').click();
       const lead = frame.contentDocument.querySelector('.help-lead');
-      const row = frame.contentDocument.querySelector('.help-row-v');
       const win = frame.contentWindow;
-      const leadCap = parseFloat(win.getComputedStyle(lead).maxWidth) / parseFloat(win.getComputedStyle(lead).fontSize);
-      const rowCap = parseFloat(win.getComputedStyle(row).maxWidth) / parseFloat(win.getComputedStyle(row).fontSize);
-      assert(!isNaN(leadCap) && !isNaN(rowCap), `expected numeric max-width caps, got lead=${leadCap} row=${rowCap}`);
-      assert(Math.abs(leadCap - rowCap) <= 2,
-        `lead measure is ~${Math.round(leadCap)} chars but sections are ~${Math.round(rowCap)} chars`);
+      const leadMaxWidth = win.getComputedStyle(lead).maxWidth;
+      assertEqual(leadMaxWidth, 'none', `expected .help-lead to have no max-width, got ${leadMaxWidth}`);
       app.ModalUI.close();
     });
 
-    it('Help: on a wide (desktop) viewport, the lead paragraph does not outgrow the two-column sections', () => {
+    it('Help: on a wide (desktop) viewport, the lead paragraph spans the same width as the two-column sections', () => {
       // The two bugs this guards against only show up once .help-cols
       // actually goes two-column (>=900px), which this test suite's own
       // ~800px headless window never reaches — so widen just the iframe
@@ -2940,14 +2934,15 @@ async function runTests() {
       frame.contentDocument.getElementById('btnHelp').click();
       try {
         const lead = frame.contentDocument.querySelector('.help-lead').getBoundingClientRect();
-        const block = frame.contentDocument.querySelector('.help-block').getBoundingClientRect();
+        const cols = frame.contentDocument.querySelector('.help-cols').getBoundingClientRect();
         assert(frame.contentWindow.innerWidth >= 900,
           `test setup problem: iframe is only ${frame.contentWindow.innerWidth}px wide, expected >=900px`);
-        // The lead must not be dramatically wider than a section column —
-        // this was the actual bug (lead ~1148px vs sections ~568px).
-        assert(lead.width <= block.width * 1.6,
-          `lead is ${Math.round(lead.width)}px but sections are ${Math.round(block.width)}px — ` +
-          `the lead should not outgrow the two-column sections by this much`);
+        // The lead should span (not fall meaningfully short of) the full
+        // width of the two-column section area, so it wraps as little as
+        // possible and doesn't push content down into a vertical scroll.
+        assert(Math.abs(lead.width - cols.width) <= 4,
+          `lead is ${Math.round(lead.width)}px but the section area is ${Math.round(cols.width)}px — ` +
+          `the lead should span the same width to minimize wrapping/height`);
       } finally {
         app.ModalUI.close();
         frame.style.width = prevWidth;

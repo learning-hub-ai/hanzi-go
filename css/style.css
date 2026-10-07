@@ -752,14 +752,22 @@ main{
 /* 说明页：开头一句定位（借 qinshihuang/how-to-use.html 的 .lead） */
 /* Boxed the same way as the sections below it (border/background/radius),
    so it reads as part of the same page, not a differently-styled banner.
-   But its *text measure* is capped independently, same as .help-row-v: at
-   900px+ the sections flow into two ~500px columns while .help-lead stays
-   a single full-width paragraph outside .help-cols, so without its own cap
-   its lines would run to the full ~1130px modal width — far longer than the
-   ~56-char line the sections keep. 56em at this font-size tracks the same
-   character count as .help-row-v's cap. */
+   No max-width here (reverted back from a 56-char cap — see below): the
+   modal has a fixed max-height (94vh, see .modal--wide) and scrolls
+   vertically when content overflows it. A capped .help-lead wraps onto
+   more lines than it needs to at wide viewports, which pushes the sections
+   below it down and makes that vertical scroll kick in sooner — the actual
+   complaint was "I have to scroll now", not a readability problem with the
+   lead's line length. Letting it use the full available width (same as
+   .help-cols below it) reduces its line count and therefore its height.
+   (A prior pass tried this same change for a *different* reason — matching
+   pixel width to .help-cols for visual alignment — and reverted it because
+   font-size differs between .help-lead and .help-row-v, so pixel-matching
+   made per-line character counts diverge. That concern doesn't apply here:
+   this change is justified by height/scroll, not by visual alignment, so
+   the character-count mismatch is an acceptable tradeoff this time.) */
 .help-lead{font-size:14px;color:var(--text);background:var(--primary-bg,#eef2ff);
-  border:1px solid #c7d2fe;border-radius:var(--radius-sm);padding:11px 12px;margin:0 0 14px;line-height:1.7;max-width:56em}
+  border:1px solid #c7d2fe;border-radius:var(--radius-sm);padding:11px 12px;margin:0 0 14px;line-height:1.7}
 /* 说明页：小节 = 带标题栏的方框
    Bold alone did not separate the levels: section titles were 14px/700 and
    item names 13px/600, too close to scan. Borrowed from
