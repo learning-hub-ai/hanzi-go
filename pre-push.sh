@@ -44,7 +44,7 @@ test('Data: char in sentence', not_in_sent == 0, f'{not_in_sent} chars not in se
 
 # 2. HTML IDs
 with open('index.html') as f: html = f.read()
-critical_ids = ['flashcard','cardChar','favBtn','btnPrev','btnNext','btnFlip','btnSpeak','btnReinforce','learnMode','challengeMode','lessonFilter','quizTypeSelector','quizOptions','btnPlayAgain','streakNumber','btnProfile','btnFavorites','btnErrorBook','btnBadges','sidebar']
+critical_ids = ['flashcard','cardChar','favBtn','btnPrev','btnNext','btnFlip','btnSpeak','btnReinforce','learnMode','challengeMode','lessonFilter','quizTypeSelector','quizOptions','btnPlayAgain','streakNumber','btnProfile','btnFavorites','btnBadges','sidebar']
 html_ids = set(re.findall(r'id=\"([^\"]+)\"', html))
 missing_ids = [i for i in critical_ids if i not in html_ids]
 test('HTML: critical IDs', len(missing_ids)==0, f'Missing: {missing_ids}')
@@ -111,7 +111,7 @@ with open('index.html') as f: html = f.read()
 issues = []
 
 # Interactive elements must exist
-interactive = ['lessonFilter','btnPrev','btnNext','btnFlip','btnSpeak','btnReinforce','btnPlayAgain','btnErrorReview','btnProfile','btnFavorites','btnErrorBook','btnBadges','btnPinyinToggle','favBtn','quizTimerSelect']
+interactive = ['lessonFilter','btnPrev','btnNext','btnFlip','btnSpeak','btnReinforce','btnPlayAgain','btnErrorReview','btnProfile','btnFavorites','btnBadges','btnPinyinToggle','favBtn','quizTimerSelect']
 html_ids = set(re.findall(r'id=\"([^\"]+)\"', html))
 missing = [i for i in interactive if i not in html_ids]
 if missing: issues.append(f'Missing interactive elements: {missing}')

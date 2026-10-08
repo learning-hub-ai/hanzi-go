@@ -95,16 +95,10 @@ const MobileUI = (() => {
 
     // Review section
     const favCount = FavoriteService.getAll().length;
-    const errCount = ErrorBookService.getAll().length;
     html += `<div class="mobile-sheet-item" data-action="fav">
       <span class="mobile-sheet-item-icon">❤️</span>
       <span class="mobile-sheet-item-label">生词本</span>
       <span class="mobile-sheet-item-count">${favCount}</span>
-    </div>`;
-    html += `<div class="mobile-sheet-item" data-action="err">
-      <span class="mobile-sheet-item-icon">📖</span>
-      <span class="mobile-sheet-item-label">错题本</span>
-      <span class="mobile-sheet-item-count">${errCount}</span>
     </div>`;
     html += `<div class="mobile-sheet-item" data-action="srs">
       <span class="mobile-sheet-item-icon">📈</span>
@@ -155,11 +149,6 @@ const MobileUI = (() => {
         const action = item.dataset.action;
         if (action === 'fav') {
           document.getElementById('btnFavorites').click();
-          _closeSheet();
-          return;
-        }
-        if (action === 'err') {
-          document.getElementById('btnErrorBook').click();
           _closeSheet();
           return;
         }

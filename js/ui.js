@@ -321,13 +321,6 @@ const ModalUI = (() => {
     return html;
   }
 
-  function renderErrorBook(entries) {
-    if (!entries.length) return '<p style="color:#999">没有错题，太厉害了！</p>';
-    return entries.map(e =>
-      `<div class="modal-item"><span class="char-display" style="font-size:24px">${escapeHtml(e.char)}</span><span>${escapeHtml(e.pinyin)} (错${e.wrongCount}次)</span></div>`
-    ).join('');
-  }
-
   // Badge theme colors (unlocked state)
   const BADGE_COLORS = {
     'challenge_master': '#4f46e5',
@@ -646,7 +639,8 @@ const ModalUI = (() => {
       row('✏️ 自定义', '课本没有、但你想记的词 —— 故事里看到的、中文课上的、人名都行。填好正面反面就能加，一张接一张按 Enter。<strong>拼音填了才能用在挑战里</strong>（不填也能当卡片翻）。卡片上的 🗑 要点两次才删，因为只有这一份。'))}
 
     ${block('本子和设置', '看看自己已经学了多少 —— 攒徽章、换用户都在这',
-      row('❤️ 生字本<br>📖 错题本', '看这两批字都有哪些、取消收藏。想拿来练，就点复习区里的 练生字 / 练错题。') +
+      row('❤️ 生字本', '收藏过的字都在这，一个个列出来，不想要了点 ✕ 取消。想拿来练，就点下面的「📚 复习卡片」或「🎮 生字挑战」，或者去复习区点 练生字。') +
+      row('📖 错题', '不手动管理，答错的字自动进错题、连续答对才自动移出去。想看现在有哪些、想拿来练，去复习区点 练错题，或者看 📊 学习报告里「这些字反复出错」。') +
       row('🏆 成就墙', '学到的字越多，徽章越多 —— 识字量 50、100、200、500、1000、2000 各有一个，还有连续天数和满分的徽章。累计数据也在这里。') +
       row('👧 切换用户', '当前设备上几个人分开用，进度、收藏、错题互不影响。'))}
 
@@ -707,7 +701,7 @@ const ModalUI = (() => {
     </div>`;
   }
 
-  return { show, close, renderFavorites, renderErrorBook, renderBadges, renderReport, renderCustomCards, renderCustomCardList, filterCustomCardList, renderHelp, renderDataTransfer };
+  return { show, close, renderFavorites, renderBadges, renderReport, renderCustomCards, renderCustomCardList, filterCustomCardList, renderHelp, renderDataTransfer };
 })();
 
 /** Badge Popup UI — celebration overlay when earning a new badge */

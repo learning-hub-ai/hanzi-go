@@ -944,11 +944,6 @@ const AppController = (() => {
     ModalUI.show(`❤️ 生字本 (${FavoriteService.getAll().length}字)`, html);
   }
 
-  function showErrorBook() {
-    const html = ModalUI.renderErrorBook(ErrorBookService.getAll());
-    ModalUI.show(`📖 错题本 (${ErrorBookService.count()}字)`, html);
-  }
-
   function showCustomCards() {
     ModalUI.show(`✏️ 自定义字卡 (${CustomCardService.count()}张)`,
       ModalUI.renderCustomCards(CustomCardService.getAll()), { cc: true });
@@ -1400,7 +1395,6 @@ const AppController = (() => {
       });
     });
     document.getElementById('btnFavorites').addEventListener('click', showFavorites);
-    document.getElementById('btnErrorBook').addEventListener('click', showErrorBook);
     document.getElementById('btnBadges').addEventListener('click', showBadges);
     document.getElementById('btnReport').addEventListener('click', showReport);
     document.getElementById('btnDataTransfer').addEventListener('click', showDataTransfer);
@@ -1582,6 +1576,6 @@ const AppController = (() => {
     });
   }
 
-  return { init, switchMode, selectSemester, selectLesson, showFavorites, showErrorBook,
+  return { init, switchMode, selectSemester, selectLesson, showFavorites,
            showBadges, showReport, showHelp, showDataTransfer, showCustomCards, addCustomCard, removeCustomCard };
 })();

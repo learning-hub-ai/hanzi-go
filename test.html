@@ -299,7 +299,7 @@ async function runTests() {
     });
 
     it('Header elements exist', () => {
-      const ids = ['streakNumber', 'btnProfile', 'btnFavorites', 'btnErrorBook', 'btnBadges'];
+      const ids = ['streakNumber', 'btnProfile', 'btnFavorites', 'btnBadges'];
       const missing = ids.filter(id => !doc.getElementById(id));
       assertEqual(missing.length, 0, `Missing: ${missing.join(', ')}`);
     });

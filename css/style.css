@@ -457,7 +457,7 @@ main{
   #streakNumber{font-size:13px}
 
   /* Hide desktop-only header buttons (moved to bottom bar / sheet) */
-  #btnFavorites,#btnErrorBook,#btnBadges{display:none}
+  #btnFavorites,#btnBadges{display:none}
 
   /* Main content takes full width, account for bottom bar */
   main{padding:var(--s3);padding-bottom:72px;overflow-x:hidden;width:100%}
