@@ -41,13 +41,21 @@ header{
   position:fixed;top:0;left:0;right:0;height:var(--header-height);
   background:linear-gradient(to right, #fafafe, #f5f3ff);
   border-bottom:2px solid var(--border);
-  display:flex;align-items:center;justify-content:space-between;
+  display:grid;grid-template-columns:1fr auto 1fr;align-items:center;
   padding:0 var(--s4);z-index:100;
 }
+/* .mode-tabs sits in the middle grid column, so it stays visually centered
+   in the header regardless of how wide .header-left or the streak+header-right
+   group on either side are — justify-content:space-between (the previous
+   layout) only guarantees even spacing between items, not that the middle
+   one sits at the header's true center; it drifted left as header-right
+   grew from 4 to 6 icons. The two 1fr side columns absorb any width
+   difference between left and right instead of pushing the middle column
+   off-center. */
 .app-title{font-size:16px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.header-left{display:flex;flex-direction:column;gap:1px;min-width:0;flex-shrink:1;overflow:hidden}
+.header-left{display:flex;flex-direction:column;gap:1px;min-width:0;overflow:hidden;justify-self:start}
 .app-greeting{font-size:11px;color:var(--text-muted);font-weight:400}
-.mode-tabs{display:flex;background:var(--border-light);border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border);position:relative;z-index:5}
+.mode-tabs{display:flex;background:var(--border-light);border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border);position:relative;z-index:5;justify-self:center}
 .mode-tab{padding:6px 16px;border:none;background:transparent;color:var(--text-muted);cursor:pointer;font-size:13px;font-weight:500;transition:all var(--duration-fast) ease}
 .mode-tab:hover{background:var(--border);color:var(--text)}
 .mode-tab.active{background:var(--primary);color:#fff;font-weight:600}
@@ -58,6 +66,11 @@ header{
 .profile-avatar{font-size:18px}
 .profile-name{font-size:11px;font-weight:600;color:var(--text-secondary);max-width:48px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .header-right{display:flex;gap:var(--s2);align-items:center}
+/* .streak-display + .header-right now share the header's third grid column
+   (previously two separate flex siblings of header) — wrap them together so
+   that column lays out as one right-aligned group instead of each becoming
+   its own column, which would reintroduce the same off-center problem. */
+.header-right-group{display:flex;align-items:center;gap:var(--s2);justify-self:end;min-width:0}
 .header-right button{background:none;border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;font-size:16px;cursor:pointer;transition:all var(--duration-fast) ease;min-width:36px;min-height:36px;display:flex;align-items:center;justify-content:center}
 .header-right button:hover{background:var(--border-light);transform:translateY(-1px)}
 .header-right button:active{transform:scale(.95)}
