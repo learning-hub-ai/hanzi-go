@@ -39,25 +39,47 @@ const Speech = (() => {
   // instead of guessing further.
   const _DEBUG = /debugSpeech=1/.test(location.search);
   let _debugEl = null;
+  let _debugLines = [];
   function _debugLog(msg) {
     if (!_DEBUG) return;
+    _debugLines.push(`[${new Date().toISOString().slice(11, 23)}] ${msg}`);
     if (!_debugEl) {
-      _debugEl = document.createElement('div');
-      // Fixed to the TOP (not bottom) and pointer-events:none: the bottom
-      // of the screen is where the mobile bottom-bar and card controls
-      // live (🔄🔊🔁 etc.) — a bottom-anchored overlay silently ate clicks
-      // on those buttons on a real iPhone (only the very first tap worked,
-      // before the panel had appeared). pointer-events:none is a second,
-      // independent safety net in case this is ever placed somewhere that
-      // DOES overlap a control.
-      _debugEl.style.cssText = 'position:fixed;top:0;left:0;right:0;max-height:35vh;overflow-y:auto;' +
-        'background:rgba(0,0,0,.85);color:#0f0;font:11px monospace;padding:6px;z-index:99999;' +
-        'white-space:pre-wrap;pointer-events:none';
-      document.body.appendChild(_debugEl);
+      // Collapsed-by-default toggle button + an expandable panel, instead
+      // of an always-visible strip: a strip pinned to any edge either
+      // overlaps real controls (bottom — ate clicks on the mobile bottom
+      // bar) or sits over the header/card (top/middle — in the way while
+      // debugging is exactly when the user needs to tap 朗读 repeatedly).
+      // Collapsed, this is just a small badge in a corner with nothing
+      // else on screen nearby to intercept clicks from; expanded, it's
+      // the user's own explicit choice to cover part of the screen, and
+      // closing it again is one tap away. Text is user-select:text so
+      // the log can actually be copied off the phone (the previous
+      // pointer-events:none design broke that).
+      const toggle = document.createElement('button');
+      toggle.id = 'speechDebugToggle';
+      toggle.textContent = '🐛';
+      // Top-right, below the header: avoids the mobile bottom bar
+      // (.mobile-bottom-bar, bottom:0 height:56px) that an earlier version
+      // of this toggle overlapped, and avoids the header itself.
+      toggle.style.cssText = 'position:fixed;top:60px;right:8px;z-index:99999;' +
+        'width:36px;height:36px;border-radius:50%;border:none;background:#111;color:#0f0;' +
+        'font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,.4);cursor:pointer';
+
+      const panel = document.createElement('div');
+      panel.style.cssText = 'position:fixed;top:100px;right:8px;left:8px;max-height:60vh;z-index:99999;' +
+        'background:rgba(0,0,0,.92);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.4);' +
+        'overflow-y:auto;padding:8px;color:#0f0;font:11px monospace;white-space:pre-wrap;' +
+        'user-select:text;-webkit-user-select:text;display:none';
+
+      toggle.onclick = () => {
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+      };
+
+      document.body.appendChild(toggle);
+      document.body.appendChild(panel);
+      _debugEl = panel;
     }
-    const line = document.createElement('div');
-    line.textContent = `[${new Date().toISOString().slice(11, 23)}] ${msg}`;
-    _debugEl.appendChild(line);
+    _debugEl.textContent = _debugLines.join('\n');
     _debugEl.scrollTop = _debugEl.scrollHeight;
   }
 
