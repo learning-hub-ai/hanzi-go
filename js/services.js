@@ -24,6 +24,8 @@ const Speech = (() => {
   let _useLocalTTS = false;
   let _audio = null;
   let _unlocked = false;
+  /** True while a speak() call is in flight — see speak()'s overlap guard. */
+  let _speaking = false;
 
   // Diagnostic overlay — only active with ?debugSpeech=1 in the URL, so it
   // never shows for normal users. Added to investigate a real-device report
@@ -124,6 +126,25 @@ const Speech = (() => {
    */
   function speak(text, onDone) {
     if (!text) { if (onDone) onDone(); return; }
+
+    // Overlap guard: a real-device log (iPhone 16, iOS Safari) showed two
+    // speak() calls interleaving — a second tap of 朗读 before the first
+    // call had finished. Each call reassigns _audio's onplaying/onended/
+    // onerror listeners and (in the Web Speech API path) calls
+    // speechSynthesis.cancel(), which silently kills whatever the FIRST
+    // call was doing. That's the actual explanation for "no sound at
+    // first, works after tapping 2-3 times" — the first call(s) were
+    // being cut off by the next tap, not failing on their own. Ignoring a
+    // new call while one is already in flight means the sound a child
+    // just triggered is allowed to finish, rather than being restarted
+    // and never completing.
+    if (_speaking) {
+      _debugLog(`speak("${text}") IGNORED — a previous speak() is still in flight`);
+      return;
+    }
+    _speaking = true;
+    const done = () => { _speaking = false; if (onDone) onDone(); };
+
     _debugLog(`speak("${text}") called`);
     _ensureAudio();
 
@@ -134,7 +155,7 @@ const Speech = (() => {
     sources.push(GOOGLE_URL + encoded);
     sources.push(BAIDU_URL + encoded);
 
-    _playSources(sources, 0, text, onDone);
+    _playSources(sources, 0, text, done);
   }
 
   /**
