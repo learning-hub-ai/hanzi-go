@@ -407,6 +407,111 @@ async function runTests() {
     });
   });
 
+  // === 4b. Quiz Answer/Next-Question Timing (pronunciation race fix) ===
+  describe('🔊 Quiz Feedback Audio Timing', () => {
+    // Bug: the correct-answer pronunciation (Speech.speak) used to race a
+    // fixed setTimeout that advanced to the next question. Speech's own
+    // internal TIMEOUT_MS (2500ms) is larger than quizFeedbackDelayMs
+    // (1200ms), so a slow audio source could start playing well after the
+    // next question was already on screen — a child would hear the new
+    // question's pronunciation attributed to the previous character.
+    // Fix: advancing now waits for Speech.speak's onDone callback (capped
+    // at quizFeedbackDelayMs so a dead audio source can't stall the quiz).
+
+    function withMockedSpeech(mockSpeak, fn) {
+      const real = app.Speech.speak;
+      app.Speech.speak = mockSpeak;
+      try { fn(); } finally { app.Speech.speak = real; }
+    }
+
+    it('on a correct answer, does not advance to the next question until Speech.speak signals onDone', () => {
+      let capturedOnDone = null;
+      withMockedSpeech((text, onDone) => { capturedOnDone = onDone; }, () => {
+        app.AppController.switchMode('challenge');
+        app.ChallengeController.start();
+        const quiz = app.State.get('quiz');
+        const correctIdx = quiz.questions[0].options.indexOf(quiz.questions[0].target);
+
+        app.ChallengeController.answer(correctIdx);
+
+        assert(typeof capturedOnDone === 'function', 'Speech.speak should have been called with a callback');
+        assertEqual(app.State.get('quiz').current, 0,
+          'must not have advanced yet — onDone has not fired');
+
+        capturedOnDone();
+        assertEqual(app.State.get('quiz').current, 1,
+          'should advance immediately once onDone fires');
+      });
+    });
+
+    it('on a correct answer, advances anyway if Speech.speak never calls onDone (ceiling fallback)', () => {
+      // This harness's it() runs synchronously and does not await returned
+      // promises, so we can't actually wait out a real timer here. Instead,
+      // verify the ceiling is scheduled correctly: intercept setTimeout to
+      // capture its delay, and invoke the captured callback ourselves to
+      // simulate "time has passed" rather than actually waiting.
+      let capturedDelay = null;
+      let capturedCallback = null;
+      const realSetTimeout = app.setTimeout;
+      app.setTimeout = (fn, delay) => {
+        capturedCallback = fn;
+        capturedDelay = delay;
+        return 0; // fake timer id; nothing clears it in this test
+      };
+
+      withMockedSpeech(() => { /* never calls onDone — simulates a dead/hanging audio source */ }, () => {
+        app.AppController.switchMode('challenge');
+        app.ChallengeController.start();
+        const quiz = app.State.get('quiz');
+        const correctIdx = quiz.questions[0].options.indexOf(quiz.questions[0].target);
+        app.ChallengeController.answer(correctIdx);
+      });
+
+      app.setTimeout = realSetTimeout;
+
+      const configuredDelay = app.State.config('quizFeedbackDelayMs', 1200);
+      assertEqual(capturedDelay, configuredDelay,
+        `the ceiling timer should be scheduled for quizFeedbackDelayMs (${configuredDelay}ms), got ${capturedDelay}`);
+      assertEqual(app.State.get('quiz').current, 0, 'must not have advanced before the ceiling fires');
+
+      // Simulate the ceiling firing (what would happen after configuredDelay ms)
+      capturedCallback();
+      assertEqual(app.State.get('quiz').current, 1,
+        'should advance once the ceiling timer fires, even though onDone never did');
+    });
+
+    it('on a wrong answer, does not call Speech.speak at all', () => {
+      let speakCalled = false;
+      withMockedSpeech(() => { speakCalled = true; }, () => {
+        app.AppController.switchMode('challenge');
+        app.ChallengeController.start();
+        const quiz = app.State.get('quiz');
+        const correctIdx = quiz.questions[0].options.indexOf(quiz.questions[0].target);
+        const wrongIdx = (correctIdx + 1) % quiz.questions[0].options.length;
+
+        app.ChallengeController.answer(wrongIdx);
+        assert(!speakCalled, 'a wrong answer should not trigger pronunciation');
+      });
+    });
+
+    it('calling onDone twice does not double-advance', () => {
+      // Guards the advanced-once latch in _advanceAfterSpeech: if both the
+      // ceiling timer and a late onDone fired, the quiz must not skip a
+      // question.
+      let capturedOnDone = null;
+      withMockedSpeech((text, onDone) => { capturedOnDone = onDone; }, () => {
+        app.AppController.switchMode('challenge');
+        app.ChallengeController.start();
+        const quiz = app.State.get('quiz');
+        const correctIdx = quiz.questions[0].options.indexOf(quiz.questions[0].target);
+        app.ChallengeController.answer(correctIdx);
+        capturedOnDone();
+        capturedOnDone(); // simulate a duplicate/late invocation
+      });
+      assertEqual(app.State.get('quiz').current, 1, 'should have advanced exactly one question, not two');
+    });
+  });
+
   // === 5. Badge System ===
   describe('🏆 Badge System', () => {
     it('All badges have required fields', () => {

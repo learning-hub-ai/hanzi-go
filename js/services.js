@@ -54,9 +54,18 @@ const Speech = (() => {
    * Speak a character or text aloud.
    * MUST be called from a user gesture (click/tap) for iOS.
    * @param {string} text - Text to speak
+   * @param {Function} [onDone] - Called once playback has started (or we've
+   *   given up trying — e.g. Web Speech API was invoked, or there's no
+   *   speech support at all). Does NOT wait for playback to finish, only
+   *   for it to begin, since that's the point at which "the sound you're
+   *   about to hear" and "the question on screen" are still in sync —
+   *   callers that advance to a new question should wait for this before
+   *   doing so, otherwise a slow audio source can start playing after the
+   *   next question has already replaced it on screen (see js/controllers.js
+   *   ChallengeController.answer()).
    */
-  function speak(text) {
-    if (!text) return;
+  function speak(text, onDone) {
+    if (!text) { if (onDone) onDone(); return; }
     _ensureAudio();
 
     const sources = [];
@@ -66,17 +75,18 @@ const Speech = (() => {
     sources.push(GOOGLE_URL + encoded);
     sources.push(BAIDU_URL + encoded);
 
-    _playSources(sources, 0, text);
+    _playSources(sources, 0, text, onDone);
   }
 
   /**
    * Try each audio source in order. On failure/timeout, try next.
    * Reuses the same _audio element (critical for iOS).
    */
-  function _playSources(sources, index, text) {
+  function _playSources(sources, index, text, onDone) {
     if (index >= sources.length) {
       // All URL sources failed — try Web Speech API
       _speakWebAPI(text);
+      if (onDone) onDone();
       return;
     }
 
@@ -87,6 +97,7 @@ const Speech = (() => {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
+      if (onDone) onDone();
     };
 
     const fail = () => {
@@ -94,7 +105,7 @@ const Speech = (() => {
       settled = true;
       if (timer) clearTimeout(timer);
       // Try next source
-      _playSources(sources, index + 1, text);
+      _playSources(sources, index + 1, text, onDone);
     };
 
     // Remove old listeners

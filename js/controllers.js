@@ -542,7 +542,6 @@ const ChallengeController = (() => {
     if (isCorrect) {
       quiz.score++;
       quiz.streak++;
-      Speech.speak(q.target.char);
       if (quiz.isErrorReview || State.get('selectedGrade') === 'err') {
         ErrorBookService.markCorrect(q.target.char);
       }
@@ -564,14 +563,53 @@ const ChallengeController = (() => {
     QuizUI.showFeedback(selectedIdx, correctIdx, isCorrect);
     QuizUI.updateStreak(quiz.streak);
 
-    setTimeout(() => {
-      quiz.current++;
-      if (quiz.current < quiz.questions.length) {
-        showQuestion();
-      } else {
-        endRound();
-      }
-    }, State.config('quizFeedbackDelayMs', 1200));
+    const feedbackDelayMs = State.config('quizFeedbackDelayMs', 1200);
+
+    if (isCorrect) {
+      // Wait for the correct-answer pronunciation to actually start playing
+      // before swapping in the next question — otherwise a slow TTS source
+      // (see Speech.speak's TIMEOUT_MS, which can exceed feedbackDelayMs) can
+      // start audio for THIS character after the next question is already
+      // on screen, and a child hears it as the new character's pronunciation.
+      // _advanceAfterSpeech enforces feedbackDelayMs as a ceiling, not a
+      // fixed wait, so the quiz never stalls waiting on a bad network.
+      _advanceAfterSpeech(quiz, q.target.char, feedbackDelayMs);
+    } else {
+      // No pronunciation on a wrong answer — the original fixed delay is
+      // fine, there's nothing async to wait for.
+      setTimeout(() => _advanceToNext(quiz), feedbackDelayMs);
+    }
+  }
+
+  /**
+   * Speak `char`'s pronunciation, then advance to the next question — but
+   * never wait longer than `maxWaitMs` for the audio to start, so a slow or
+   * failing audio source can't stall the quiz. Whichever happens first
+   * (audio starts, or the ceiling is reached) triggers the advance; only
+   * the first to fire has any effect.
+   */
+  function _advanceAfterSpeech(quiz, char, maxWaitMs) {
+    let advanced = false;
+    const advanceOnce = () => {
+      if (advanced) return;
+      advanced = true;
+      _advanceToNext(quiz);
+    };
+    const ceiling = setTimeout(advanceOnce, maxWaitMs);
+    Speech.speak(char, () => {
+      clearTimeout(ceiling);
+      advanceOnce();
+    });
+  }
+
+  /** Move to the next question, or end the round if this was the last one. */
+  function _advanceToNext(quiz) {
+    quiz.current++;
+    if (quiz.current < quiz.questions.length) {
+      showQuestion();
+    } else {
+      endRound();
+    }
   }
 
   function endRound() {
