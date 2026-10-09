@@ -492,6 +492,41 @@ async function runTests() {
     });
   });
 
+  // === 4c. Speech config sanity (iOS hang/no-sound fix) ===
+  describe('🔊 Speech Config Sanity', () => {
+    // Regression: on iPhone, audio was silent and the quiz hung after a
+    // correct answer. Two causes, both in js/services.js Speech module:
+    //  1. 'stalled' fires spuriously on iOS even on healthy CORS audio
+    //     streams; treating it as failure AFTER onplaying had already
+    //     fired meant correctly-starting audio got cut off and abandoned
+    //     mid-playback instead of being allowed to finish.
+    //  2. Web Speech API's onend/onerror can silently never fire on iOS
+    //     (e.g. outside the originating tap's gesture window), and there
+    //     was no timeout fallback — onDone (and therefore the quiz's
+    //     advance-to-next-question step) would wait forever.
+    // Fix: a post-onplaying stall/error no longer abandons the source
+    // (only onended moves it forward, with maxPlayMs as a backstop in case
+    // onended itself never comes); _speakWebAPI gained an estimated-
+    // duration ceiling timer so a silent speechSynthesis failure still
+    // resolves onDone. Both fixes live inside Speech's private _audio
+    // handling, which can't be unit-tested without exposing internals
+    // purely for testability (this module's _audio is created once and
+    // module-cached on first real use, so swapping window.Audio or
+    // window.speechSynthesis from a test does not reliably intercept it —
+    // see prior session notes). Verified instead via real-browser checks
+    // during implementation; this test only pins the config values these
+    // fixes depend on, so a careless edit to config.json can't silently
+    // remove the safety nets.
+    it('speech config has startTimeoutMs and maxPlayMs with sane values', () => {
+      const startTimeoutMs = app.State.config('speech.startTimeoutMs', null);
+      const maxPlayMs = app.State.config('speech.maxPlayMs', null);
+      assert(typeof startTimeoutMs === 'number' && startTimeoutMs > 0, `speech.startTimeoutMs missing or invalid: ${startTimeoutMs}`);
+      assert(typeof maxPlayMs === 'number' && maxPlayMs > 0, `speech.maxPlayMs missing or invalid: ${maxPlayMs}`);
+      assertGreater(maxPlayMs, startTimeoutMs,
+        'maxPlayMs (ceiling once audio has started) should be at least as generous as startTimeoutMs (ceiling to even start)');
+    });
+  });
+
   // === 5. Badge System ===
   describe('🏆 Badge System', () => {
     it('All badges have required fields', () => {

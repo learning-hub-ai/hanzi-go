@@ -11,7 +11,8 @@
   "speech": {
     "lang": "zh-CN",
     "rate": 0.8,
-    "startTimeoutMs": 2500
+    "startTimeoutMs": 2500,
+    "maxPlayMs": 4000
   },
   "badges": [
     { "id": "first_challenge", "emoji": "🌱", "name": "初次挑战", "desc": "完成第一轮挑战", "condition": "totalRounds >= 1" },

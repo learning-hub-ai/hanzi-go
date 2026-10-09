@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'hanzigo-v68';
+const CACHE_VERSION = 'hanzigo-v69';
 const STATIC_ASSETS = [
   './',
   './index.html',

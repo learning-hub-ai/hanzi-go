@@ -80,8 +80,18 @@ const Speech = (() => {
    * Try each audio source in order. If a source starts playing, wait for it
    * to finish (onended) before calling onDone — a source that never even
    * STARTS within speech.startTimeoutMs is abandoned in favor of the next
-   * source; one that starts but then stalls/errors mid-playback also moves
-   * to the next source. Reuses the same _audio element (critical for iOS).
+   * source. Reuses the same _audio element (critical for iOS).
+   *
+   * iOS Safari fix: 'stalled' fires spuriously on healthy CORS audio
+   * streams on iOS far more readily than on desktop Chrome — treating it
+   * as "this source failed" even AFTER onplaying already fired means a
+   * correctly-starting source gets abandoned mid-playback (cutting off
+   * sound that was about to be heard) and we jump to the next source
+   * instead of just letting the first one finish. So 'stalled'/'error'
+   * only abandon the source if they happen BEFORE playback is confirmed
+   * started; once onplaying has fired, only onended (real completion)
+   * moves things forward — a post-playing stall is treated as "still
+   * going", not "failed".
    */
   function _playSources(sources, index, text, onDone) {
     if (index >= sources.length) {
@@ -93,11 +103,13 @@ const Speech = (() => {
     }
 
     let settled = false;
+    let started = false;
     const startTimeoutMs = State.config('speech.startTimeoutMs', 2500);
     let startTimer = null;
+    let maxPlayTimer = null;
 
     const giveUpOnThisSource = () => {
-      if (settled) return;
+      if (settled || started) return; // never abandon a source once it's confirmed playing
       settled = true;
       if (startTimer) clearTimeout(startTimer);
       // Try next source
@@ -108,6 +120,7 @@ const Speech = (() => {
       if (settled) return;
       settled = true;
       if (startTimer) clearTimeout(startTimer);
+      if (maxPlayTimer) clearTimeout(maxPlayTimer);
       if (onDone) onDone();
     };
 
@@ -117,12 +130,21 @@ const Speech = (() => {
     _audio.onerror = null;
     _audio.onstalled = null;
 
-    // Once playback actually starts, stop racing the start-timeout and
-    // instead wait for it to end — a slow-to-START source should be
-    // abandoned, but a source that DID start should be allowed to finish
-    // even if that takes longer than startTimeoutMs (that's not "slow to
-    // start", that's just how long the word takes to say).
-    _audio.onplaying = () => { if (startTimer) clearTimeout(startTimer); };
+    // Once playback actually starts, stop racing the start-timeout — a
+    // slow-to-START source should be abandoned, but a source that DID
+    // start should be allowed to finish even if that takes longer than
+    // startTimeoutMs (that's not "slow to start", that's just how long
+    // the word takes to say), and a spurious post-start stall/error
+    // (common on iOS) should not cut it off either — see function comment.
+    // maxPlayTimer is the backstop for the other half of that tradeoff: if
+    // onended genuinely never comes (a real failure mid-playback, not a
+    // spurious stall), we still must not hang forever — a single spoken
+    // character/word has no business taking longer than this.
+    _audio.onplaying = () => {
+      started = true;
+      if (startTimer) clearTimeout(startTimer);
+      maxPlayTimer = setTimeout(finished, State.config('speech.maxPlayMs', 4000));
+    };
     _audio.onended = finished;
     _audio.onerror = giveUpOnThisSource;
     _audio.onstalled = giveUpOnThisSource;
@@ -136,21 +158,46 @@ const Speech = (() => {
     _audio.play().catch(giveUpOnThisSource);
   }
 
-  /** Last resort: Web Speech API. Always calls onDone exactly once. */
+  /**
+   * Last resort: Web Speech API. Always calls onDone exactly once.
+   *
+   * iOS Safari fix: speechSynthesis can silently fail to fire onend/onerror
+   * at all — e.g. if this is called outside the originating tap's user-
+   * gesture window (which _playSources's async retry chain can drift into),
+   * or if the synthesis engine just doesn't cooperate on that device. There
+   * is no reliable "it started" event to lean on here (unlike <audio>'s
+   * onplaying), so onDone would otherwise never fire and the caller (the
+   * quiz's "wait for the sound, then advance" step) hangs forever. Guard
+   * with an estimated-duration timeout as a hard ceiling.
+   */
   function _speakWebAPI(text, onDone) {
     if (!text || !('speechSynthesis' in window)) { if (onDone) onDone(); return; }
     speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'zh-CN';
-    utterance.rate = State.config('speech.rate', 0.8);
+    const rate = State.config('speech.rate', 0.8);
+    utterance.rate = rate;
     const voices = speechSynthesis.getVoices();
     const zhVoice = voices.find(v => v.lang.startsWith('zh'));
     if (zhVoice) utterance.voice = zhVoice;
 
     let settled = false;
-    const finish = () => { if (settled) return; settled = true; if (onDone) onDone(); };
+    let ceilingTimer = null;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (ceilingTimer) clearTimeout(ceilingTimer);
+      if (onDone) onDone();
+    };
     utterance.onend = finish;
     utterance.onerror = finish;
+
+    // ~400ms per character at rate 1.0 is a generous estimate for short
+    // single-character/word TTS; scale by rate (lower rate = slower speech)
+    // and add headroom. This only matters when onend/onerror never fire.
+    const estimatedMs = Math.max(600, (text.length * 400) / rate) + 500;
+    ceilingTimer = setTimeout(finish, estimatedMs);
+
     speechSynthesis.speak(utterance);
   }
 
