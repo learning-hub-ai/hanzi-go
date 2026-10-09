@@ -15,6 +15,14 @@
 <link rel="icon" href="assets/icon-192.png">
 <link rel="apple-touch-icon" href="assets/icon-192.png">
 <link rel="stylesheet" href="css/style.css">
+<!-- Hanzi Writer: stroke-order animation/quiz library for 学习模式's 笔顺练习.
+     Loaded with `defer` so it never blocks HTML parsing or app init — the
+     app works fully without it; LearnController only checks for the global
+     HanziWriter when the user actually opens the stroke panel (see
+     js/controllers.js _initStrokePractice). If the CDN is unreachable on
+     first load, the 笔顺 button degrades to a friendly "需要联网" message
+     instead of throwing. -->
+<script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js" defer></script>
 </head>
 <body>
 <script>
@@ -285,9 +293,21 @@ if ('serviceWorker' in navigator) {
             <div class="card-hint">点击翻转 →</div>
           </div>
           <div class="card-face card-back">
-            <div class="card-pinyin-back" id="cardPinyinBack">tiān</div>
-            <div class="card-words" id="cardWords">天空 · 今天 · 蓝天</div>
-            <div class="card-sentence" id="cardSentence">天在上，地在下。</div>
+            <div class="card-back-content" id="cardBackContent">
+              <div class="card-pinyin-back" id="cardPinyinBack">tiān</div>
+              <div class="card-words" id="cardWords">天空 · 今天 · 蓝天</div>
+              <div class="card-sentence" id="cardSentence">天在上，地在下。</div>
+              <button class="stroke-toggle-btn" id="btnStrokePractice" aria-label="笔顺练习" aria-expanded="false">✍️ 笔顺</button>
+            </div>
+            <div class="stroke-panel hidden" id="strokePanel">
+              <div class="stroke-canvas-target" id="strokeCanvasTarget"></div>
+              <div class="stroke-panel-controls">
+                <button id="btnStrokeReplay" aria-label="重新演示笔顺">🔁 再看一遍</button>
+                <button id="btnStrokeQuiz" aria-label="开始练习">✍️ 我来写</button>
+              </div>
+              <div class="stroke-panel-msg hidden" id="strokePanelMsg"></div>
+              <button class="stroke-panel-close" id="btnStrokeClose" aria-label="收起笔顺练习">收起 ✕</button>
+            </div>
           </div>
         </div>
       </div>

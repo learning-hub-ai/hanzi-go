@@ -404,7 +404,71 @@ const LearnController = (() => {
     Speech.speak(chars[State.get('currentIndex')].char);
   }
 
-  return { showCurrent, next, prev, resetShuffle, reinforce, flip, togglePinyin, toggleFavorite, speakCurrent, deleteCurrentCard };
+  /**
+   * ✍️ 笔顺 button on the card back. First click opens the panel and plays
+   * the stroke animation; the panel's own buttons (再看一遍/我来写/收起)
+   * are bound once in init() below, since they don't need to know which
+   * card is current — CardUI tracks that internally.
+   */
+  function openStrokePractice() {
+    const chars = State.get('filteredChars');
+    const charData = chars[State.get('currentIndex')];
+    if (!charData) return;
+    const opened = CardUI.openStrokePanel(charData.char);
+    if (!opened) {
+      // HanziWriter global isn't defined — either the CDN script is still
+      // loading (slow connection) or failed outright (offline on first
+      // use). Degrade to an inline message on the card itself rather than
+      // silently doing nothing, so the child isn't left wondering why the
+      // button didn't work.
+      CardUI.showStrokeUnavailableMessage();
+    }
+  }
+
+  /** Wire up the stroke panel's own controls. Called once from init(). */
+  function _initStrokePractice() {
+    // All these buttons sit on the card's back face, which flips on click
+    // (see btnDeleteCard/favBtn above for the same pattern) — without
+    // stopPropagation, every click would also flip the card back to front.
+    const btn = document.getElementById('btnStrokePractice');
+    if (btn) btn.addEventListener('click', (e) => { e.stopPropagation(); openStrokePractice(); });
+
+    const replayBtn = document.getElementById('btnStrokeReplay');
+    if (replayBtn) replayBtn.addEventListener('click', (e) => { e.stopPropagation(); CardUI.replayStrokeAnimation(); });
+
+    const quizBtn = document.getElementById('btnStrokeQuiz');
+    if (quizBtn) {
+      quizBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        CardUI.startStrokeQuiz({
+          onComplete: () => {
+            const chars = State.get('filteredChars');
+            const charData = chars[State.get('currentIndex')];
+            // Small reward, consistent with 朗读 elsewhere on this card —
+            // the child just finished writing the character, hearing it
+            // read aloud reinforces the character/sound pairing.
+            if (charData) Speech.speak(charData.char);
+          }
+        });
+      });
+    }
+
+    const closeBtn = document.getElementById('btnStrokeClose');
+    if (closeBtn) closeBtn.addEventListener('click', (e) => { e.stopPropagation(); CardUI.closeStrokePanel(); });
+
+    // The stroke canvas itself must not propagate clicks either — drawing
+    // a stroke during a quiz is a sequence of mousedown/mousemove/mouseup
+    // on the canvas, and HanziWriter needs those events uninterrupted by
+    // the card's flip handler.
+    const target = document.getElementById('strokeCanvasTarget');
+    if (target) target.addEventListener('click', (e) => e.stopPropagation());
+  }
+
+  return {
+    showCurrent, next, prev, resetShuffle, reinforce, flip, togglePinyin,
+    toggleFavorite, speakCurrent, deleteCurrentCard,
+    openStrokePractice, _initStrokePractice
+  };
 })();
 
 const ChallengeController = (() => {
@@ -1340,9 +1404,21 @@ const AppController = (() => {
             <div class="card-hint">点击翻转 →</div>
           </div>
           <div class="card-face card-back">
-            <div class="card-pinyin-back" id="cardPinyinBack">tiān</div>
-            <div class="card-words" id="cardWords">天空 · 今天 · 蓝天</div>
-            <div class="card-sentence" id="cardSentence">天在上，地在下。</div>
+            <div class="card-back-content" id="cardBackContent">
+              <div class="card-pinyin-back" id="cardPinyinBack">tiān</div>
+              <div class="card-words" id="cardWords">天空 · 今天 · 蓝天</div>
+              <div class="card-sentence" id="cardSentence">天在上，地在下。</div>
+              <button class="stroke-toggle-btn" id="btnStrokePractice" aria-label="笔顺练习" aria-expanded="false">✍️ 笔顺</button>
+            </div>
+            <div class="stroke-panel hidden" id="strokePanel">
+              <div class="stroke-canvas-target" id="strokeCanvasTarget"></div>
+              <div class="stroke-panel-controls">
+                <button id="btnStrokeReplay" aria-label="重新演示笔顺">🔁 再看一遍</button>
+                <button id="btnStrokeQuiz" aria-label="开始练习">✍️ 我来写</button>
+              </div>
+              <div class="stroke-panel-msg hidden" id="strokePanelMsg"></div>
+              <button class="stroke-panel-close" id="btnStrokeClose" aria-label="收起笔顺练习">收起 ✕</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1513,6 +1589,7 @@ const AppController = (() => {
     document.getElementById('btnSpeak').addEventListener('click', LearnController.speakCurrent);
     document.getElementById('btnReinforce').addEventListener('click', LearnController.reinforce);
     document.getElementById('btnNext').addEventListener('click', LearnController.next);
+    LearnController._initStrokePractice();
     document.getElementById('btnDeleteCard').addEventListener('click', (e) => {
       e.stopPropagation(); // the card itself flips on click
       LearnController.deleteCurrentCard();

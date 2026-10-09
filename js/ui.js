@@ -120,6 +120,11 @@ const FilterUI = (() => {
 
 /** Card UI — flash card rendering, flip animation, state display */
 const CardUI = (() => {
+  /** Current HanziWriter instance, if the stroke panel is open. Torn down
+   *  on every render() so a stale instance never points at the wrong
+   *  character (see render()'s call to _teardownStrokePanel below). */
+  let _strokeWriter = null;
+
   /** Render a character on the card (front + back content) */
   function render(charData, index, total) {
     const card = document.getElementById('flashcard');
@@ -129,6 +134,11 @@ const CardUI = (() => {
     // Force reflow to apply instant change, then restore transition
     card.offsetHeight;
     card.style.transition = '';
+
+    // A new card means any open stroke panel refers to the PREVIOUS
+    // character — close it before updating content, not after, so it's
+    // never briefly visible with stale strokes.
+    _teardownStrokePanel();
 
     const charEl = document.getElementById('cardChar');
     charEl.textContent = charData.char;
@@ -148,6 +158,11 @@ const CardUI = (() => {
     document.getElementById('favBtn').textContent = FavoriteService.isFavorite(charData.char) ? '❤️' : '🤍';
     document.getElementById('progressBar').textContent = `${index + 1} / ${total}`;
     document.getElementById('progressFill').style.width = `${((index + 1) / total) * 100}%`;
+
+    // 笔顺练习 only makes sense for a single hanzi — custom cards can hold
+    // a whole word/phrase, which HanziWriter cannot render meaningfully.
+    const strokeBtn = document.getElementById('btnStrokePractice');
+    if (strokeBtn) strokeBtn.classList.toggle('hidden', frontLen !== 1);
   }
 
   function flip() {
@@ -162,7 +177,117 @@ const CardUI = (() => {
     document.getElementById('cardPinyinSmall').classList.toggle('hidden', !show);
   }
 
-  return { render, flip, updateFavIcon, togglePinyinDisplay };
+  /**
+   * Open the stroke-practice panel for the given character, replacing the
+   * card back's normal content (see .stroke-panel in css/style.css for why
+   * it replaces rather than stacks — the back face is a fixed-size box).
+   * Shows a stroke-order animation immediately; "再看一遍"/"我来写" are
+   * wired up by LearnController, which owns what happens on click.
+   *
+   * @param {string} char - single hanzi to render
+   * @returns {boolean} true if the panel opened, false if HanziWriter
+   *   isn't available (CDN script failed/still loading) — caller is
+   *   expected to show a fallback message in that case.
+   */
+  function openStrokePanel(char) {
+    if (typeof HanziWriter === 'undefined') return false;
+
+    document.getElementById('cardBackContent').classList.add('hidden');
+    const panel = document.getElementById('strokePanel');
+    panel.classList.remove('hidden');
+    document.getElementById('btnStrokePractice').setAttribute('aria-expanded', 'true');
+    _setStrokeMessage('');
+
+    const target = document.getElementById('strokeCanvasTarget');
+    target.innerHTML = '';
+    // Canvas target is sized via CSS clamp() (see .stroke-canvas-target) —
+    // read its actual rendered size so HanziWriter's SVG matches exactly,
+    // instead of hardcoding a px value that would fight the responsive CSS.
+    const size = target.clientWidth || 180;
+    _strokeWriter = HanziWriter.create(target, char, {
+      width: size,
+      height: size,
+      padding: 10,
+      showHintAfterMisses: 3,
+      onLoadCharDataError: () => _setStrokeMessage('⚠️ 这个字暂不支持笔顺演示，请检查网络后重试')
+    });
+    _strokeWriter.animateCharacter();
+    return true;
+  }
+
+  /** Replay the stroke-order animation for the character currently open. */
+  function replayStrokeAnimation() {
+    if (!_strokeWriter) return;
+    _setStrokeMessage('');
+    _strokeWriter.hideCharacter();
+    _strokeWriter.animateCharacter();
+  }
+
+  /**
+   * Start an interactive stroke quiz. Delegates grading entirely to
+   * HanziWriter — this module only wires its callbacks to UI feedback.
+   * @param {Object} callbacks
+   * @param {Function} [callbacks.onComplete] - called when the user
+   *   finishes drawing every stroke correctly
+   */
+  function startStrokeQuiz(callbacks) {
+    if (!_strokeWriter) return;
+    _setStrokeMessage('');
+    _strokeWriter.quiz({
+      onMistake: () => _setStrokeMessage('再试试这一笔 ✏️'),
+      onCorrectStroke: () => _setStrokeMessage(''),
+      onComplete: () => {
+        _setStrokeMessage('写对了！真棒 🎉');
+        if (callbacks && callbacks.onComplete) callbacks.onComplete();
+      }
+    });
+  }
+
+  /** Close the stroke panel and restore the card back's normal content. */
+  function closeStrokePanel() {
+    _teardownStrokePanel();
+  }
+
+  /**
+   * Shown when 笔顺 is clicked but HanziWriter failed/hasn't loaded yet
+   * (see openStrokePanel's return value). The panel never opened, so this
+   * renders next to the toggle button rather than inside the (unopened)
+   * panel.
+   */
+  function showStrokeUnavailableMessage() {
+    const btn = document.getElementById('btnStrokePractice');
+    if (!btn) return;
+    const prevText = btn.textContent;
+    btn.textContent = '⚠️ 需要联网，请重试';
+    setTimeout(() => { btn.textContent = prevText; }, 2500);
+  }
+
+  function _teardownStrokePanel() {
+    const panel = document.getElementById('strokePanel');
+    const backContent = document.getElementById('cardBackContent');
+    const btn = document.getElementById('btnStrokePractice');
+    if (panel) panel.classList.add('hidden');
+    if (backContent) backContent.classList.remove('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    // HanziWriter has no explicit destroy() — dropping the reference and
+    // clearing its target div is the documented way to discard an instance.
+    _strokeWriter = null;
+    const target = document.getElementById('strokeCanvasTarget');
+    if (target) target.innerHTML = '';
+  }
+
+  function _setStrokeMessage(text) {
+    const msgEl = document.getElementById('strokePanelMsg');
+    if (!msgEl) return;
+    msgEl.textContent = text;
+    msgEl.classList.toggle('hidden', !text);
+  }
+
+  return {
+    render, flip, updateFavIcon, togglePinyinDisplay,
+    openStrokePanel, closeStrokePanel, replayStrokeAnimation, startStrokeQuiz,
+    showStrokeUnavailableMessage
+  };
 })();
 
 /** Quiz UI — question rendering, feedback animations, end screen */
@@ -615,13 +740,11 @@ const ModalUI = (() => {
     const steps = `<div class="help-steps">${STEPS.map(([n, t, d]) => `<div class="help-step">
       <div class="help-step-n">${n}</div><div class="help-step-t">${t}</div><div>${d}</div></div>`).join('')}</div>
       <p class="help-row-v" style="margin:6px 0 0">漏一天不要紧，第二天补上照样连着算；隔两天才从头数。</p>
-      <p class="help-row-v" style="margin:6px 0 0">🔄 <strong>切换课文</strong>：任务页顶部的按钮，能跳到本学期任意一课重新开始，也能选「从头开始」。切换前会先把当前学期已学完的课记进历史，不会丢。</p>`;
+      <p class="help-row-v" style="margin:6px 0 0">🔄 <strong>切换课文</strong>：任务页顶部按钮，能跳到本学期任意一课重新开始，或「从头开始」。已学完的课会先记进历史，不会丢。</p>`;
 
     return `
-    <p class="help-lead">每天打开先做 <strong>📖 任务</strong> —— 该学哪些新字、该复习哪些旧字，
-    它都替你排好了，照着做完就算一天，连续天数会自己往上加。
-    下面这些地方都不是必须的：等任务做完了，还想多练一会儿，再按自己的想法挑 ——
-    想把某一课再翻一遍、想专门补那几个总记不住的字、想加几个课本里没有的词，都在下面。</p>
+    <p class="help-lead">每天先做 <strong>📖 任务</strong> —— 该学的新字、该复习的旧字都排好了，做完算一天。
+    任务做完想多练就自己挑：翻一课、补生字、加课本外的词。</p>
 
     <div class="help-cols">
     ${block('📖 任务', '每天的主线，五步做完', steps)}
@@ -629,6 +752,7 @@ const ModalUI = (() => {
     ${block('📚 学习 和 🎮 挑战', '想多练的时候自己挑：一个看答案，一个考你',
       row('📚 学习', '翻卡片。正面是字，点一下翻到背面看拼音、组词、例句；点字会朗读。选了哪一课，就只看那一课的字。') +
       row('🔁 加强记忆', '学习模式里的按钮。把当前这批字复制成三份、打乱顺序——同一个字会反复出现，不是看一遍就过。再点一下恢复成原来的顺序。') +
+      row('✍️ 笔顺', '卡片背面的按钮，单个字才有。演示笔顺，也能自己写一遍，写错会提示。第一次用需要联网。') +
       row('🎮 挑战', `做题，每轮 ${perRound} 道。四种题型：字→音、音→字、字→词、填空，也能混着来。答错的字自动进错题本。`) +
       row('⏱️ 挑战限时', '挑战模式顶部可以选 5/10/15 秒，关掉就是不限时。选了之后每题有个倒计时条，<strong>时间到了没答就自动算错</strong>——练反应速度、逼着不纠结。'))}
 
@@ -636,11 +760,10 @@ const ModalUI = (() => {
       row('📈 智能复习', '<strong>自动算出来的</strong> —— 哪个字该复习了，它说了算。刚学会的隔一天再问，记牢了拉长到一周、两周、一个月。每天内容都不一样，照着练就行。') +
       row('❤️ 练生字', '你自己收藏的字。看卡片时点卡片上的 ❤️ 收进来，再点一下取消。') +
       row('📖 练错题', `答错过的字。<strong>连续答对 ${toRemove} 次才自动移出去</strong> —— 不能手动删。这正是它的用处：错过的字得真学会才算过关。`) +
-      row('✏️ 自定义', '课本没有、但你想记的词 —— 故事里看到的、中文课上的、人名都行。填好正面反面就能加，一张接一张按 Enter。<strong>拼音填了才能用在挑战里</strong>（不填也能当卡片翻）。卡片上的 🗑 要点两次才删，因为只有这一份。'))}
+      row('✏️ 自定义', '课本没有、但你想记的词都行。填好正面反面就能加，一张接一张按 Enter。<strong>拼音填了才能用在挑战里</strong>。🗑 要点两次才删。'))}
 
     ${block('本子和设置', '看看自己已经学了多少 —— 攒徽章、换用户都在这',
-      row('❤️ 生字本', '收藏过的字都在这，一个个列出来，不想要了点 ✕ 取消。想拿来练，就点下面的「📚 复习卡片」或「🎮 生字挑战」，或者去复习区点 练生字。') +
-      row('📖 错题', '不手动管理，答错的字自动进错题、连续答对才自动移出去。想看现在有哪些、想拿来练，去复习区点 练错题，或者看 📊 学习报告里「这些字反复出错」。') +
+      row('❤️ 生字本', '收藏过的字，不想要了点 ✕ 取消。想拿来练，点「📚 复习卡片」「🎮 生字挑战」，或复习区的 练生字。') +
       row('🏆 成就墙', '学到的字越多，徽章越多 —— 识字量 50、100、200、500、1000、2000 各有一个，还有连续天数和满分的徽章。累计数据也在这里。') +
       row('👧 切换用户', '当前设备上几个人分开用，进度、收藏、错题互不影响。'))}
 

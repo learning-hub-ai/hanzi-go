@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'hanzigo-v70';
+const CACHE_VERSION = 'hanzigo-v71';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -54,6 +54,30 @@ self.addEventListener('fetch', (event) => {
 
   // Network-only for TTS (Baidu) — don't cache audio
   if (url.hostname.includes('baidu.com') || url.pathname === '/tts') {
+    return;
+  }
+
+  // Cache-first, network-fallback for Hanzi Writer (笔顺练习) — the library
+  // script and per-character stroke data both come from jsdelivr. Caching
+  // them means a character looked up once works offline afterwards; this
+  // is deliberately NOT part of STATIC_ASSETS/install-time pre-cache since
+  // there's no fixed list of characters to pre-fetch (see hanzi-go.md's
+  // iOS audio notes for why 8MB of hanzi-writer-data isn't bundled
+  // upfront — same reasoning applies here: fetch on demand, cache what's
+  // actually used).
+  if (url.hostname === 'cdn.jsdelivr.net' && url.pathname.includes('hanzi-writer')) {
+    event.respondWith(
+      caches.match(event.request).then(cached => {
+        if (cached) return cached;
+        return fetch(event.request).then(response => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_VERSION).then(cache => cache.put(event.request, clone));
+          }
+          return response;
+        });
+      })
+    );
     return;
   }
 

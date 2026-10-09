@@ -304,6 +304,13 @@ async function runTests() {
       assertEqual(missing.length, 0, `Missing: ${missing.join(', ')}`);
     });
 
+    it('Stroke-practice elements exist on card back', () => {
+      const ids = ['btnStrokePractice', 'strokePanel', 'strokeCanvasTarget',
+        'btnStrokeReplay', 'btnStrokeQuiz', 'btnStrokeClose', 'strokePanelMsg', 'cardBackContent'];
+      const missing = ids.filter(id => !doc.getElementById(id));
+      assertEqual(missing.length, 0, `Missing: ${missing.join(', ')}`);
+    });
+
     it('Sidebar has grade items', () => {
       const items = doc.querySelectorAll('.sidebar-item[data-grade]');
       assertGreater(items.length, 10, `Only ${items.length} sidebar items`);
@@ -524,6 +531,101 @@ async function runTests() {
       assert(typeof maxPlayMs === 'number' && maxPlayMs > 0, `speech.maxPlayMs missing or invalid: ${maxPlayMs}`);
       assertGreater(maxPlayMs, startTimeoutMs,
         'maxPlayMs (ceiling once audio has started) should be at least as generous as startTimeoutMs (ceiling to even start)');
+    });
+  });
+
+  // === 4d. Stroke-order Practice (✍️ 笔顺) ===
+  describe('✍️ Stroke Practice Panel', () => {
+    // Re-query elements after every CardUI.render() instead of caching
+    // references — _getMainContentHTML() replaces the whole #main subtree
+    // on app startup, so a cached reference from before that can become a
+    // detached node (see the R8 front-length test above for the same
+    // lesson). Each helper below re-queries fresh from frame.contentDocument.
+    const doc = () => frame.contentDocument;
+    const strokeBtn = () => doc().getElementById('btnStrokePractice');
+    const strokePanel = () => doc().getElementById('strokePanel');
+    const backContent = () => doc().getElementById('cardBackContent');
+    const canvasTarget = () => doc().getElementById('strokeCanvasTarget');
+
+    it('笔顺 button is visible for a single-character card', () => {
+      app.CardUI.render({ char: '\u5929', pinyin: 'ti\u0101n', words: [], sentence: '' }, 0, 1);
+      assertEqual(strokeBtn().classList.contains('hidden'), false,
+        'a single-hanzi card should offer stroke practice');
+    });
+
+    it('笔顺 button is hidden for a multi-character custom card', () => {
+      // HanziWriter renders exactly one character's stroke data — a custom
+      // card holding a whole word/phrase has no single character to target,
+      // so the button must not even be offered (see CardUI.render()'s
+      // frontLen check in js/ui.js).
+      app.CardUI.render({ char: '\u5929\u5730\u4eba', pinyin: '', words: [], sentence: '' }, 0, 1);
+      assertEqual(strokeBtn().classList.contains('hidden'), true,
+        'a multi-character front cannot be rendered by HanziWriter');
+    });
+
+    it('opening the panel hides the normal back content and shows the panel', () => {
+      app.CardUI.render({ char: '\u5929', pinyin: 'ti\u0101n', words: [], sentence: '' }, 0, 1);
+      assert(typeof app.HanziWriter !== 'undefined',
+        'HanziWriter failed to load from the jsdelivr CDN — this test needs network access to ' +
+        'cdn.jsdelivr.net; if this is a CI/offline environment without that, this failure is ' +
+        'expected and not a real regression (see js/ui.js openStrokePanel\'s graceful-degradation path, ' +
+        'covered separately by the "gracefully degrades" test below)');
+      const opened = app.CardUI.openStrokePanel('\u5929');
+      assert(opened, 'openStrokePanel should succeed when HanziWriter is loaded (real browser, real CDN)');
+      assertEqual(strokePanel().classList.contains('hidden'), false, 'panel should be visible');
+      assertEqual(backContent().classList.contains('hidden'), true, 'normal back content should be hidden while the panel is open');
+      assertEqual(strokeBtn().getAttribute('aria-expanded'), 'true', 'aria-expanded should reflect the open state');
+    });
+
+    it('closing the panel restores the normal back content', () => {
+      app.CardUI.render({ char: '\u5929', pinyin: 'ti\u0101n', words: [], sentence: '' }, 0, 1);
+      if (typeof app.HanziWriter === 'undefined') return; // see network note above
+      app.CardUI.openStrokePanel('\u5929');
+      app.CardUI.closeStrokePanel();
+      assertEqual(strokePanel().classList.contains('hidden'), true, 'panel should be hidden again');
+      assertEqual(backContent().classList.contains('hidden'), false, 'normal back content should be restored');
+      assertEqual(strokeBtn().getAttribute('aria-expanded'), 'false', 'aria-expanded should reset');
+      assertEqual(canvasTarget().innerHTML, '', 'canvas target should be cleared, not left with a stale SVG');
+    });
+
+    it('rendering a new card tears down an open stroke panel (no stale instance)', () => {
+      // Regression guard: without this, navigating next/prev while the
+      // panel is open would leave a HanziWriter instance pointing at the
+      // PREVIOUS character while displaying it alongside the new card's
+      // front — see CardUI.render()'s call to _teardownStrokePanel().
+      app.CardUI.render({ char: '\u5929', pinyin: 'ti\u0101n', words: [], sentence: '' }, 0, 1);
+      if (typeof app.HanziWriter === 'undefined') return; // see network note above
+      app.CardUI.openStrokePanel('\u5929');
+      assertEqual(strokePanel().classList.contains('hidden'), false, 'sanity check: panel is open before the next render');
+
+      app.CardUI.render({ char: '\u5730', pinyin: 'd\u00ec', words: [], sentence: '' }, 0, 1);
+      assertEqual(strokePanel().classList.contains('hidden'), true, 'a new render must close any panel left open from the previous card');
+      assertEqual(backContent().classList.contains('hidden'), false, 'back content must be restored by the new render');
+    });
+
+    it('gracefully degrades when HanziWriter is unavailable (offline/CDN failure)', () => {
+      // Simulates the CDN script failing to load or still being in flight.
+      // openStrokePanel() must return false rather than throwing, so the
+      // caller (LearnController.openStrokePractice) can show a fallback
+      // message — see js/controllers.js and js/ui.js's typeof guard.
+      const RealHanziWriter = app.HanziWriter;
+      app.HanziWriter = undefined;
+      try {
+        app.CardUI.render({ char: '\u5929', pinyin: 'ti\u0101n', words: [], sentence: '' }, 0, 1);
+        const opened = app.CardUI.openStrokePanel('\u5929');
+        assertEqual(opened, false, 'should report failure instead of throwing when HanziWriter is missing');
+        assertEqual(strokePanel().classList.contains('hidden'), true, 'panel must stay closed, not show a broken/empty canvas');
+      } finally {
+        app.HanziWriter = RealHanziWriter;
+      }
+    });
+
+    it('showStrokeUnavailableMessage briefly changes the button label without throwing', () => {
+      app.CardUI.render({ char: '\u5929', pinyin: 'ti\u0101n', words: [], sentence: '' }, 0, 1);
+      const originalText = strokeBtn().textContent;
+      app.CardUI.showStrokeUnavailableMessage();
+      assert(strokeBtn().textContent !== originalText, 'button label should change to signal the problem');
+      assert(strokeBtn().textContent.includes('联网'), 'message should explain a network/loading issue, not a generic error');
     });
   });
 
