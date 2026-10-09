@@ -41,8 +41,16 @@ const Speech = (() => {
     if (!_DEBUG) return;
     if (!_debugEl) {
       _debugEl = document.createElement('div');
-      _debugEl.style.cssText = 'position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow-y:auto;' +
-        'background:rgba(0,0,0,.85);color:#0f0;font:11px monospace;padding:6px;z-index:99999;white-space:pre-wrap';
+      // Fixed to the TOP (not bottom) and pointer-events:none: the bottom
+      // of the screen is where the mobile bottom-bar and card controls
+      // live (🔄🔊🔁 etc.) — a bottom-anchored overlay silently ate clicks
+      // on those buttons on a real iPhone (only the very first tap worked,
+      // before the panel had appeared). pointer-events:none is a second,
+      // independent safety net in case this is ever placed somewhere that
+      // DOES overlap a control.
+      _debugEl.style.cssText = 'position:fixed;top:0;left:0;right:0;max-height:35vh;overflow-y:auto;' +
+        'background:rgba(0,0,0,.85);color:#0f0;font:11px monospace;padding:6px;z-index:99999;' +
+        'white-space:pre-wrap;pointer-events:none';
       document.body.appendChild(_debugEl);
     }
     const line = document.createElement('div');
@@ -233,15 +241,6 @@ const Speech = (() => {
    */
   function _speakWebAPI(text, onDone) {
     if (!text || !('speechSynthesis' in window)) { if (onDone) onDone(); return; }
-    speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'zh-CN';
-    const rate = State.config('speech.rate', 0.8);
-    utterance.rate = rate;
-    const voices = speechSynthesis.getVoices();
-    const zhVoice = voices.find(v => v.lang.startsWith('zh'));
-    if (zhVoice) utterance.voice = zhVoice;
-    _debugLog(`WebAPI: ${voices.length} voices available, zhVoice=${zhVoice ? zhVoice.name : 'NONE FOUND'}`);
 
     let settled = false;
     let ceilingTimer = null;
@@ -252,16 +251,45 @@ const Speech = (() => {
       if (ceilingTimer) clearTimeout(ceilingTimer);
       if (onDone) onDone();
     };
-    utterance.onend = () => finish('onend');
-    utterance.onerror = (e) => finish(`onerror(${e && e.error})`);
 
-    // ~400ms per character at rate 1.0 is a generous estimate for short
-    // single-character/word TTS; scale by rate (lower rate = slower speech)
-    // and add headroom. This only matters when onend/onerror never fire.
-    const estimatedMs = Math.max(600, (text.length * 400) / rate) + 500;
-    ceilingTimer = setTimeout(() => finish('ceilingTimer (onend/onerror never fired)'), estimatedMs);
+    // iOS Safari fix: cancel() immediately followed by speak() on the same
+    // tick is a known trigger for the engine silently swallowing the new
+    // utterance — it has no time to actually clear its internal state
+    // before being told to speak again, so the utterance gets queued but
+    // never actually spoken (no onend, no onerror, nothing — matches the
+    // on-device debug log that led here: "68 voices available, zhVoice
+    // found" yet "finished via ceilingTimer, onend/onerror never fired").
+    // A tiny setTimeout gap is the documented community workaround.
+    speechSynthesis.cancel();
+    setTimeout(() => {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'zh-CN';
+      const rate = State.config('speech.rate', 0.8);
+      utterance.rate = rate;
+      const voices = speechSynthesis.getVoices();
+      const zhVoice = voices.find(v => v.lang.startsWith('zh'));
+      if (zhVoice) utterance.voice = zhVoice;
+      _debugLog(`WebAPI: ${voices.length} voices available, zhVoice=${zhVoice ? zhVoice.name : 'NONE FOUND'}`);
 
-    speechSynthesis.speak(utterance);
+      utterance.onstart = () => _debugLog('WebAPI: onstart fired — speechSynthesis IS attempting to speak');
+      utterance.onend = () => finish('onend');
+      utterance.onerror = (e) => finish(`onerror(${e && e.error})`);
+
+      // ~400ms per character at rate 1.0 is a generous estimate for short
+      // single-character/word TTS; scale by rate (lower rate = slower
+      // speech) and add headroom. This only matters when onend/onerror
+      // never fire.
+      const estimatedMs = Math.max(600, (text.length * 400) / rate) + 500;
+      ceilingTimer = setTimeout(() => finish('ceilingTimer (onend/onerror never fired)'), estimatedMs);
+
+      speechSynthesis.speak(utterance);
+
+      // iOS Safari's speechSynthesis can silently sit idle after speak()
+      // without ever actually starting — a separate, documented quirk
+      // from the cancel()+speak() race above. resume() right after speak()
+      // is the community workaround to nudge it out of that idle state.
+      speechSynthesis.resume();
+    }, 50);
   }
 
   /** Initialize: detect local TTS server, preload Web Speech voices */
