@@ -747,6 +747,14 @@ const AppController = (() => {
     if (challengeEl) challengeEl.classList.toggle('hidden', newMode !== 'challenge');
     if (dailyTaskEl) dailyTaskEl.classList.toggle('hidden', newMode !== 'dailyTask');
 
+    // Mobile's ◀️🔄🔊🔁▶️ bottom bar (nav#mobileBottomBar) is a page-level
+    // position:fixed element, OUTSIDE #learnMode — so hiding #learnMode
+    // above does not hide it. It forwards clicks to #btnPrev/#btnFlip/etc,
+    // which are 学习模式-only operations (flip the card, read it aloud,
+    // reshuffle); showing it in 任务/挑战 let a child tap buttons that do
+    // nothing meaningful there. Only show it in 学习.
+    if (typeof MobileUI !== 'undefined') MobileUI.setBottomBarVisible(newMode === 'learn');
+
     if (newMode === 'challenge') {
       // Move the lesson filter into challenge mode (before quiz type selector)
       const filterEl = document.querySelector('.content-header');
@@ -1353,6 +1361,12 @@ const AppController = (() => {
             selectSemester('1', '1');
           }
           _syncSidebarSelection(State.get('mode'));
+          // Mirrors switchMode()'s bottom-bar visibility rule for the
+          // mode we actually booted into — boot does not go through
+          // switchMode() itself (see selectSemester calls above), so
+          // without this the ◀️🔄🔊🔁▶️ bar would default to visible on
+          // mobile even when 任务 (the default mode) is showing.
+          if (typeof MobileUI !== 'undefined') MobileUI.setBottomBarVisible(State.get('mode') === 'learn');
         } catch (e) {
           console.warn('[App] Setup error (non-fatal):', e);
         }

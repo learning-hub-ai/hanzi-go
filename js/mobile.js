@@ -316,5 +316,21 @@ const MobileUI = (() => {
     if (_isMobile) _updateGradeLabel();
   }
 
-  return { init, onGradeChange, isMobile };
+  /**
+   * Show or hide the mobile bottom bar (◀️🔄🔊🔁▶️). It is a page-level
+   * fixed element outside #learnMode, so AppController.switchMode()'s
+   * #learnMode.hidden toggle never reaches it — this is the only place
+   * that controls it. Its buttons forward clicks to #btnPrev/#btnFlip/etc,
+   * which only make sense while studying flashcards (学习模式); showing
+   * it in 任务/挑战 let a child tap buttons with no visible effect there.
+   * No-op on desktop — .mobile-bottom-bar is display:none there regardless
+   * of this class, so there is nothing to toggle.
+   * @param {boolean} visible
+   */
+  function setBottomBarVisible(visible) {
+    const bar = document.getElementById('mobileBottomBar');
+    if (bar) bar.classList.toggle('hidden', !visible);
+  }
+
+  return { init, onGradeChange, isMobile, setBottomBarVisible };
 })();
