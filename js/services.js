@@ -24,7 +24,6 @@ const Speech = (() => {
   let _useLocalTTS = false;
   let _audio = null;
   let _unlocked = false;
-  const TIMEOUT_MS = 2500;
 
   const BAIDU_URL = 'https://fanyi.baidu.com/gettts?lan=zh&spd=4&source=web&text=';
   const GOOGLE_URL = 'https://translate.googleapis.com/translate_tts?ie=UTF-8&tl=zh-CN&client=gtx&q=';
@@ -54,15 +53,14 @@ const Speech = (() => {
    * Speak a character or text aloud.
    * MUST be called from a user gesture (click/tap) for iOS.
    * @param {string} text - Text to speak
-   * @param {Function} [onDone] - Called once playback has started (or we've
-   *   given up trying — e.g. Web Speech API was invoked, or there's no
-   *   speech support at all). Does NOT wait for playback to finish, only
-   *   for it to begin, since that's the point at which "the sound you're
-   *   about to hear" and "the question on screen" are still in sync —
-   *   callers that advance to a new question should wait for this before
-   *   doing so, otherwise a slow audio source can start playing after the
-   *   next question has already replaced it on screen (see js/controllers.js
-   *   ChallengeController.answer()).
+   * @param {Function} [onDone] - Called exactly once, when the sound is
+   *   genuinely over: audio played to the end (onended), the Web Speech
+   *   API utterance finished (onend), or every source failed/timed out
+   *   and there's nothing left to wait for. Never left uncalled — a dead
+   *   or slow-to-start source still resolves this via speech.startTimeoutMs,
+   *   so a caller can safely chain more delay after onDone without risking
+   *   a hang (see js/controllers.js ChallengeController._advanceAfterSpeech,
+   *   which adds quizFeedbackDelayMs on top of onDone before advancing).
    */
   function speak(text, onDone) {
     if (!text) { if (onDone) onDone(); return; }
@@ -79,56 +77,68 @@ const Speech = (() => {
   }
 
   /**
-   * Try each audio source in order. On failure/timeout, try next.
-   * Reuses the same _audio element (critical for iOS).
+   * Try each audio source in order. If a source starts playing, wait for it
+   * to finish (onended) before calling onDone — a source that never even
+   * STARTS within speech.startTimeoutMs is abandoned in favor of the next
+   * source; one that starts but then stalls/errors mid-playback also moves
+   * to the next source. Reuses the same _audio element (critical for iOS).
    */
   function _playSources(sources, index, text, onDone) {
     if (index >= sources.length) {
-      // All URL sources failed — try Web Speech API
-      _speakWebAPI(text);
-      if (onDone) onDone();
+      // All URL sources failed to even start — try Web Speech API, which
+      // owns calling onDone itself once that utterance ends (or immediately
+      // if unsupported, so onDone is still never left uncalled).
+      _speakWebAPI(text, onDone);
       return;
     }
 
     let settled = false;
-    let timer = null;
+    const startTimeoutMs = State.config('speech.startTimeoutMs', 2500);
+    let startTimer = null;
 
-    const succeed = () => {
+    const giveUpOnThisSource = () => {
       if (settled) return;
       settled = true;
-      if (timer) clearTimeout(timer);
-      if (onDone) onDone();
-    };
-
-    const fail = () => {
-      if (settled) return;
-      settled = true;
-      if (timer) clearTimeout(timer);
+      if (startTimer) clearTimeout(startTimer);
       // Try next source
       _playSources(sources, index + 1, text, onDone);
     };
 
+    const finished = () => {
+      if (settled) return;
+      settled = true;
+      if (startTimer) clearTimeout(startTimer);
+      if (onDone) onDone();
+    };
+
     // Remove old listeners
     _audio.onplaying = null;
+    _audio.onended = null;
     _audio.onerror = null;
     _audio.onstalled = null;
 
-    _audio.onplaying = succeed;
-    _audio.onerror = fail;
-    _audio.onstalled = fail;
+    // Once playback actually starts, stop racing the start-timeout and
+    // instead wait for it to end — a slow-to-START source should be
+    // abandoned, but a source that DID start should be allowed to finish
+    // even if that takes longer than startTimeoutMs (that's not "slow to
+    // start", that's just how long the word takes to say).
+    _audio.onplaying = () => { if (startTimer) clearTimeout(startTimer); };
+    _audio.onended = finished;
+    _audio.onerror = giveUpOnThisSource;
+    _audio.onstalled = giveUpOnThisSource;
 
     _audio.src = sources[index];
     _audio.currentTime = 0;
     _audio.volume = 1;
 
-    timer = setTimeout(fail, TIMEOUT_MS);
+    startTimer = setTimeout(giveUpOnThisSource, startTimeoutMs);
 
-    _audio.play().catch(fail);
+    _audio.play().catch(giveUpOnThisSource);
   }
 
-  /** Last resort: Web Speech API */
-  function _speakWebAPI(text) {
-    if (!text || !('speechSynthesis' in window)) return;
+  /** Last resort: Web Speech API. Always calls onDone exactly once. */
+  function _speakWebAPI(text, onDone) {
+    if (!text || !('speechSynthesis' in window)) { if (onDone) onDone(); return; }
     speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'zh-CN';
@@ -136,6 +146,11 @@ const Speech = (() => {
     const voices = speechSynthesis.getVoices();
     const zhVoice = voices.find(v => v.lang.startsWith('zh'));
     if (zhVoice) utterance.voice = zhVoice;
+
+    let settled = false;
+    const finish = () => { if (settled) return; settled = true; if (onDone) onDone(); };
+    utterance.onend = finish;
+    utterance.onerror = finish;
     speechSynthesis.speak(utterance);
   }
 
