@@ -1284,15 +1284,27 @@ const AppController = (() => {
   function setupSwipe() {
     let startX = 0;
     let startY = 0;
+    let swiping = false;
     const container = document.getElementById('cardContainer');
     if (!container) return;
 
     container.addEventListener('touchstart', (e) => {
+      // Ignore touches starting inside the stroke-practice panel (✍️ 笔顺)
+      // — see the identical guard in MobileUI._bindSwipe() (js/mobile.js)
+      // for the full explanation. This is a SEPARATE swipe implementation
+      // that also listens on #cardContainer; a child drawing a horizontal
+      // stroke on the canvas was triggering next()/prev() here even after
+      // mobile.js's swipe handler was fixed, because this one had no such
+      // guard at all.
+      if (e.target.closest('#strokePanel')) { swiping = false; return; }
+      swiping = true;
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
     }, { passive: true });
 
     container.addEventListener('touchend', (e) => {
+      if (!swiping) return;
+      swiping = false;
       if (State.get('mode') !== 'learn') return;
       const diffX = startX - e.changedTouches[0].clientX;
       const diffY = Math.abs(startY - e.changedTouches[0].clientY);

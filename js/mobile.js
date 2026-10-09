@@ -227,6 +227,15 @@ const MobileUI = (() => {
 
     card.addEventListener('touchstart', (e) => {
       if (!_isMobile) return;
+      // Ignore touches starting inside the stroke-practice panel (✍️ 笔顺).
+      // #cardContainer wraps the whole flashcard including its back face,
+      // where the stroke panel lives — a child drawing a single horizontal
+      // stroke (e.g. writing 一 or the top stroke of 天) moves a finger
+      // sideways by more than this swipe's 50px threshold, which this
+      // listener then misreads as "swipe to next/prev card", yanking the
+      // child to a different character mid-stroke. Desktop has no touch
+      // events at all, so this bug is mobile-only (matches the report).
+      if (e.target.closest('#strokePanel')) { _swiping = false; return; }
       const touch = e.touches[0];
       _swipeStartX = touch.clientX;
       _swipeStartY = touch.clientY;
