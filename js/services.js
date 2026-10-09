@@ -168,6 +168,25 @@ const Speech = (() => {
     const done = () => { _speaking = false; if (onDone) onDone(); };
 
     _debugLog(`speak("${text}") called`);
+
+    // iOS Safari fix: speechSynthesis.speak() only works when called
+    // directly inside a user gesture's call stack (or a very short window
+    // after it) — see the on-device debug logs that led here: Google and
+    // Baidu both reliably fail/timeout on this network (2.5s each per
+    // speech.startTimeoutMs), so by the time _speakWebAPI was reached as
+    // the LAST resort, ~5s had passed since the tap and iOS had already
+    // invalidated the gesture — speak() was called, voices loaded fine,
+    // but the utterance was silently dropped (no onstart, no onend, no
+    // onerror — exactly what the logs showed). On iOS, try Web Speech API
+    // FIRST, synchronously in this call, before any URL source has a
+    // chance to eat the gesture window. Desktop keeps the original order
+    // (Google/Baidu tend to sound better and have no such constraint).
+    if (_isIOS()) {
+      _debugLog('iOS detected — trying Web Speech API first (gesture window)');
+      _speakWebAPI(text, done);
+      return;
+    }
+
     _ensureAudio();
 
     const sources = [];
@@ -178,6 +197,21 @@ const Speech = (() => {
     sources.push(BAIDU_URL + encoded);
 
     _playSources(sources, 0, text, done);
+  }
+
+  /**
+   * True on iOS Safari/WebKit (iPhone, iPad, and iPadOS 13+ which reports
+   * as "MacIntel" but still runs WebKit with touch support) — the only
+   * platform with the user-gesture-expiry constraint this function exists
+   * to work around. Deliberately NOT based on viewport width (unlike
+   * MobileUI.isMobile()): an iPad in landscape can be wider than most
+   * desktop windows and still have this constraint, while a narrow desktop
+   * browser window does not.
+   */
+  function _isIOS() {
+    const ua = navigator.userAgent || '';
+    return /iPad|iPhone|iPod/.test(ua) ||
+      (ua.includes('Macintosh') && navigator.maxTouchPoints > 1);
   }
 
   /**
