@@ -72,6 +72,7 @@ header{
    its own column, which would reintroduce the same off-center problem. */
 .header-right-group{display:flex;align-items:center;gap:var(--s2);justify-self:end;min-width:0}
 .header-right button{background:none;border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;font-size:16px;cursor:pointer;transition:all var(--duration-fast) ease;min-width:36px;min-height:36px;display:flex;align-items:center;justify-content:center}
+.header-right button.mobile-more-features{display:none}
 .header-right button:hover{background:var(--border-light);transform:translateY(-1px)}
 .header-right button:active{transform:scale(.95)}
 
@@ -503,8 +504,10 @@ main{
   .streak-display{padding:0 var(--s1);font-size:12px}
   #streakNumber{font-size:13px}
 
-  /* Hide desktop-only header buttons (moved to bottom bar / sheet) */
-  #btnFavorites,#btnBadges{display:none}
+  /* Hide desktop-only header buttons — collected into #btnMoreFeatures'
+     bottom sheet on mobile instead (see index.html's comment). */
+  #btnFavorites,#btnBadges,#btnReport,#btnDataTransfer,#btnHelp{display:none}
+  .header-right button.mobile-more-features{display:flex}
 
   /* Main content takes full width, account for bottom bar */
   main{padding:var(--s3);padding-bottom:72px;overflow-x:hidden;width:100%}

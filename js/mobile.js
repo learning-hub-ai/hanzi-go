@@ -24,6 +24,7 @@ const MobileUI = (() => {
 
     _bindBottomBar();
     _bindGradePicker();
+    _bindMoreFeaturesButton();
     _bindSwipe();
     _updateGradeLabel();
 
@@ -72,7 +73,7 @@ const MobileUI = (() => {
 
     picker.addEventListener('click', (e) => {
       e.stopPropagation();
-      _openSheet();
+      _openGradeSheet();
     });
 
     // Close on overlay tap
@@ -81,56 +82,41 @@ const MobileUI = (() => {
     });
   }
 
-  /** Open the bottom sheet with grade/semester options */
-  function _openSheet() {
+  /** Bind the header's "更多功能" (⋯) button → opens the features sheet */
+  function _bindMoreFeaturesButton() {
+    const btn = document.getElementById('btnMoreFeatures');
+    if (!btn) return;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _openFeaturesSheet();
+    });
+  }
+
+  /**
+   * Open the bottom sheet showing ONLY grade/semester options.
+   *
+   * Deliberately separate from _openFeaturesSheet(): this button's label
+   * and aria-label are "选择年级" — mixing in 生词本/成就墙/etc meant
+   * tapping it opened on a screen of mostly unrelated items before the
+   * grade list even appeared, which is what a user reported as confusing.
+   * Each sheet now has exactly the content its trigger button promises.
+   */
+  function _openGradeSheet() {
     const overlay = document.getElementById('mobileSheetOverlay');
     const content = document.getElementById('mobileSheetContent');
+    const title = document.getElementById('mobileSheetTitle');
     if (!overlay || !content) return;
+    if (title) title.textContent = '选择年级';
 
     const currentGrade = State.get('selectedGrade');
     const currentSem = State.get('selectedSemester');
+    const allChars = State.get('allChars') || [];
 
-    // Build sheet items
     let html = '';
-
-    // Review section
-    const favCount = FavoriteService.getAll().length;
-    html += `<div class="mobile-sheet-item" data-action="fav">
-      <span class="mobile-sheet-item-icon">❤️</span>
-      <span class="mobile-sheet-item-label">生词本</span>
-      <span class="mobile-sheet-item-count">${favCount}</span>
-    </div>`;
-    html += `<div class="mobile-sheet-item" data-action="srs">
-      <span class="mobile-sheet-item-icon">📈</span>
-      <span class="mobile-sheet-item-label">智能复习</span>
-      <span class="mobile-sheet-item-count">${typeof SpacedRepService !== 'undefined' ? SpacedRepService.getDueChars().length : 0}</span>
-    </div>`;
-    html += `<div class="mobile-sheet-item" data-action="badges">
-      <span class="mobile-sheet-item-icon">🏆</span>
-      <span class="mobile-sheet-item-label">成就墙</span>
-    </div>`;
-    html += `<div class="mobile-sheet-item" data-action="custom">
-      <span class="mobile-sheet-item-icon">✏️</span>
-      <span class="mobile-sheet-item-label">自定义</span>
-      <span class="mobile-sheet-item-count">${typeof CustomCardService !== 'undefined' ? CustomCardService.count() : 0}</span>
-    </div>`;
-    html += `<div class="mobile-sheet-item" data-action="help">
-      <span class="mobile-sheet-item-icon">❓</span>
-      <span class="mobile-sheet-item-label">使用说明</span>
-    </div>`;
-    html += `<div class="mobile-sheet-item" data-action="report">
-      <span class="mobile-sheet-item-icon">📊</span>
-      <span class="mobile-sheet-item-label">学习报告</span>
-    </div>`;
-    html += '<div class="mobile-sheet-divider"></div>';
-
-    // Grade/semester list
     for (let g = 1; g <= 9; g++) {
       for (let s = 1; s <= 2; s++) {
         const isActive = String(g) === String(currentGrade) && String(s) === String(currentSem);
         const activeClass = isActive ? ' active' : '';
-        // Get character count for this grade/semester
-        const allChars = State.get('allChars') || [];
         const count = allChars.filter(c => c.grade === g && c.semester === s).length;
         if (count === 0) continue; // Skip empty grades
         html += `<div class="mobile-sheet-item${activeClass}" data-grade="${g}" data-sem="${s}">
@@ -143,59 +129,98 @@ const MobileUI = (() => {
 
     content.innerHTML = html;
 
-    // Bind click events on items
-    content.querySelectorAll('.mobile-sheet-item').forEach(item => {
+    content.querySelectorAll('.mobile-sheet-item[data-grade]').forEach(item => {
+      item.addEventListener('click', () => {
+        const grade = item.dataset.grade;
+        const sem = item.dataset.sem;
+        // Simulate sidebar click
+        const sidebarItem = document.querySelector(`.sidebar-item[data-grade="${grade}"][data-sem="${sem}"]`);
+        if (sidebarItem) {
+          sidebarItem.click();
+        } else {
+          // Fallback: directly set state and refresh
+          State.set('selectedGrade', grade);
+          State.set('selectedSemester', sem);
+          DataService.applyFilter('all');
+          if (typeof LearnController !== 'undefined') LearnController.show();
+        }
+        _updateGradeLabel();
+        _closeSheet();
+      });
+    });
+
+    overlay.classList.remove('hidden');
+    _sheetOpen = true;
+  }
+
+  /**
+   * Open the bottom sheet showing feature shortcuts: 生词本/智能复习/
+   * 成就墙/自定义/学习报告/备份与转移/使用说明.
+   *
+   * This is the single place these 7 items are listed for mobile. Where
+   * a desktop header button already exists for one (favorites, badges,
+   * report, data transfer, help — all hidden on mobile via CSS, see
+   * .mobile-more-features's comment in index.html), this sheet forwards
+   * the tap to that same button via .click() rather than reimplementing
+   * its behavior, so there is exactly one place each action's logic
+   * lives. 智能复习/自定义 have no desktop header button (sidebar-only
+   * there), so those two forward to their existing sidebar/controller
+   * entry points instead.
+   */
+  function _openFeaturesSheet() {
+    const overlay = document.getElementById('mobileSheetOverlay');
+    const content = document.getElementById('mobileSheetContent');
+    const title = document.getElementById('mobileSheetTitle');
+    if (!overlay || !content) return;
+    if (title) title.textContent = '更多功能';
+
+    const favCount = FavoriteService.getAll().length;
+    const srsCount = typeof SpacedRepService !== 'undefined' ? SpacedRepService.getDueChars().length : 0;
+    const customCount = typeof CustomCardService !== 'undefined' ? CustomCardService.count() : 0;
+
+    const items = [
+      { action: 'fav', icon: '❤️', label: '生词本', count: favCount },
+      { action: 'srs', icon: '📈', label: '智能复习', count: srsCount },
+      { action: 'badges', icon: '🏆', label: '成就墙' },
+      { action: 'custom', icon: '✏️', label: '自定义', count: customCount },
+      { action: 'report', icon: '📊', label: '学习报告' },
+      { action: 'dataTransfer', icon: '💾', label: '备份与转移' },
+      { action: 'help', icon: '❓', label: '使用说明' }
+    ];
+
+    content.innerHTML = items.map(it => `<div class="mobile-sheet-item" data-action="${it.action}">
+        <span class="mobile-sheet-item-icon">${it.icon}</span>
+        <span class="mobile-sheet-item-label">${it.label}</span>
+        ${it.count !== undefined ? `<span class="mobile-sheet-item-count">${it.count}</span>` : ''}
+      </div>`).join('');
+
+    // action -> desktop button id, for the four that just forward a click
+    const FORWARD_TO_BUTTON = {
+      fav: 'btnFavorites',
+      badges: 'btnBadges',
+      report: 'btnReport',
+      dataTransfer: 'btnDataTransfer',
+      help: 'btnHelp'
+    };
+
+    content.querySelectorAll('.mobile-sheet-item[data-action]').forEach(item => {
       item.addEventListener('click', () => {
         const action = item.dataset.action;
-        if (action === 'fav') {
-          document.getElementById('btnFavorites').click();
-          _closeSheet();
+        _closeSheet();
+
+        if (FORWARD_TO_BUTTON[action]) {
+          const btn = document.getElementById(FORWARD_TO_BUTTON[action]);
+          if (btn) btn.click();
           return;
         }
         if (action === 'srs') {
-          // Trigger SRS sidebar item click
           const srsItem = document.querySelector('.sidebar-item[data-grade="srs"]');
           if (srsItem) srsItem.click();
-          _closeSheet();
-          return;
-        }
-        if (action === 'badges') {
-          document.getElementById('btnBadges').click();
-          _closeSheet();
-          return;
-        }
-        if (action === 'report') {
-          document.getElementById('btnReport').click();
-          _closeSheet();
-          return;
-        }
-        if (action === 'help') {
-          document.getElementById('btnHelp').click();
-          _closeSheet();
           return;
         }
         if (action === 'custom') {
           AppController.showCustomCards();
-          _closeSheet();
           return;
-        }
-
-        const grade = item.dataset.grade;
-        const sem = item.dataset.sem;
-        if (grade && sem) {
-          // Simulate sidebar click
-          const sidebarItem = document.querySelector(`.sidebar-item[data-grade="${grade}"][data-sem="${sem}"]`);
-          if (sidebarItem) {
-            sidebarItem.click();
-          } else {
-            // Fallback: directly set state and refresh
-            State.set('selectedGrade', grade);
-            State.set('selectedSemester', sem);
-            DataService.applyFilter('all');
-            if (typeof LearnController !== 'undefined') LearnController.show();
-          }
-          _updateGradeLabel();
-          _closeSheet();
         }
       });
     });

@@ -311,6 +311,12 @@ async function runTests() {
       assertEqual(missing.length, 0, `Missing: ${missing.join(', ')}`);
     });
 
+    it('Mobile "更多功能" entry and sheet title exist', () => {
+      const ids = ['btnMoreFeatures', 'mobileGradePicker', 'mobileSheetTitle', 'mobileSheetContent'];
+      const missing = ids.filter(id => !doc.getElementById(id));
+      assertEqual(missing.length, 0, `Missing: ${missing.join(', ')}`);
+    });
+
     it('Sidebar has grade items', () => {
       const items = doc.querySelectorAll('.sidebar-item[data-grade]');
       assertGreater(items.length, 10, `Only ${items.length} sidebar items`);

@@ -58,6 +58,13 @@ if ('serviceWorker' in navigator) {
       <button id="btnReport" title="学习报告" aria-label="学习报告">📊</button>
       <button id="btnDataTransfer" title="备份与转移" aria-label="备份与转移">💾</button>
       <button id="btnHelp" title="使用说明" aria-label="使用说明">❓</button>
+      <!-- Mobile-only: collects the 5 buttons above (hidden on mobile, see
+           css/style.css's max-width:768px block) plus 智能复习/自定义 (no
+           desktop header button of their own — sidebar-only) into one
+           bottom-sheet, instead of duplicating them as a second, separately
+           maintained list. Desktop never shows this — those 5 buttons are
+           already individually visible there. -->
+      <button class="mobile-more-features" id="btnMoreFeatures" title="更多功能" aria-label="更多功能">⋯</button>
       <button id="btnProfile" class="profile-btn" title="切换用户" aria-label="切换用户">
         <span class="profile-avatar" id="profileAvatar">👧</span>
         <span class="profile-name" id="profileName"></span>
@@ -388,7 +395,7 @@ if ('serviceWorker' in navigator) {
 <div class="mobile-sheet-overlay hidden" id="mobileSheetOverlay">
   <div class="mobile-sheet" id="mobileSheet">
     <div class="mobile-sheet-handle"></div>
-    <h3 class="mobile-sheet-title">选择年级</h3>
+    <h3 class="mobile-sheet-title" id="mobileSheetTitle">选择年级</h3>
     <div class="mobile-sheet-content" id="mobileSheetContent">
       <!-- Populated by JS -->
     </div>
