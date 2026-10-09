@@ -25,6 +25,32 @@ const Speech = (() => {
   let _audio = null;
   let _unlocked = false;
 
+  // Diagnostic overlay — only active with ?debugSpeech=1 in the URL, so it
+  // never shows for normal users. Added to investigate a real-device report
+  // (iPhone 16, iOS Safari): 挑战模式 answers never produce sound, even
+  // across many consecutive correct answers, while 学习模式's 朗读 button
+  // needs several taps before sound starts — and once it does, it keeps
+  // working. That pattern doesn't fit the "one real play unlocks the shared
+  // _audio element forever" theory (consecutive correct answers in 挑战模式
+  // alone never recovered), so this logs the exact source/event sequence on
+  // screen (console isn't reachable on a phone) to find the real cause
+  // instead of guessing further.
+  const _DEBUG = /debugSpeech=1/.test(location.search);
+  let _debugEl = null;
+  function _debugLog(msg) {
+    if (!_DEBUG) return;
+    if (!_debugEl) {
+      _debugEl = document.createElement('div');
+      _debugEl.style.cssText = 'position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow-y:auto;' +
+        'background:rgba(0,0,0,.85);color:#0f0;font:11px monospace;padding:6px;z-index:99999;white-space:pre-wrap';
+      document.body.appendChild(_debugEl);
+    }
+    const line = document.createElement('div');
+    line.textContent = `[${new Date().toISOString().slice(11, 23)}] ${msg}`;
+    _debugEl.appendChild(line);
+    _debugEl.scrollTop = _debugEl.scrollHeight;
+  }
+
   const BAIDU_URL = 'https://fanyi.baidu.com/gettts?lan=zh&spd=4&source=web&text=';
   const GOOGLE_URL = 'https://translate.googleapis.com/translate_tts?ie=UTF-8&tl=zh-CN&client=gtx&q=';
 
@@ -53,6 +79,7 @@ const Speech = (() => {
       _audio.setAttribute('playsinline', '');
     }
     if (!_unlocked) {
+      _debugLog('unlock: attempting silent-MP3 play()');
       _audio.src = SILENT_MP3;
       _audio.volume = 0;
       const p = _audio.play();
@@ -63,10 +90,14 @@ const Speech = (() => {
             _audio.volume = 1;
           }
           _unlocked = true;
-        }).catch(() => { _unlocked = true; });
+          _debugLog('unlock: succeeded, _unlocked=true');
+        }).catch((e) => { _unlocked = true; _debugLog(`unlock: play() rejected (${e && e.name}), _unlocked=true anyway`); });
       } else {
         _unlocked = true;
+        _debugLog('unlock: play() returned no promise (old browser path), _unlocked=true');
       }
+    } else {
+      _debugLog('unlock: already unlocked, skipping');
     }
   }
 
@@ -85,6 +116,7 @@ const Speech = (() => {
    */
   function speak(text, onDone) {
     if (!text) { if (onDone) onDone(); return; }
+    _debugLog(`speak("${text}") called`);
     _ensureAudio();
 
     const sources = [];
@@ -116,6 +148,7 @@ const Speech = (() => {
    */
   function _playSources(sources, index, text, onDone) {
     if (index >= sources.length) {
+      _debugLog('all URL sources exhausted -> falling back to Web Speech API');
       // All URL sources failed to even start — try Web Speech API, which
       // owns calling onDone itself once that utterance ends (or immediately
       // if unsupported, so onDone is still never left uncalled).
@@ -123,15 +156,20 @@ const Speech = (() => {
       return;
     }
 
+    const sourceLabel = sources[index].includes('baidu') ? 'baidu'
+      : sources[index].includes('googleapis') ? 'google' : 'localTTS';
+    _debugLog(`[${index}] trying source: ${sourceLabel}`);
+
     let settled = false;
     let started = false;
     const startTimeoutMs = State.config('speech.startTimeoutMs', 2500);
     let startTimer = null;
     let maxPlayTimer = null;
 
-    const giveUpOnThisSource = () => {
+    const giveUpOnThisSource = (reason) => {
       if (settled || started) return; // never abandon a source once it's confirmed playing
       settled = true;
+      _debugLog(`[${index}] ${sourceLabel} FAILED before playing (${reason})`);
       if (startTimer) clearTimeout(startTimer);
       // Try next source
       _playSources(sources, index + 1, text, onDone);
@@ -140,6 +178,7 @@ const Speech = (() => {
     const finished = () => {
       if (settled) return;
       settled = true;
+      _debugLog(`[${index}] ${sourceLabel} finished (onended/maxPlayMs) — onDone firing`);
       if (startTimer) clearTimeout(startTimer);
       if (maxPlayTimer) clearTimeout(maxPlayTimer);
       if (onDone) onDone();
@@ -163,20 +202,21 @@ const Speech = (() => {
     // character/word has no business taking longer than this.
     _audio.onplaying = () => {
       started = true;
+      _debugLog(`[${index}] ${sourceLabel} onplaying fired — audio IS audibly playing`);
       if (startTimer) clearTimeout(startTimer);
       maxPlayTimer = setTimeout(finished, State.config('speech.maxPlayMs', 4000));
     };
     _audio.onended = finished;
-    _audio.onerror = giveUpOnThisSource;
-    _audio.onstalled = giveUpOnThisSource;
+    _audio.onerror = () => giveUpOnThisSource(`onerror, code=${_audio.error && _audio.error.code}`);
+    _audio.onstalled = () => giveUpOnThisSource('onstalled');
 
     _audio.src = sources[index];
     _audio.currentTime = 0;
     _audio.volume = 1;
 
-    startTimer = setTimeout(giveUpOnThisSource, startTimeoutMs);
+    startTimer = setTimeout(() => giveUpOnThisSource('startTimeoutMs elapsed, onplaying never fired'), startTimeoutMs);
 
-    _audio.play().catch(giveUpOnThisSource);
+    _audio.play().catch((e) => giveUpOnThisSource(`play() rejected: ${e && e.name}`));
   }
 
   /**
@@ -201,23 +241,25 @@ const Speech = (() => {
     const voices = speechSynthesis.getVoices();
     const zhVoice = voices.find(v => v.lang.startsWith('zh'));
     if (zhVoice) utterance.voice = zhVoice;
+    _debugLog(`WebAPI: ${voices.length} voices available, zhVoice=${zhVoice ? zhVoice.name : 'NONE FOUND'}`);
 
     let settled = false;
     let ceilingTimer = null;
-    const finish = () => {
+    const finish = (via) => {
       if (settled) return;
       settled = true;
+      _debugLog(`WebAPI: finished via ${via}`);
       if (ceilingTimer) clearTimeout(ceilingTimer);
       if (onDone) onDone();
     };
-    utterance.onend = finish;
-    utterance.onerror = finish;
+    utterance.onend = () => finish('onend');
+    utterance.onerror = (e) => finish(`onerror(${e && e.error})`);
 
     // ~400ms per character at rate 1.0 is a generous estimate for short
     // single-character/word TTS; scale by rate (lower rate = slower speech)
     // and add headroom. This only matters when onend/onerror never fire.
     const estimatedMs = Math.max(600, (text.length * 400) / rate) + 500;
-    ceilingTimer = setTimeout(finish, estimatedMs);
+    ceilingTimer = setTimeout(() => finish('ceilingTimer (onend/onerror never fired)'), estimatedMs);
 
     speechSynthesis.speak(utterance);
   }
