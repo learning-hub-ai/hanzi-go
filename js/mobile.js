@@ -119,10 +119,17 @@ const MobileUI = (() => {
         const activeClass = isActive ? ' active' : '';
         const count = allChars.filter(c => c.grade === g && c.semester === s).length;
         if (count === 0) continue; // Skip empty grades
+        // Show the textbook print edition year (统编版 2017/2018/2019/2024),
+        // matching the sidebar's tag (see _renderEditionTag in js/ui.js) —
+        // this used to show the character count instead, which told a
+        // parent nothing the desktop sidebar didn't already say
+        // differently for the same grade/semester.
+        const edition = typeof DataService !== 'undefined' ? DataService.getEdition(g, s) : null;
+        const editionLabel = edition ? `${edition}版` : '';
         html += `<div class="mobile-sheet-item${activeClass}" data-grade="${g}" data-sem="${s}">
           <span class="mobile-sheet-item-icon">${GRADE_ICONS[g]}</span>
           <span class="mobile-sheet-item-label">${GRADE_NAMES[g]}${SEM_NAMES[s]}</span>
-          <span class="mobile-sheet-item-count">${count}字</span>
+          <span class="mobile-sheet-item-count">${editionLabel}</span>
         </div>`;
       }
     }
