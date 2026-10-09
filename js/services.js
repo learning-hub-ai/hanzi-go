@@ -34,6 +34,18 @@ const Speech = (() => {
   /**
    * Ensure Audio element exists and is unlocked for iOS.
    * Called synchronously within the user's tap event.
+   *
+   * iOS Safari fix: the unlock play() is async (its .then() can resolve
+   * well after this function returns), but the caller (speak(), via
+   * _playSources) proceeds synchronously and immediately overwrites
+   * _audio.src with the real TTS URL. If the delayed unlock callback then
+   * blindly calls _audio.pause(), it pauses whatever is NOW loaded — the
+   * real audio the user is supposed to hear, not the silent clip — which
+   * silently cuts it off with no error (so the old "wait for onplaying"
+   * logic didn't notice, and even the current "wait for onended" logic
+   * doesn't error, it just hangs until maxPlayMs's ceiling eventually
+   * fires `finished`). Guard: only pause/reset volume if _audio.src is
+   * STILL the silent clip, i.e. nothing has reused the element since.
    */
   function _ensureAudio() {
     if (!_audio) {
@@ -44,8 +56,17 @@ const Speech = (() => {
       _audio.src = SILENT_MP3;
       _audio.volume = 0;
       const p = _audio.play();
-      if (p) p.then(() => { _audio.pause(); _audio.volume = 1; _unlocked = true; }).catch(() => {});
-      else { _unlocked = true; }
+      if (p) {
+        p.then(() => {
+          if (_audio.src.startsWith('data:audio/mp3')) {
+            _audio.pause();
+            _audio.volume = 1;
+          }
+          _unlocked = true;
+        }).catch(() => { _unlocked = true; });
+      } else {
+        _unlocked = true;
+      }
     }
   }
 
