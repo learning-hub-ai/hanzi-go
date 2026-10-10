@@ -346,6 +346,149 @@ async function runTests() {
       assertEqual(tabs.length, 3, 'Should have 3 mode tabs (任务, 学习, 挑战)');
     });
 
+    it('Typography uses the type scale, not ad-hoc sizes', () => {
+      // The stylesheet had 29 distinct font-size values with no scale:
+      // 11/12/13/14/15 all crowded into a 4px band, with 13px on 27
+      // selectors and 14px on 22 for interchangeable purposes. Steps 1px
+      // apart aren't perceptible, so they produced noise instead of
+      // hierarchy. Sizes now come from --text-* tokens; this asserts the
+      // rendered sizes stay on that scale so the next component added
+      // can't quietly reintroduce a 15px or 17px one-off.
+      //
+      // Display type (hero characters, emoji, score numerals) is sized
+      // per-breakpoint and treated as art, so anything above the scale's
+      // top step is out of scope here. Two further exemptions:
+      //  - emoji-only glyphs (🤍 fav button, 🔥 streak, avatar pickers):
+      //    sized as icons, where the px value is chosen to match
+      //    surrounding artwork rather than to sit in a text hierarchy.
+      //  - sizes that aren't whole pixels, which come from the UA
+      //    stylesheet's relative sizing on form controls and headings
+      //    (e.g. a <button> at 13.3333px) rather than from this file.
+      const win = frame.contentWindow;
+      const SCALE = [10, 11, 12, 13, 14, 16, 18, 24, 32];
+      const TOP = SCALE[SCALE.length - 1];
+      const EMOJI_ONLY = /^[\p{Extended_Pictographic}\uFE0F\u200D\s]+$/u;
+      const offScale = new Map();
+      frame.contentDocument.querySelectorAll('*').forEach(el => {
+        const px = parseFloat(win.getComputedStyle(el).fontSize);
+        if (!px || px > TOP || SCALE.includes(px)) return;
+        if (!Number.isInteger(px)) return;            // UA-relative, not ours
+        const text = (el.textContent || '').trim();
+        if (text && EMOJI_ONLY.test(text)) return;    // icon, not text
+        const key = `${px}px`;
+        if (!offScale.has(key)) offScale.set(key, el.className || el.tagName);
+      });
+      const found = [...offScale].map(([px, who]) => `${px} on ${who}`);
+      assertEqual(found.length, 0,
+        `off-scale font sizes (use a --text-* token): ${found.join('; ')}`);
+    });
+
+    it('Font weights come from the weight scale', () => {
+      // font-weight:600 was on 35 selectors — when almost everything is
+      // semibold, nothing reads as emphasised. Weights now come from
+      // --weight-* tokens (400/500/600/700). 800 survives on two display
+      // numerals (.end-score, .card-pinyin-back) and is allowed here.
+      const win = frame.contentWindow;
+      const ALLOWED = [400, 500, 600, 700, 800];
+      const bad = new Map();
+      frame.contentDocument.querySelectorAll('*').forEach(el => {
+        const w = parseInt(win.getComputedStyle(el).fontWeight, 10);
+        if (!w || ALLOWED.includes(w)) return;
+        if (!bad.has(w)) bad.set(w, el.className || el.tagName);
+      });
+      const found = [...bad].map(([w, who]) => `${w} on ${who}`);
+      assertEqual(found.length, 0,
+        `off-scale font weights (use a --weight-* token): ${found.join('; ')}`);
+    });
+
+    it('Type and weight tokens are all defined', () => {
+      // A var() typo falls back silently to the browser default (16px /
+      // normal), which looks like a styling glitch rather than an error.
+      // Assert every token the stylesheet references actually resolves.
+      const win = frame.contentWindow;
+      const root = win.getComputedStyle(frame.contentDocument.documentElement);
+      const names = ['--text-2xs', '--text-xs', '--text-sm', '--text-base', '--text-md',
+        '--text-lg', '--text-xl', '--text-2xl', '--text-3xl',
+        '--weight-normal', '--weight-medium', '--weight-semibold', '--weight-bold'];
+      const undef = names.filter(n => !root.getPropertyValue(n).trim());
+      assertEqual(undef.length, 0, `undefined tokens: ${undef.join(', ')}`);
+    });
+
+    it('自定义 modal: focus rings are not clipped by the scroll container', () => {
+      // The modal is a fixed-height flex column with overflow:hidden on
+      // #modalContent so only the card list scrolls. Elements sitting flush
+      // against that clipping boundary lose their focus ring: it's drawn
+      // 2px wide at a 2px offset, so it needs 4px outside the border box.
+      // Two separate cases were found this way — the width:100% form inputs
+      // (clipped left and right) and the 复习卡片 button in .cc-header,
+      // which is the first child and so was flush against the top edge.
+      // Checks every focusable descendant on all four sides rather than a
+      // hardcoded list, so a control added later is covered too.
+      const win = frame.contentWindow;
+      const doc = frame.contentDocument;
+      const entry = doc.querySelector('[data-grade="custom"]');
+      if (!entry) return;                       // sidebar hidden (mobile)
+
+      // The test iframe is height:0, so the modal's height:min(640px,94vh)
+      // collapses and every child overflows by hundreds of px — which is a
+      // viewport artefact, not a clipped ring. Give it a real height for
+      // this check, the same way the Help layout tests do, then restore it.
+      const prevHeight = frame.style.height;
+      frame.style.height = '800px';
+      try {
+        entry.click();
+
+      // Seed a card so the header row (复习卡片 + search) and the list
+      // render — they don't exist in the empty state.
+      const front = doc.getElementById('ccFront');
+      if (front) {
+        front.value = '测';
+        doc.getElementById('ccPinyin').value = 'cè';
+        doc.getElementById('ccBack').value = 'focus-ring guard';
+        doc.querySelector('[data-action="cc-add"]').click();
+      }
+
+      const NEED = 4;                            // 2px ring + 2px offset
+      const tight = [];
+      doc.querySelectorAll('#modalContent input, #modalContent textarea, #modalContent button')
+        .forEach(el => {
+          if (el.offsetParent === null) return;  // not rendered
+          const b = el.getBoundingClientRect();
+          let a = el.parentElement, clip = null;
+          while (a && a !== doc.body) {
+            const c = win.getComputedStyle(a);
+            if (c.overflowX !== 'visible' || c.overflowY !== 'visible') { clip = a; break; }
+            a = a.parentElement;
+          }
+          if (!clip) return;
+          const cb = clip.getBoundingClientRect();
+          const cc = win.getComputedStyle(clip);
+          const room = {
+            left: b.left - (cb.left + parseFloat(cc.borderLeftWidth)),
+            right: (cb.right - parseFloat(cc.borderRightWidth)) - b.right,
+            top: b.top - (cb.top + parseFloat(cc.borderTopWidth)),
+            bottom: (cb.bottom - parseFloat(cc.borderBottomWidth)) - b.bottom,
+          };
+          // A scrolling ancestor (.cc-list-wrap) legitimately clips its rows
+          // on the scroll axis — that's what scrolling is. Only the
+          // cross-axis is a bug there. Likewise a row scrolled out of view
+          // reports a large negative value, which is position, not clipping.
+          const scrolls = cc.overflowY === 'auto' || cc.overflowY === 'scroll';
+          const sides = scrolls ? ['left', 'right'] : ['left', 'right', 'top', 'bottom'];
+          const bad = sides.filter(s => room[s] >= 0 && room[s] < NEED);
+          if (bad.length) {
+            const id = el.id || el.getAttribute('data-action') || el.textContent.trim().slice(0, 10);
+            tight.push(`${id} [${bad.map(s => `${s} ${room[s].toFixed(1)}px`).join(', ')}]`);
+          }
+        });
+        assertEqual(tight.length, 0,
+          `focus ring clipped (needs ${NEED}px): ${tight.join('; ')}`);
+      } finally {
+        app.ModalUI.close();
+        frame.style.height = prevHeight;
+      }
+    });
+
     it('Selected-state text meets WCAG AA contrast (4.5:1)', () => {
       // The active sidebar row used --primary-light (#818cf8) as its fill,
       // which put its white 13px label at 2.98:1 — well under the 4.5 AA

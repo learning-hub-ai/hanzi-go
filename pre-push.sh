@@ -145,3 +145,52 @@ if 'stale-while-revalidate' not in sw.lower() and 'fetch' not in sw:
     sys.exit(1)
 print('✅ Service Worker: valid')
 " || exit 1
+
+# === Additional: type scale discipline (source-level) ===
+# The in-browser guard in test.html can only see elements that are actually
+# rendered, so a one-off size on a screen that isn't mounted at page load
+# (dt-step-title, modals, the quiz view) slips past it. This reads the
+# stylesheet directly so every rule is covered regardless of what's on
+# screen. Display sizes above the scale's top step are art, not text, and
+# are exempt — as are the two 800-weight display numerals.
+python3 -c "
+import re, sys
+css = open('css/style.css').read()
+css = re.sub(r'/\*.*?\*/', '', css, flags=re.S)       # comments
+css = re.sub(r':root\s*\{.*?\}', '', css, flags=re.S)  # token definitions
+
+SCALE = {10, 11, 12, 13, 14, 16, 18, 24, 32}
+TOP = max(SCALE)
+EXEMPT_SIZE = {
+    '.fav-btn', '.streak-fire', '.modal-item .char-display',
+    '.avatar-picker button', '.mobile-bottom-bar button',
+    '.quiz-option-char', '.dt-step-icon', '.dt-setup-grade-icon',
+    '.dt-setup-lesson-icon', '.mobile-sheet-item-icon', '.profile-avatar',
+    '.profile-item .avatar', '.sidebar-grade-icon', '.sidebar-item-icon',
+    '.sidebar-group-arrow', '.sidebar-grade-arrow', '.mobile-grade-arrow',
+    '.profile-item .edit-icon', '.modal-close', '.profile-panel-close',
+    '.stroke-panel-close', '.rep-day-mark', '.header-right button',
+    '.card-pinyin-back', '.end-score',
+}
+EXEMPT_WEIGHT = {'.card-pinyin-back', '.end-score'}
+
+bad = []
+cur = '?'
+for line in css.split('\n'):
+    m = re.match(r'^\s*([^{}]+?)\s*\{', line)
+    if m: cur = m.group(1).strip()
+    for px in re.findall(r'font-size:\s*(\d+)px', line):
+        if cur in EXEMPT_SIZE: continue
+        n = int(px)
+        if n <= TOP and n not in SCALE:
+            bad.append(f'{cur}: font-size:{n}px — use a --text-* token')
+    for w in re.findall(r'font-weight:\s*(\d+)', line):
+        if cur in EXEMPT_WEIGHT: continue
+        bad.append(f'{cur}: font-weight:{w} — use a --weight-* token')
+
+if bad:
+    print('❌ Type scale violations:')
+    for b in bad: print(f'  {b}')
+    sys.exit(1)
+print('✅ Type scale: all sizes and weights use tokens')
+" || exit 1
