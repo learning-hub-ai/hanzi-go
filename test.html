@@ -322,9 +322,95 @@ async function runTests() {
       assertGreater(items.length, 10, `Only ${items.length} sidebar items`);
     });
 
+    it('Sidebar labels are not clipped by their own row at desktop width', () => {
+      // Guards a real regression: .sidebar-review was briefly given a tinted
+      // block with its own margin+padding+3px border, which stacked on top of
+      // the padding .sidebar-item and .sidebar-subitem already carry. Inside a
+      // 180px sidebar that ate ~19px of usable width, and since
+      // .sidebar-item-label sets text-overflow:ellipsis the loss showed up
+      // silently as "智能复习" rendering as "智…" — no error, no failing test,
+      // just truncated text. Any future padding/margin change in the sidebar
+      // chain should fail here instead of shipping clipped labels.
+      const win = frame.contentWindow;
+      if (win.getComputedStyle(frame.contentDocument.querySelector('.sidebar')).display === 'none') {
+        return; // mobile breakpoint hides the sidebar; nothing to measure
+      }
+      const clipped = [...doc.querySelectorAll('.sidebar-item-label')]
+        .filter(el => el.scrollWidth > el.clientWidth + 1)
+        .map(el => `"${el.textContent.trim()}" (${el.scrollWidth}px into ${el.clientWidth}px)`);
+      assertEqual(clipped.length, 0, `clipped sidebar labels: ${clipped.join(', ')}`);
+    });
+
     it('Mode tabs have data-mode', () => {
       const tabs = doc.querySelectorAll('.mode-tab[data-mode]');
       assertEqual(tabs.length, 3, 'Should have 3 mode tabs (任务, 学习, 挑战)');
+    });
+
+    it('Selected-state text meets WCAG AA contrast (4.5:1)', () => {
+      // The active sidebar row used --primary-light (#818cf8) as its fill,
+      // which put its white 13px label at 2.98:1 — well under the 4.5 AA
+      // needs for normal-size text — and the nested edition tag ("2024版")
+      // at 2.59 and count badge at 2.20, i.e. barely readable on the row
+      // the child has actually selected. Measured here from computed style
+      // so a future palette change can't silently drop these again.
+      const win = frame.contentWindow;
+      const rel = ([r, g, b]) => {
+        const f = c => (c / 255 <= 0.03928) ? c / 255 / 12.92 : Math.pow((c / 255 + 0.055) / 1.055, 2.4);
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+      };
+      const parse = s => s.match(/[\d.]+/g).slice(0, 3).map(Number);
+      // Flatten a possibly-translucent colour onto an opaque backdrop.
+      const over = (s, base) => {
+        const n = s.match(/[\d.]+/g).map(Number);
+        const a = n.length > 3 ? n[3] : 1;
+        return n.slice(0, 3).map((c, i) => a * c + (1 - a) * base[i]);
+      };
+      const ratio = (fg, bg) => {
+        const [hi, lo] = [rel(fg), rel(bg)].sort((x, y) => y - x);
+        return (hi + 0.05) / (lo + 0.05);
+      };
+
+      // Force the selected state on so this doesn't depend on saved profile
+      // state (a fresh profile clears .active from the grade headers).
+      // .sidebar-item has transition:all, so a synchronous getComputedStyle
+      // right after the class is added returns mid-transition values (the
+      // background still transparent, the label still its unselected
+      // colour). Suppress transitions for the measurement instead of
+      // sleeping, so the test stays synchronous.
+      const row = doc.querySelector('.sidebar-grade-children .sidebar-item');
+      const hadActive = row.classList.contains('active');
+      const noAnim = doc.createElement('style');
+      noAnim.textContent = '.sidebar-item,.sidebar-item *{transition:none!important}';
+      doc.head.appendChild(noAnim);
+      row.classList.add('active');
+
+      const rowBg = over(win.getComputedStyle(row).backgroundColor, [255, 255, 255]);
+      const checks = [
+        ['label', win.getComputedStyle(row.querySelector('.sidebar-item-label')).color, rowBg],
+      ];
+      const edition = row.querySelector('.sidebar-item-edition');
+      if (edition) {
+        const cs = win.getComputedStyle(edition);
+        const op = parseFloat(cs.opacity);
+        // opacity applies to the whole element, so fold it into the text colour
+        const fg = parse(cs.color).map((c, i) => op * c + (1 - op) * rowBg[i]);
+        checks.push(['edition tag', `rgb(${fg.join(',')})`, rowBg]);
+      }
+      const badge = row.querySelector('.sidebar-item-count');
+      if (badge && win.getComputedStyle(badge).display !== 'none') {
+        const bCs = win.getComputedStyle(badge);
+        checks.push(['count badge', bCs.color, over(bCs.backgroundColor, rowBg)]);
+      }
+
+      const failures = checks
+        .map(([name, fg, bg]) => [name, ratio(over(fg, bg), bg)])
+        .filter(([, r]) => r < 4.5)
+        .map(([name, r]) => `${name} ${r.toFixed(2)}:1`);
+
+      if (!hadActive) row.classList.remove('active');
+      noAnim.remove();
+      assertEqual(failures.length, 0,
+        `selected-row text below AA 4.5:1 — ${failures.join(', ')}`);
     });
   });
 

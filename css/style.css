@@ -96,15 +96,24 @@ header{
 .sidebar::-webkit-scrollbar-track{background:transparent}
 .sidebar::-webkit-scrollbar-thumb{background:var(--border);border-radius:var(--radius-full)}
 
-/* Review group (collapsible) */
-.sidebar-review{padding:var(--s2) var(--s3)}
+/* Review group (collapsible) — grouped by position and whitespace (it sits
+   above .sidebar-divider) rather than by a tinted box. A background block
+   here would cost horizontal width the 180px sidebar can't spare: the
+   labels then ellipsis-clip ("智能复习" became "智…"), which the
+   sidebar-label clipping guard test now catches. */
+.sidebar-review{padding:var(--s2) 0 var(--s3)}
 .sidebar-group-header{
   display:flex;align-items:center;gap:var(--s2);
-  padding:var(--s2) var(--s2);border-radius:var(--radius-sm);
+  padding:var(--s2) var(--s3);margin:0 var(--s2);border-radius:var(--radius-sm);
   cursor:pointer;user-select:none;transition:background var(--duration-fast) ease;
 }
 .sidebar-group-header:hover{background:var(--border-light)}
-.sidebar-group-header-left{font-size:15px;font-weight:600;color:var(--text)}
+/* Quieter and smaller than the 13px items below it: a group heading, not a
+   competing row. Grouping comes from the whitespace + divider, so the label
+   doesn't need extra weight to carry the hierarchy. */
+.sidebar-group-header-left{
+  font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:.04em;
+}
 .sidebar-group-badge{
   background:var(--primary);color:#fff;font-size:10px;font-weight:700;
   padding:1px 6px;border-radius:var(--radius-full);min-width:18px;text-align:center;
@@ -133,11 +142,18 @@ header{
 }
 .sidebar-item:hover{background:var(--border-light);color:var(--text)}
 .sidebar-item:active{transform:scale(.97)}
-.sidebar-item.active{background:var(--primary-light);color:#fff;font-weight:600}
-.sidebar-item.active::before{
-  content:'';position:absolute;left:0;top:4px;bottom:4px;width:3px;
-  background:var(--primary);border-radius:0 2px 2px 0;
-}
+/* No left accent bar: the fill alone already marks the selected row, and a
+   second marker on top of it reads as redundant (same call made for the
+   help section bands — see the "no left accent rule" guard test).
+   Fill is --primary, matching .mode-tab.active, so "selected" means one
+   colour everywhere. It was --primary-light (#818cf8), which put white
+   13px text at a 2.98:1 contrast ratio — below the 4.5 WCAG AA needs for
+   normal-size text — and dragged the nested edition tag down to 2.59 and
+   the count badge to 2.20, making "2024版" on the selected row barely
+   readable. --primary takes the label to 6.29. This was also the only
+   place in the file using --primary-light as a fill behind text; its
+   other 11 uses are hover borders and gradient stops. */
+.sidebar-item.active{background:var(--primary);color:#fff;font-weight:600}
 .sidebar-item.disabled{opacity:.35;cursor:not-allowed;pointer-events:none}
 .sidebar-subitem{padding-left:var(--s5)}
 .sidebar-item-icon{font-size:14px;flex-shrink:0}
@@ -152,7 +168,10 @@ header{
    智能复习/自定义 rows use the same .sidebar-item-count class but have no
    dropdown equivalent, so they're untouched (not matched by [data-count-for]). */
 .sidebar-item-count[data-count-for]{display:none}
-.sidebar-item.active .sidebar-item-count{background:rgba(255,255,255,.25);color:#fff}
+/* .15 not .25: a 25% white veil over --primary left the white count digits
+   at 3.78:1, under AA. Dropping it to 15% darkens the pill enough to reach
+   4.64 while still reading as "a lighter chip inside the selected row". */
+.sidebar-item.active .sidebar-item-count{background:rgba(255,255,255,.15);color:#fff}
 .sidebar-item-edition{
   font-size:9px;color:var(--text-muted);opacity:.7;flex-shrink:0;white-space:nowrap;
 }
@@ -170,7 +189,16 @@ header{
   border:1px solid transparent;
 }
 .sidebar-grade-header:hover{background:var(--border-light);color:var(--text);border-color:var(--border)}
-.sidebar-grade-header.active{color:var(--primary);background:rgba(79,70,229,.05);border-color:rgba(79,70,229,.15)}
+/* Marked with a light tint + primary text only. No left accent bar: the
+   tint and colour shift are enough to say "this is the grade you're in",
+   and the bar read as redundant clutter on top of them (same call made
+   for .sidebar-item.active and the help section bands). A solid fill was
+   also tried here and looked foreign — it collided with the
+   --primary-light fill of the active 上册/下册 row nested directly
+   beneath it (two near-identical purples, stacked). */
+.sidebar-grade-header.active{
+  color:var(--primary);background:rgba(79,70,229,.06);border-color:rgba(79,70,229,.15);
+}
 .sidebar-grade-icon{font-size:16px;margin-right:var(--s1);flex-shrink:0}
 .grade-icon-pink{filter:hue-rotate(300deg) saturate(1.8) brightness(1.1)}
 .sidebar-grade-label{flex:1}
@@ -702,7 +730,18 @@ main{
 }
 
 /* === 16b. Daily Task Setup === */
-.dt-setup{text-align:center;padding:var(--s4) var(--s2)}
+/* Wrapped in a card instead of floating text directly on the page
+   background — on wide screens this sat in a sea of white next to a
+   visually dense sidebar, so the sidebar ended up looking more important
+   than the actual "what do I do now" content. Styled to match .dt-card
+   (2px border, radius-lg, no resting shadow) since that's the card the
+   child sees on the very next screen; resting shadows in this app are
+   reserved for floating surfaces (modals, popups, profile panel). */
+.dt-setup{
+  text-align:center;padding:var(--s5) var(--s4);
+  margin:var(--s2) auto var(--s4);
+  background:#fff;border:2px solid var(--border);border-radius:var(--radius-lg);
+}
 .dt-setup-header{margin-bottom:var(--s5)}
 .dt-setup-emoji{font-size:48px;margin-bottom:var(--s2)}
 .dt-setup-header h2{font-size:18px;font-weight:700;margin-bottom:var(--s2)}
