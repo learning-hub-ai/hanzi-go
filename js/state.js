@@ -293,7 +293,11 @@ const State = (() => {
           // Importing a backup is the one write the user is actively
           // waiting on, so a failure here must surface rather than be
           // swallowed — otherwise they see "imported" and lose it all.
-          return { ok: false, error: '无法写入本机存储，导入未完成。请关闭浏览器的无痕/隐私模式后重试。' };
+          return {
+            ok: false,
+            error: '这台设备存不下数据，备份没有导入成功（原来的记录没有被改动）。'
+              + '多半是浏览器开了无痕/隐私模式 —— 换成普通窗口再试一次。'
+          };
         }
         if (isActiveProfile && STATE_TRACKED_KEYS.includes(key)) {
           state[key] = payload.data[key];

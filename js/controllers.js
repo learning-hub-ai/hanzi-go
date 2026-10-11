@@ -1246,11 +1246,14 @@ const AppController = (() => {
       try {
         payload = JSON.parse(reader.result);
       } catch (_e) {
-        if (msgEl) msgEl.textContent = '❌ 这不是一个有效的备份文件';
+        if (msgEl) msgEl.textContent = '❌ 这个文件读不出来，现有记录没有被改动。'
+          + '要选的是点 💾「导出数据」生成的那个 .json 文件'
+          + '（名字类似 hanzigo-备份-宝贝-2026-10-11.json）。';
         return;
       }
       if (!payload || typeof payload !== 'object' || !payload.profileId || typeof payload.data !== 'object') {
-        if (msgEl) msgEl.textContent = '❌ 文件格式不对，不是从这个应用导出的备份';
+        if (msgEl) msgEl.textContent = '❌ 这个文件不是 HanziGo 的备份，现有记录没有被改动。'
+          + '请换成点 💾「导出数据」生成的那个 .json 文件。';
         return;
       }
 
@@ -1264,7 +1267,14 @@ const AppController = (() => {
         if (!createConfirmed) return;
         const createResult = State.createProfileFromImport(payload.profileId, payload.profileName, payload.profileAvatar);
         if (!createResult.ok) {
-          if (msgEl) msgEl.textContent = '❌ 新建用户失败，请重试';
+          // Almost always the same root cause as a failed import: the
+          // device won't persist anything. Say so rather than "请重试",
+          // which invites the parent to retry something that cannot work.
+          if (msgEl) {
+            msgEl.textContent = State.storageWorks()
+              ? `❌ 没能新建用户「${displayName}」。请刷新页面后再试一次。`
+              : `❌ 这台设备存不下数据，没能新建用户「${displayName}」。多半是浏览器开了无痕/隐私模式 —— 换成普通窗口再试。`;
+          }
           return;
         }
       } else {
@@ -1286,7 +1296,10 @@ const AppController = (() => {
       setTimeout(() => window.location.reload(), 600);
     };
     reader.onerror = () => {
-      if (msgEl) msgEl.textContent = '❌ 读取文件失败，请重试';
+      // The file never got read, so nothing was touched — say that, so the
+      // parent isn't left wondering whether a half-import happened.
+      if (msgEl) msgEl.textContent = '❌ 没能读取这个文件，现有记录没有被改动。'
+        + '请确认选的是之前导出的 .json 备份文件，然后再试一次。';
     };
     reader.readAsText(file);
   }
@@ -1359,6 +1372,12 @@ const AppController = (() => {
    * Deliberately not a blocking alert: the child can keep practising, the
    * only loss is that progress won't survive a reload. Dismissible, and
    * only ever shown once per session (State reports the failure once).
+   *
+   * Wording follows three rules used for every failure message in the app:
+   * say what happened in the user's terms (not "QuotaExceededError"), say
+   * what still works, and give the one action that fixes it. A parent
+   * reading "保存失败" alone would not know the app is still usable, nor
+   * that private browsing is the cause — which it almost always is.
    */
   function _showStorageWarning() {
     if (document.getElementById('storageWarning')) return;
@@ -1367,7 +1386,10 @@ const AppController = (() => {
     el.className = 'storage-warning';
     el.setAttribute('role', 'alert');
     el.innerHTML = `
-      <span>⚠️ 这台设备无法保存进度（可能开了无痕/隐私模式）。现在还能继续练，但关掉页面后记录会丢失。</span>
+      <span><strong>⚠️ 这台设备存不下学习记录。</strong>
+      现在可以照常练，但<strong>一关页面今天的进度就没了</strong>。
+      常见原因是浏览器开了无痕/隐私模式，或者设置里把网站数据关掉了 ——
+      换成普通窗口打开就好。如果还是不行，点右上角 ❓ 里的「显示诊断信息」发给我。</span>
       <button type="button" aria-label="知道了">知道了</button>`;
     el.querySelector('button').addEventListener('click', () => el.remove());
     document.body.appendChild(el);
@@ -1460,13 +1482,28 @@ const AppController = (() => {
       });
     } catch (err) {
       console.error('[App] Initialization failed:', err);
+      ErrorLog.record('js', 'init failed: ' + (err && err.message));
       const mainEl = document.querySelector('main');
+      // The worst-case screen: nothing loaded. A raw err.message here is
+      // usually an English technical string ("Failed to fetch") that tells
+      // a parent nothing. Lead with the likely cause and the one thing
+      // worth trying, keep the technical text as a collapsed detail for
+      // the diagnostic copy-paste, and offer the report path.
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
       mainEl.innerHTML = `
-        <div style="text-align:center;padding:48px 24px;color:var(--error)">
+        <div style="text-align:center;padding:48px 24px;max-width:420px;margin:0 auto">
           <div style="font-size:48px;margin-bottom:16px">⚠️</div>
-          <h3 style="color:var(--text);margin-bottom:8px">加载失败</h3>
-          <p style="color:var(--text-muted)">${escapeHtml(err.message)}</p>
-          <button onclick="location.reload()" style="margin-top:16px;padding:8px 16px;border-radius:8px;border:none;background:var(--primary);color:#fff;cursor:pointer">重试</button>
+          <h3 style="color:var(--text);margin-bottom:8px">没能打开 HanziGo</h3>
+          <p style="color:var(--text-secondary);line-height:1.7">${
+            offline
+              ? '看起来现在没有联网。第一次打开需要联网，之后就可以离线用了 —— 连上网络再点下面的「重新打开」。'
+              : '可能是网络不稳，或者上次没下载完整。点下面的「重新打开」通常就好了。'
+          }</p>
+          <button onclick="location.reload()" class="dt-btn-primary" style="margin-top:16px">重新打开</button>
+          <p style="color:var(--text-muted);font-size:var(--text-sm);margin-top:20px;line-height:1.7">
+            试几次还是这样的话，把下面这行发给我：<br>
+            <code style="user-select:text;-webkit-user-select:text;word-break:break-all">${escapeHtml(err && err.message || 'unknown')}</code>
+          </p>
         </div>`;
     }
   }
@@ -1765,5 +1802,9 @@ const AppController = (() => {
   }
 
   return { init, switchMode, selectSemester, selectLesson, showFavorites,
-           showBadges, showReport, showHelp, showDataTransfer, showCustomCards, addCustomCard, removeCustomCard };
+           showBadges, showReport, showHelp, showDataTransfer, showCustomCards, addCustomCard, removeCustomCard,
+           // Exported for tests: the once-per-session latch in State means a
+           // failed write only shows the banner the first time, so a test
+           // needs to render it directly to assert its wording.
+           showStorageWarning: _showStorageWarning };
 })();

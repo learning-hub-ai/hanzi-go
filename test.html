@@ -1476,6 +1476,69 @@ async function runTests() {
         'error-log.js must not contain any outbound request');
     });
 
+    it('Failure messages tell the parent what to do', () => {
+      // Every user-visible failure should answer three questions: what
+      // happened (in plain terms, not "QuotaExceededError"), what is still
+      // usable, and what single action to take. Before this, several said
+      // only "❌ ...失败，请重试" — which invites a parent to retry
+      // something that cannot work (private browsing) and leaves them
+      // unsure whether a half-import damaged existing data.
+      //
+      // Read the sources so messages on screens that aren't currently
+      // rendered are covered too.
+      const read = (path) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', path, false);
+        xhr.send(null);
+        return xhr.responseText;
+      };
+      const src = read('js/controllers.js') + read('js/state.js') + read('js/daily-task.js');
+
+      // No bare "请重试" without any explanation of the cause. The phrase
+      // itself is fine when paired with a reason; what regressed before was
+      // using it *as* the whole message.
+      const bare = src.match(/['"`]❌[^'"`]{0,12}失败[，,]?\s*请重试['"`]/g);
+      assertEqual(bare, null, `bare "失败请重试" message(s): ${bare && bare.join(' | ')}`);
+
+      // The storage-failure path is the most likely one in practice, so it
+      // must name the actual cause rather than just the symptom.
+      assert(/无痕|隐私模式/.test(src),
+        'storage failure messages should name private browsing as the likely cause');
+
+      // Destructive-looking failures must reassure that nothing was lost.
+      assert(/没有被改动/.test(src),
+        'import failures should state that existing records were untouched');
+    });
+
+    it('Storage warning says what still works, not just what broke', () => {
+      // A parent who reads only "存不下" may think the app is unusable and
+      // stop. It has to say practising still works and only the saving is
+      // affected, or the warning costs more than it gains.
+      app.ErrorLog.clear();
+      const real = frame.contentWindow.localStorage.setItem;
+      frame.contentWindow.localStorage.setItem = function () {
+        const e = new Error('QuotaExceededError');
+        e.name = 'QuotaExceededError';
+        throw e;
+      };
+      try {
+        // Call the banner directly: the once-per-session latch in State has
+        // already fired in earlier tests, so driving it via a failed write
+        // would not re-show it.
+        app.AppController.showStorageWarning();
+      } finally {
+        frame.contentWindow.localStorage.setItem = real;
+      }
+      const el = doc.getElementById('storageWarning');
+      assert(el, 'a storage warning should be shown');
+      const text = el.textContent;
+      assert(/照常练|继续练|还能/.test(text), 'should say practising still works');
+      assert(/无痕|隐私模式/.test(text), 'should name the likely cause');
+      assert(/诊断信息/.test(text), 'should point at the report path as a fallback');
+      assert(el.querySelector('button'), 'should be dismissible');
+      el.remove();
+    });
+
     it('Help page exposes the report button', () => {
       app.AppController.showHelp();
       const btn = doc.getElementById('diagShowBtn');

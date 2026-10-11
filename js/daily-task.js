@@ -413,7 +413,21 @@ const DailyTaskController = (() => {
         _renderTask(container, state, lesson, progress, growth);
       }
     } catch (e) {
-      container.innerHTML = `<div class="dt-setup"><p style="color:var(--error)">❌ 加载失败: ${e.message}</p><button class="dt-btn-secondary" id="dtRetryBtn">重试</button></div>`;
+      // Same rule as the app-level failure screen: lead with what the
+      // parent can do, keep the technical text available but secondary.
+      // Also note the rest of the app still works — only today's task
+      // failed to build, so 学习/挑战 remain usable.
+      if (typeof ErrorLog !== 'undefined') {
+        ErrorLog.record('js', 'daily task render failed: ' + (e && e.message));
+      }
+      container.innerHTML = `<div class="dt-setup">
+        <p style="line-height:1.7">没能排出今天的任务。点「再试一次」通常就好了；
+        还不行的话，上面的 📖 学习 和 🎯 挑战 仍然可以正常用。</p>
+        <button class="dt-btn-secondary" id="dtRetryBtn">再试一次</button>
+        <p style="color:var(--text-muted);font-size:var(--text-sm);margin-top:14px">
+          <code style="user-select:text;-webkit-user-select:text;word-break:break-all">${e && e.message || 'unknown'}</code>
+        </p>
+      </div>`;
       const retryBtn = document.getElementById('dtRetryBtn');
       if (retryBtn) retryBtn.addEventListener('click', () => render());
     }
