@@ -880,12 +880,12 @@ const ModalUI = (() => {
       row('以后想做什么', '打算加一个后台存储：这样记录能自动跨设备跟着走，不用手动导出导入，还能让几个小朋友看到彼此的进度、互相鼓劲。还在计划中，请再等等。') +
       // 诊断信息放在这一节而不是单开一节：它本质上也是"数据去向"的一部分，
       // 而且单开一节占掉一整个 block 的标题+边框，内容却只有一个按钮。
-      row('出问题了告诉我', '点下面的按钮会自动复制一段诊断信息（机型、浏览器、出错记录，<strong>不含姓名和学过的字</strong>），粘贴发给我就行。' +
-        '<div class="diag-actions">' +
-          '<button type="button" class="btn-modal-action" id="diagShowBtn">复制诊断信息</button>' +
-          '<span class="diag-hint" id="diagHint"></span>' +
-        '</div>' +
-        '<div class="diag-box hidden" id="diagBox"></div>')
+      // 按钮内嵌在句末而不是单独一行：这一行的文案本身就是"点一下，粘贴
+      // 发给我"，按钮放在句子里读起来是一句完整的话，也少占一行高度。
+      row('出问题了告诉我', '点 <button type="button" class="btn-modal-action diag-inline-btn" id="diagShowBtn">复制诊断信息</button>'
+        + '（机型、浏览器、出错记录，<strong>不含姓名和学过的字</strong>），粘贴发给我就行。'
+        + '<span class="diag-hint" id="diagHint"></span>'
+        + '<div class="diag-box hidden" id="diagBox"></div>')
     )}
 
     ${block('版权', '欢迎使用，尊重版权',

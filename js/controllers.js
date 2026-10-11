@@ -1172,14 +1172,17 @@ const AppController = (() => {
       const hint = document.getElementById('diagHint');
       box.textContent = ErrorLog.report();
       box.classList.remove('hidden');
-      btn.classList.add('hidden');
+      // The button sits inside a sentence, so hiding it would leave a hole
+      // mid-line. Disable it in place instead and let the hint carry the
+      // result.
+      btn.disabled = true;
       // Copy first, then reveal the text as confirmation of what was
       // copied. Where the Clipboard API is unavailable (older iOS, or a
       // non-secure context) the text stays selectable, which is the
       // fallback that has actually worked on parents' phones.
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(box.textContent)
-          .then(() => { hint.textContent = '✅ 已复制，粘贴发给我'; })
+          .then(() => { hint.textContent = '✅ 已复制'; })
           .catch(() => { hint.textContent = '长按下面文字全选复制'; });
       } else {
         hint.textContent = '长按下面文字全选复制';

@@ -1006,8 +1006,14 @@ main{
   user-select:text;-webkit-user-select:text;
   max-height:40vh;overflow-y:auto;
 }
-.diag-actions{display:flex;gap:var(--s2);align-items:center;margin-top:var(--s2);flex-wrap:wrap}
-.diag-hint{font-size:var(--text-sm);color:var(--text-muted)}
+/* 诊断按钮内嵌在句子里：默认的 .btn-modal-action 是块级尺寸的按钮，
+   放进正文会把行高撑开，所以这里压扁成和周围文字同高的行内元素。 */
+.diag-inline-btn{
+  display:inline-block;vertical-align:baseline;
+  padding:1px 8px;margin:0 2px;min-height:0;
+  font-size:inherit;line-height:inherit;
+}
+.diag-hint{font-size:var(--text-sm);color:var(--text-muted);margin-left:var(--s1)}
 .form-msg{font-size:var(--text-base);min-height:18px;margin-top:6px}
 .form-msg--ok{color:var(--success,#059669)}
 .form-msg--err{color:var(--danger,#991b1b)}
