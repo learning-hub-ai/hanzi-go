@@ -1173,14 +1173,16 @@ const AppController = (() => {
       box.textContent = ErrorLog.report();
       box.classList.remove('hidden');
       btn.classList.add('hidden');
-      // Offer a real copy where the browser allows it; the text stays
-      // selectable either way, which is what works on older iOS.
+      // Copy first, then reveal the text as confirmation of what was
+      // copied. Where the Clipboard API is unavailable (older iOS, or a
+      // non-secure context) the text stays selectable, which is the
+      // fallback that has actually worked on parents' phones.
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(box.textContent)
-          .then(() => { hint.textContent = '✅ 已复制，直接粘贴发给我就行'; })
-          .catch(() => { hint.textContent = '长按上面的文字全选复制'; });
+          .then(() => { hint.textContent = '✅ 已复制，粘贴发给我'; })
+          .catch(() => { hint.textContent = '长按下面文字全选复制'; });
       } else {
-        hint.textContent = '长按上面的文字全选复制';
+        hint.textContent = '长按下面文字全选复制';
       }
     });
   }

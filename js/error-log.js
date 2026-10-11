@@ -112,35 +112,43 @@ const ErrorLog = (() => {
       const standalone = window.matchMedia
         && window.matchMedia('(display-mode: standalone)').matches;
 
-      push(`HanziGo 诊断信息 · ${new Date().toLocaleString('zh-CN')}`);
-      push(`设备：${device} / ${browser} / ${window.innerWidth}×${window.innerHeight}`
-        + (standalone ? ' / 已添加到主屏幕' : ''));
+      // One header line instead of three: the parent is pasting this into a
+      // chat, where every extra line costs attention and makes the message
+      // look more intimidating than it is.
+      push(`HanziGo · ${new Date().toLocaleString('zh-CN')} · ${device}/${browser}`
+        + ` ${window.innerWidth}×${window.innerHeight}${standalone ? ' 主屏幕' : ''}`);
     } catch (_) {
       push('HanziGo 诊断信息（设备信息读取失败）');
     }
 
-    // Storage health is the single most useful line: a parent reporting
-    // "进度没保存" almost always turns out to be private browsing.
+    // Only mention storage when it is broken. "存储：正常" is the common
+    // case and tells the author nothing they couldn't assume.
     try {
-      const ok = (typeof State !== 'undefined' && State.storageWorks)
-        ? State.storageWorks() : null;
-      push(`存储：${ok === null ? '未知' : ok ? '正常' : '⚠ 无法写入（可能开了无痕/隐私模式）'}`);
-    } catch (_) { push('存储：未知'); }
+      if (typeof State !== 'undefined' && State.storageWorks && !State.storageWorks()) {
+        push('⚠ 存储：无法写入（可能开了无痕/隐私模式）');
+      }
+    } catch (_) { /* storage state is optional in the report */ }
 
-    // Aggregate progress only — no names, no character lists.
+    // Aggregate progress only — no names, no character lists. Skipped on a
+    // fresh profile, where three zeroes are just noise.
     try {
       const learned = (typeof SpacedRepService !== 'undefined')
-        ? SpacedRepService.getTotalCount() : '?';
+        ? SpacedRepService.getTotalCount() : 0;
       const stats = (typeof State !== 'undefined') ? (State.get('stats') || {}) : {};
-      push(`进度：已学 ${learned} 字 / 连续 ${stats.consecutiveDays || 0} 天 / 共 ${stats.totalRounds || 0} 轮挑战`);
+      const rounds = stats.totalRounds || 0;
+      if (learned || rounds || stats.consecutiveDays) {
+        push(`进度：${learned} 字 / 连续 ${stats.consecutiveDays || 0} 天 / ${rounds} 轮`);
+      }
     } catch (_) { /* progress is optional in the report */ }
 
+    // The errors are the point of the report. When there are none, say so
+    // in a way that still tells the author something useful: the parent
+    // reported a problem that left no trace, which is itself a clue.
     if (!_entries.length) {
-      push('最近没有记录到错误。');
+      push('没有捕获到错误（问题可能没有报错，请描述一下现象）');
     } else {
-      push(`最近 ${_entries.length} 条错误：`);
       _entries.forEach(e => {
-        push(`  ${e.at} [${e.kind}] ${e.text}${e.count > 1 ? ` ×${e.count}` : ''}`);
+        push(`${e.at} [${e.kind}] ${e.text}${e.count > 1 ? ` ×${e.count}` : ''}`);
       });
     }
     return lines.join('\n');

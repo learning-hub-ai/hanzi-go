@@ -1420,10 +1420,33 @@ async function runTests() {
     });
 
     it('Diagnostic report includes what is needed to diagnose', () => {
+      // Asserts the substance, not the exact wording — the report was
+      // condensed from 5 lines to 2-3 (a parent is pasting this into a
+      // chat, and "存储：正常 / 进度：0 字 / 最近没有记录到错误" was three
+      // lines of noise in the common case), so matching literal labels
+      // would break on every wording change.
       const text = app.ErrorLog.report();
-      ['诊断信息', '设备：', '存储：'].forEach(marker => {
-        assert(text.includes(marker), `report should include "${marker}"`);
-      });
+      assert(/HanziGo/.test(text), 'report should identify the app');
+      // Device and viewport are what separate an iOS Safari bug from an
+      // Android Chrome one — the split that has actually mattered here.
+      assert(/iOS|Android|Mac|Windows|其他/.test(text), 'report should name the platform');
+      assert(/Safari|Chrome|Firefox|Edge|未知/.test(text), 'report should name the browser');
+      assert(/\d+×\d+/.test(text), 'report should include the viewport size');
+      // A date, so the author can line it up against a deploy.
+      assert(/\d{4}/.test(text), 'report should include a timestamp');
+    });
+
+    it('Diagnostic report stays short when nothing is wrong', () => {
+      // The common case is a parent reporting something that left no
+      // error trace. Lines that always say the same thing ("存储：正常")
+      // cost attention and make the paste look more intimidating.
+      app.ErrorLog.clear();
+      const lines = app.ErrorLog.report().split('\n');
+      assert(lines.length <= 4,
+        `a clean report should be at most 4 lines, got ${lines.length}:\n${lines.join('\n')}`);
+      // And it must still prompt the parent for what the log cannot know.
+      assert(/描述/.test(app.ErrorLog.report()),
+        'with no errors captured, the report should ask for a description');
     });
 
     it('Error log keeps the most recent entries and collapses repeats', () => {
