@@ -37,12 +37,60 @@ const State = (() => {
   }
 
   /**
+   * Whether localStorage accepted our last write. Starts optimistic and is
+   * flipped the first time a write throws — iOS Safari in Private Browsing
+   * (and with "Block All Cookies" set) throws on setItem rather than
+   * silently no-op'ing, and the old code let that exception escape into
+   * whatever was mid-flight: answering a question looked like "the tap did
+   * nothing" with no clue why.
+   */
+  let _storageOk = true;
+  const _storageListeners = [];
+
+  /** @returns {boolean} false once a write has failed this session */
+  function storageWorks() { return _storageOk; }
+
+  /** Register a callback fired once, the first time storage fails. */
+  function onStorageFailure(fn) { _storageListeners.push(fn); }
+
+  /**
+   * Single funnel for every localStorage write, so one place decides what
+   * happens on failure. Returns true on success rather than throwing: a
+   * failed save must not abort the quiz, the child should be able to keep
+   * practising even if nothing can be persisted.
+   */
+  function _write(fullKey, val) {
+    return _writeRaw(fullKey, JSON.stringify(val));
+  }
+
+  /** As _write, but for a value that is already a JSON string. */
+  function _writeRaw(fullKey, rawVal) {
+    try {
+      localStorage.setItem(fullKey, rawVal);
+      return true;
+    } catch (e) {
+      const wasOk = _storageOk;
+      _storageOk = false;
+      // Report once per session, not once per write — a round generates
+      // dozens of writes and the child must not be nagged on each one.
+      if (wasOk) {
+        ErrorLog.record('storage', `localStorage write failed: ${e && e.name}`);
+        _storageListeners.forEach(fn => {
+          try { fn(e); } catch (_) { /* a broken listener must not break saving */ }
+        });
+      }
+      return false;
+    }
+  }
+
+  /**
    * Save a value to localStorage.
    * @param {string} key
    * @param {*} val
+   * @returns {boolean} whether the write succeeded
    */
   function save(key, val) {
-    localStorage.setItem(_key(key), JSON.stringify(val));
+    return _write(_key(key), val);
   }
 
   /**
@@ -58,7 +106,7 @@ const State = (() => {
   }
 
   function saveShared(key, val) {
-    localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(val));
+    return _write(STORAGE_PREFIX + key, val);
   }
 
   /**
@@ -107,10 +155,13 @@ const State = (() => {
         const legacyVal = localStorage.getItem(STORAGE_PREFIX + key);
         const profileVal = localStorage.getItem(STORAGE_PREFIX + profileId + '_' + key);
         if (legacyVal && !profileVal && isFirstProfile) {
-          localStorage.setItem(STORAGE_PREFIX + profileId + '_' + key, legacyVal);
+          // legacyVal is already a JSON string, so write it raw rather than
+          // through _write() (which stringifies) — but keep the same
+          // never-throw contract, since storage can be unavailable here too.
+          _writeRaw(STORAGE_PREFIX + profileId + '_' + key, legacyVal);
         }
       });
-      localStorage.setItem(migrationKey, 'true');
+      _writeRaw(migrationKey, 'true');
     }
 
     // Reload per-profile data
@@ -238,7 +289,12 @@ const State = (() => {
         // the currently active one — _key() always uses _profileId, so for a
         // non-active target we build the storage key explicitly here.
         const storageKey = STORAGE_PREFIX + targetId + '_' + key;
-        localStorage.setItem(storageKey, JSON.stringify(payload.data[key]));
+        if (!_write(storageKey, payload.data[key])) {
+          // Importing a backup is the one write the user is actively
+          // waiting on, so a failure here must surface rather than be
+          // swallowed — otherwise they see "imported" and lose it all.
+          return { ok: false, error: '无法写入本机存储，导入未完成。请关闭浏览器的无痕/隐私模式后重试。' };
+        }
         if (isActiveProfile && STATE_TRACKED_KEYS.includes(key)) {
           state[key] = payload.data[key];
         }
@@ -272,6 +328,8 @@ const State = (() => {
     save,
     loadShared,
     saveShared,
+    storageWorks,
+    onStorageFailure,
     loadConfig,
     config,
     setProfile,

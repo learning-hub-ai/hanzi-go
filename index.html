@@ -403,6 +403,7 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- Scripts -->
+<script src="js/error-log.js"></script>
 <script src="js/constants.js"></script>
 <script src="js/state.js"></script>
 <script src="js/data.js"></script>
@@ -412,9 +413,13 @@ if ('serviceWorker' in navigator) {
 <script src="js/daily-task.js"></script>
 <script src="js/mobile.js"></script>
 <script>
+// Install global error capture before anything else runs, so a failure
+// during init is recorded too.
+ErrorLog.install();
 AppController.init();
 MobileUI.init();
 // Expose modules for testing (accessed via iframe.contentWindow)
+window.ErrorLog = ErrorLog;
 window.State = State;
 window.DataService = DataService;
 window.Speech = Speech;

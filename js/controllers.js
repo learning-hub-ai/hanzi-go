@@ -1161,6 +1161,28 @@ const AppController = (() => {
 
   function showHelp() {
     ModalUI.show('❓ 使用说明', ModalUI.renderHelp(), { wide: true });
+    // Wire the diagnostics button after the modal exists. Built on demand
+    // rather than at render time so the report reflects the state at the
+    // moment the parent asks for it, and so opening the help page normally
+    // costs nothing.
+    const btn = document.getElementById('diagShowBtn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      const box = document.getElementById('diagBox');
+      const hint = document.getElementById('diagHint');
+      box.textContent = ErrorLog.report();
+      box.classList.remove('hidden');
+      btn.classList.add('hidden');
+      // Offer a real copy where the browser allows it; the text stays
+      // selectable either way, which is what works on older iOS.
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(box.textContent)
+          .then(() => { hint.textContent = '✅ 已复制，直接粘贴发给我就行'; })
+          .catch(() => { hint.textContent = '长按上面的文字全选复制'; });
+      } else {
+        hint.textContent = '长按上面的文字全选复制';
+      }
+    });
   }
 
   function showReport() {
@@ -1331,6 +1353,26 @@ const AppController = (() => {
     }, { passive: true });
   }
 
+  /**
+   * One-time banner shown when localStorage rejects a write.
+   *
+   * Deliberately not a blocking alert: the child can keep practising, the
+   * only loss is that progress won't survive a reload. Dismissible, and
+   * only ever shown once per session (State reports the failure once).
+   */
+  function _showStorageWarning() {
+    if (document.getElementById('storageWarning')) return;
+    const el = document.createElement('div');
+    el.id = 'storageWarning';
+    el.className = 'storage-warning';
+    el.setAttribute('role', 'alert');
+    el.innerHTML = `
+      <span>⚠️ 这台设备无法保存进度（可能开了无痕/隐私模式）。现在还能继续练，但关掉页面后记录会丢失。</span>
+      <button type="button" aria-label="知道了">知道了</button>`;
+    el.querySelector('button').addEventListener('click', () => el.remove());
+    document.body.appendChild(el);
+  }
+
   async function init() {
     try {
       // Show loading state
@@ -1364,6 +1406,13 @@ const AppController = (() => {
 
       // Restore main content (was replaced by loading state)
       mainEl.innerHTML = _getMainContentHTML();
+
+      // Tell the user once if the device refuses to persist anything —
+      // otherwise the only symptom is that progress silently resets on
+      // every visit, which reads as "the app is broken" rather than
+      // "private browsing is on". Registered before the first writes
+      // happen so the very first failure is the one that triggers it.
+      State.onStorageFailure(() => _showStorageWarning());
 
       // Profile selection — waits for user to pick/create a profile before proceeding
       ProfileManager.init(() => {

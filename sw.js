@@ -1,10 +1,11 @@
-const CACHE_VERSION = 'hanzigo-v82';
+const CACHE_VERSION = 'hanzigo-v83';
 const STATIC_ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './config.json',
   './css/style.css',
+  './js/error-log.js',
   './js/constants.js',
   './js/state.js',
   './js/data.js',

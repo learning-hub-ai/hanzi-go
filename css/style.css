@@ -973,7 +973,41 @@ main{
 
 .dt-return-btn{background:linear-gradient(135deg,var(--primary),var(--primary-violet))!important;color:#fff!important;border:none!important;font-weight:var(--weight-bold)}
 
-/* Inline feedback under the 自定义字卡 form */
+/* 存储不可用提示。固定在底部而不是顶部：顶部已经有 header 和任务横幅
+   两层固定元素，再加一条会把内容挤下去；而且这条是"知道了就走"的一次性
+   提示，不需要常驻视线。 */
+.storage-warning{
+  position:fixed;bottom:0;left:0;right:0;z-index:200;
+  display:flex;align-items:center;gap:var(--s3);
+  padding:var(--s3) var(--s4);
+  background:#fef2f2;border-top:1px solid var(--error);
+  color:#991b1b;font-size:var(--text-base);line-height:1.5;
+  box-shadow:0 -2px 12px rgba(0,0,0,.08);
+}
+.storage-warning button{
+  flex-shrink:0;padding:4px 12px;border-radius:var(--radius-sm);
+  border:1px solid var(--error);background:#fff;color:#991b1b;
+  font-size:var(--text-sm);font-weight:var(--weight-semibold);cursor:pointer;
+}
+@media(max-width:768px){
+  /* 手机端底部有固定操作栏，上移避让 */
+  .storage-warning{bottom:56px;flex-direction:column;align-items:stretch;text-align:center}
+}
+
+/* 诊断信息面板（说明页「报告问题」）。等宽字体 + user-select:text，
+   因为它的唯一用途就是被家长全选复制走 —— 跟 Speech 的 ?debugSpeech=1
+   面板同一个思路。 */
+.diag-box{
+  margin-top:var(--s3);padding:var(--s3);
+  background:var(--border-light);border:1px solid var(--border);
+  border-radius:var(--radius-sm);
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:var(--text-sm);line-height:1.6;white-space:pre-wrap;word-break:break-word;
+  user-select:text;-webkit-user-select:text;
+  max-height:40vh;overflow-y:auto;
+}
+.diag-actions{display:flex;gap:var(--s2);align-items:center;margin-top:var(--s2);flex-wrap:wrap}
+.diag-hint{font-size:var(--text-sm);color:var(--text-muted)}
 .form-msg{font-size:var(--text-base);min-height:18px;margin-top:6px}
 .form-msg--ok{color:var(--success,#059669)}
 .form-msg--err{color:var(--danger,#991b1b)}

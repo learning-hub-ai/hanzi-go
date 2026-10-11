@@ -232,3 +232,20 @@ if bad:
     sys.exit(1)
 print('✅ Colour tokens: no hardcoded brand purple')
 " || exit 1
+
+# === Additional: every loaded script is in the offline cache manifest ===
+# A script that index.html loads but sw.js doesn't pre-cache breaks the app
+# offline — and for js/error-log.js, which loads first, it would break the
+# whole page. Caught by hand when that file was added; checked from now on.
+python3 -c "
+import re, sys
+html = open('index.html').read()
+sw = open('sw.js').read()
+loaded = re.findall(r'<script src=\"(js/[^\"]+)\"', html)
+missing = [s for s in loaded if f'./{s}' not in sw and f\"'{s}'\" not in sw]
+if missing:
+    print('❌ Scripts loaded by index.html but not in sw.js STATIC_ASSETS:')
+    for m in missing: print(f'  {m} — add it to STATIC_ASSETS and bump CACHE_VERSION')
+    sys.exit(1)
+print(f'✅ Offline cache: all {len(loaded)} scripts are pre-cached')
+" || exit 1

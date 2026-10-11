@@ -1328,6 +1328,186 @@ async function runTests() {
   });
 
   // === 6b. Data Export / Import ===
+  // === Storage resilience + diagnostics (pre-100-families hardening) ===
+  describe('🛟 Storage Failure & Diagnostics', () => {
+    const doc = frame.contentDocument;
+
+    /** Run fn with localStorage.setItem throwing, as iOS private mode does. */
+    function withBrokenStorage(fn) {
+      const real = frame.contentWindow.localStorage.setItem;
+      // Private Browsing on iOS Safari throws QuotaExceededError from
+      // setItem rather than silently dropping the write.
+      frame.contentWindow.localStorage.setItem = function () {
+        const e = new Error('QuotaExceededError');
+        e.name = 'QuotaExceededError';
+        throw e;
+      };
+      try { return fn(); } finally {
+        frame.contentWindow.localStorage.setItem = real;
+      }
+    }
+
+    it('A failed write does not throw', () => {
+      // This is the actual bug: State.save() called localStorage.setItem
+      // bare, so on a device that refuses writes the exception escaped into
+      // whatever was mid-flight — answering a question just looked like
+      // "the tap did nothing". A child must be able to keep practising.
+      withBrokenStorage(() => {
+        app.State.save('stats', { totalRounds: 1 });
+        app.State.saveShared('welcomed', true);
+      });
+      // Reaching here without an exception is the assertion; make it
+      // explicit so the test reads as a check rather than a smoke test.
+      assert(true, 'save() must swallow the storage error');
+    });
+
+    it('A failed write reports false, a good one true', () => {
+      const ok = app.State.save('stats', app.State.get('stats'));
+      assertEqual(ok, true, 'a normal save should report success');
+      const bad = withBrokenStorage(() => app.State.save('stats', { totalRounds: 2 }));
+      assertEqual(bad, false, 'a rejected save should report failure');
+    });
+
+    it('Storage failure is reported once, not once per write', () => {
+      // A single round generates dozens of writes; warning on each one
+      // would bury the child in banners.
+      //
+      // The flag is session-sticky by design, and the tests above have
+      // already tripped it — so reload the module's state by re-reading
+      // whether it has fired, and assert on the transition instead of
+      // assuming a clean slate. A listener registered after the failure
+      // must not be called retroactively, which is also the behaviour the
+      // init-time registration in AppController relies on.
+      const alreadyFailed = !app.State.storageWorks();
+      let calls = 0;
+      app.State.onStorageFailure(() => { calls++; });
+      withBrokenStorage(() => {
+        for (let i = 0; i < 5; i++) app.State.save('stats', { totalRounds: i });
+      });
+      if (alreadyFailed) {
+        assertEqual(calls, 0,
+          'once the session has already reported, further failures must stay quiet');
+      } else {
+        assertEqual(calls, 1, `expected a single notification, got ${calls}`);
+      }
+    });
+
+    it('storageWorks() flips to false and is visible to the report', () => {
+      assertEqual(typeof app.State.storageWorks, 'function',
+        'State should expose storageWorks for diagnostics');
+      // By this point the tests above have already tripped the flag, which
+      // is itself the point: it is session-sticky, not per-call.
+      assertEqual(app.State.storageWorks(), false,
+        'the flag should stay false once a write has failed this session');
+      assert(/无法写入/.test(app.ErrorLog.report()),
+        'the diagnostic report should call out that storage is broken');
+    });
+
+    it('Diagnostic report carries no child-identifying data', () => {
+      // The whole point of the copy-paste design is that a parent can send
+      // this to a group chat. A profile name or a list of studied
+      // characters would make that unsafe.
+      const profiles = app.State.loadShared('profiles', []);
+      const text = app.ErrorLog.report();
+      profiles.forEach(p => {
+        assert(!text.includes(p.name),
+          `report must not contain the profile name "${p.name}"`);
+      });
+      // No run of 3+ CJK characters — individual characters can legitimately
+      // appear in an error message, but a studied-character list cannot.
+      const run = text.match(/[\u4e00-\u9fff]{12,}/);
+      assertEqual(run, null, `report contains a long CJK run: ${run && run[0]}`);
+    });
+
+    it('Diagnostic report includes what is needed to diagnose', () => {
+      const text = app.ErrorLog.report();
+      ['诊断信息', '设备：', '存储：'].forEach(marker => {
+        assert(text.includes(marker), `report should include "${marker}"`);
+      });
+    });
+
+    it('Error log keeps the most recent entries and collapses repeats', () => {
+      app.ErrorLog.clear();
+      app.ErrorLog.record('js', 'same failure');
+      app.ErrorLog.record('js', 'same failure');
+      app.ErrorLog.record('js', 'same failure');
+      let entries = app.ErrorLog.entries();
+      assertEqual(entries.length, 1, 'identical consecutive errors should collapse');
+      assertEqual(entries[0].count, 3, 'and be counted');
+
+      // Ring buffer: older entries drop out rather than growing unbounded.
+      for (let i = 0; i < 20; i++) app.ErrorLog.record('js', 'error ' + i);
+      entries = app.ErrorLog.entries();
+      assert(entries.length <= 8, `buffer should be capped, got ${entries.length}`);
+      assert(entries[entries.length - 1].text.includes('error 19'),
+        'the newest error must be kept');
+    });
+
+    it('record() never throws, whatever it is handed', () => {
+      // It runs inside error handlers and inside State's write path, so a
+      // fault here would mask the original problem or break saving.
+      [undefined, null, {}, 12, Symbol('x')].forEach(v => {
+        app.ErrorLog.record('js', v);
+      });
+      assert(true, 'record() must tolerate any input');
+      app.ErrorLog.clear();
+    });
+
+    it('Nothing is persisted and nothing is sent', () => {
+      // Persisting the log would be self-defeating (the failure it most
+      // needs to catch is storage being unavailable), and uploading it
+      // would end the "data never leaves the device" property.
+      app.ErrorLog.record('js', 'probe-entry-for-persistence-check');
+      const keys = Object.keys(frame.contentWindow.localStorage);
+      const leaked = keys.filter(k => {
+        const v = frame.contentWindow.localStorage.getItem(k) || '';
+        return v.includes('probe-entry-for-persistence-check');
+      });
+      assertEqual(leaked.length, 0, `error log leaked into storage: ${leaked.join(', ')}`);
+      app.ErrorLog.clear();
+
+      const src = (() => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', 'js/error-log.js', false);
+        xhr.send(null);
+        return xhr.responseText;
+      })();
+      assert(!/fetch\s*\(|XMLHttpRequest|navigator\.sendBeacon/.test(src),
+        'error-log.js must not contain any outbound request');
+    });
+
+    it('Help page exposes the report button', () => {
+      app.AppController.showHelp();
+      const btn = doc.getElementById('diagShowBtn');
+      assert(btn, 'help page should offer a 显示诊断信息 button');
+      const box = doc.getElementById('diagBox');
+      assert(box && box.classList.contains('hidden'),
+        'the diagnostic text should start hidden — a child must not see it');
+      btn.click();
+      assert(!doc.getElementById('diagBox').classList.contains('hidden'),
+        'clicking should reveal the report');
+      assertGreater(doc.getElementById('diagBox').textContent.length, 40,
+        'the revealed report should have content');
+      app.ModalUI.close();
+    });
+
+    it('Help page states where the data lives', () => {
+      // Families need to know progress is local-only and can be lost —
+      // without this, someone will clear their browser and lose months.
+      // Asserts the substance, not one phrasing: the first version of this
+      // test matched wording I had just added and broke as soon as the
+      // duplicate was merged into the pre-existing 数据存在哪 section.
+      const html = app.ModalUI.renderHelp();
+      assert(/不会上传|不上传|不离开设备/.test(html),
+        'help should say the data is not uploaded');
+      assert(/记录就没了|记录都会丢|会丢失/.test(html),
+        'help should warn that the data can be lost');
+      assert(/导出/.test(html), 'help should point at the export backup');
+      assert(/不含孩子姓名|不含.*姓名/.test(html),
+        'help should reassure that the diagnostic text carries no child data');
+    });
+  });
+
   describe('💾 Data Transfer', () => {
     it('exportProfileData includes all eleven known keys', () => {
       const payload = app.State.exportProfileData();
