@@ -50,6 +50,21 @@ const State = (() => {
   /** @returns {boolean} false once a write has failed this session */
   function storageWorks() { return _storageOk; }
 
+  /**
+   * Re-arm the first-failure latch.
+   *
+   * Two uses. Tests need it because the latch is session-sticky: once any
+   * earlier test has tripped it, the `if (wasOk)` branch — which is where
+   * the reporting and the listener notification live — becomes
+   * unreachable, so a test written after it would silently pass without
+   * exercising that code (this happened while reviewing it).
+   *
+   * It also covers the real recovery case: a parent who switches out of
+   * private browsing within the same page session should get a working
+   * app, and a *later* failure should be able to warn again.
+   */
+  function resetStorageFlag() { _storageOk = true; }
+
   /** Register a callback fired once, the first time storage fails. */
   function onStorageFailure(fn) { _storageListeners.push(fn); }
 
@@ -74,7 +89,14 @@ const State = (() => {
       // Report once per session, not once per write — a round generates
       // dozens of writes and the child must not be nagged on each one.
       if (wasOk) {
-        ErrorLog.record('storage', `localStorage write failed: ${e && e.name}`);
+        // Guarded: this runs *inside* the failure path, so a missing
+        // ErrorLog (load order change, a stripped build) would turn a
+        // handled storage failure back into the uncaught exception this
+        // whole funnel exists to prevent. daily-task.js guards the same
+        // call for the same reason.
+        if (typeof ErrorLog !== 'undefined') {
+          ErrorLog.record('storage', `localStorage write failed: ${e && e.name}`);
+        }
         _storageListeners.forEach(fn => {
           try { fn(e); } catch (_) { /* a broken listener must not break saving */ }
         });
@@ -333,6 +355,7 @@ const State = (() => {
     loadShared,
     saveShared,
     storageWorks,
+    resetStorageFlag,
     onStorageFailure,
     loadConfig,
     config,

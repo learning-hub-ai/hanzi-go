@@ -1487,7 +1487,12 @@ const AppController = (() => {
       });
     } catch (err) {
       console.error('[App] Initialization failed:', err);
-      ErrorLog.record('js', 'init failed: ' + (err && err.message));
+      // Guarded like the other call sites: this is the last-resort handler
+      // that paints the "couldn't open" screen, so a throw here would
+      // leave the parent with a blank page instead of instructions.
+      if (typeof ErrorLog !== 'undefined') {
+        ErrorLog.record('js', 'init failed: ' + (err && err.message));
+      }
       const mainEl = document.querySelector('main');
       // The worst-case screen: nothing loaded. A raw err.message here is
       // usually an English technical string ("Failed to fetch") that tells

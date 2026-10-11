@@ -1562,6 +1562,60 @@ async function runTests() {
       el.remove();
     });
 
+    it('Every ErrorLog call inside a failure path is guarded', () => {
+      // State and AppController report storage/init failures through
+      // ErrorLog, which made the failure handlers themselves depend on it:
+      // if ErrorLog were ever absent (load-order change, a stripped build)
+      // a *handled* failure would turn back into the uncaught exception
+      // this funnel exists to prevent, and the init handler would leave a
+      // blank page instead of instructions. daily-task.js guarded its call
+      // from the start; state.js and controllers.js did not.
+      //
+      // Checked at source level, not by deleting the global: ErrorLog is a
+      // top-level `const`, so it is not a window property and
+      // `delete window.ErrorLog` does not remove the binding — the first
+      // version of this test did exactly that and passed with the guard
+      // removed, which is how the const-vs-window distinction surfaced.
+      const read = (path) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', path, false);
+        xhr.send(null);
+        return xhr.responseText;
+      };
+      const unguarded = [];
+      ['js/state.js', 'js/controllers.js', 'js/daily-task.js'].forEach(file => {
+        read(file).split('\n').forEach((line, i) => {
+          if (!/ErrorLog\.record/.test(line)) return;
+          // The guard may sit on this line or just above it.
+          const guardedHere = /typeof ErrorLog/.test(line);
+          const prev = read(file).split('\n').slice(Math.max(0, i - 3), i).join(' ');
+          if (!guardedHere && !/typeof ErrorLog/.test(prev)) {
+            unguarded.push(`${file}:${i + 1}`);
+          }
+        });
+      });
+      assertEqual(unguarded.length, 0,
+        `ErrorLog.record called without a typeof guard at: ${unguarded.join(', ')}`);
+    });
+
+    it('A failed write still degrades gracefully end to end', () => {
+      // Complements the source-level check above with the behaviour that
+      // actually matters: re-arm the latch so the first-failure branch is
+      // reachable (it is session-sticky, and earlier tests have tripped
+      // it), then confirm the write reports failure rather than throwing
+      // and that the caller is told.
+      app.State.resetStorageFlag();
+      let notified = 0;
+      app.State.onStorageFailure(() => { notified++; });
+      let threw = false, ret = null;
+      try {
+        ret = withBrokenStorage(() => app.State.save('stats', { totalRounds: 9 }));
+      } catch (_) { threw = true; }
+      assert(!threw, 'a rejected write must not throw');
+      assertEqual(ret, false, 'and must report the failure to its caller');
+      assertEqual(notified, 1, 'and must notify exactly once');
+    });
+
     it('Help page exposes the report button', () => {
       app.AppController.showHelp();
       const btn = doc.getElementById('diagShowBtn');
