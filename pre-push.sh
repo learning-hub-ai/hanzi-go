@@ -194,3 +194,37 @@ if bad:
     sys.exit(1)
 print('✅ Type scale: all sizes and weights use tokens')
 " || exit 1
+
+# === Additional: colour token discipline (source-level) ===
+# 31 places were hardcoding the brand purple instead of using a token:
+# 14 rgba(79,70,229,α) tints at 7 alphas, 10 near-identical pale purples
+# that resolve to only 3 distinguishable values, and 7 literal repeats of
+# the token values. That is why changing the accent colour was a 34-place
+# edit rather than a 3-line one. Keep it that way: every purple must come
+# from the ramp. Checked at source level so rules on screens that aren't
+# mounted at page load are covered too.
+python3 -c "
+import re, sys
+css = open('css/style.css').read()
+css = re.sub(r'/\*.*?\*/', '', css, flags=re.S)        # comments
+body = re.sub(r':root\s*\{.*?\}', '', css, flags=re.S)  # token definitions
+
+# Any literal that is recognisably the brand purple or a tint of it.
+PURPLE = re.compile(
+    r'#(?:4f46e5|818cf8|3730a3|4338ca|6366f1|7c3aed|'
+    r'eef2ff|e0e7ff|c7d2fe|eff0ff|eff6ff|f5f3ff|fafafe|fbfbfe)'
+    r'|rgba\(\s*79\s*,\s*70\s*,\s*229', re.I)
+
+bad, cur = [], '?'
+for line in body.split('\n'):
+    m = re.match(r'^\s*([^{}]+?)\s*\{', line)
+    if m: cur = m.group(1).strip()
+    if PURPLE.search(line):
+        bad.append(f'{cur}: {PURPLE.search(line).group(0)} — use a --primary-* token')
+
+if bad:
+    print('❌ Hardcoded brand colour outside the token block:')
+    for b in bad: print(f'  {b}')
+    sys.exit(1)
+print('✅ Colour tokens: no hardcoded brand purple')
+" || exit 1

@@ -414,6 +414,113 @@ async function runTests() {
       assertEqual(undef.length, 0, `undefined tokens: ${undef.join(', ')}`);
     });
 
+    it('Content-category accents meet WCAG AA as text', () => {
+      // The category palette is borrowed from the qinshihuang reading
+      // project, where these colours are borders and background fills
+      // behind dark text. Used as text on the white card back they measure
+      // 2.64-3.57:1 against white — under the 4.5 AA needs for normal-size
+      // text — so each has a darkened -text variant. This asserts the
+      // variants stay compliant, since the obvious future "simplification"
+      // is to collapse them back onto the base colour.
+      const win = frame.contentWindow;
+      const root = win.getComputedStyle(frame.contentDocument.documentElement);
+      const rel = ([r, g, b]) => {
+        const f = c => (c / 255 <= 0.03928) ? c / 255 / 12.92 : Math.pow((c / 255 + 0.055) / 1.055, 2.4);
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+      };
+      const hex = s => {
+        const m = s.trim().match(/^#([0-9a-f]{6})$/i);
+        return m ? [0, 2, 4].map(i => parseInt(m[1].substr(i, 2), 16)) : null;
+      };
+      const ratio = (fg, bg) => {
+        const [hi, lo] = [rel(fg), rel(bg)].sort((x, y) => y - x);
+        return (hi + 0.05) / (lo + 0.05);
+      };
+      const WHITE = [255, 255, 255];
+      const bad = [];
+      ['pinyin', 'words', 'sentence', 'stroke'].forEach(name => {
+        const v = hex(root.getPropertyValue(`--accent-${name}-text`));
+        if (!v) { bad.push(`--accent-${name}-text missing or not hex`); return; }
+        const r = ratio(v, WHITE);
+        if (r < 4.5) bad.push(`--accent-${name}-text ${r.toFixed(2)}:1`);
+      });
+      assertEqual(bad.length, 0, `category accent text below AA 4.5:1 — ${bad.join(', ')}`);
+    });
+
+    it('Card back renders one colour per information kind', () => {
+      // The point of the category palette: pinyin / words / sentence were
+      // all --primary or near-neutral, so the back of the card read as a
+      // wall of one colour. If a future change points two of them at the
+      // same token this silently regresses, hence the explicit check.
+      const win = frame.contentWindow;
+      const doc = frame.contentDocument;
+      const els = {
+        pinyin: doc.getElementById('cardPinyinBack'),
+        words: doc.getElementById('cardWords'),
+        sentence: doc.getElementById('cardSentence'),
+      };
+      const seen = {};
+      Object.entries(els).forEach(([k, el]) => {
+        if (el) seen[k] = win.getComputedStyle(el).color;
+      });
+      const vals = Object.values(seen);
+      assertEqual(new Set(vals).size, vals.length,
+        `card-back colours not distinct: ${JSON.stringify(seen)}`);
+    });
+
+    it('Accent-coloured controls meet AA in every state', () => {
+      // The token-level test above only proves the -text variants are
+      // compliant; it says nothing about how they're used. That gap let a
+      // real bug through in review: .stroke-toggle-btn:hover was written
+      // as white-on---accent-stroke (#b8860b), which is 3.25:1 — the base
+      // colours are fills/borders, not text backdrops. This measures the
+      // rendered element in both resting and hover state instead.
+      const win = frame.contentWindow;
+      const doc = frame.contentDocument;
+      const rel = ([r, g, b]) => {
+        const f = c => (c / 255 <= 0.03928) ? c / 255 / 12.92 : Math.pow((c / 255 + 0.055) / 1.055, 2.4);
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+      };
+      const nums = s => (s.match(/[\d.]+/g) || []).map(Number);
+      const over = (s, base) => {
+        const n = nums(s);
+        if (!n.length) return base;
+        const a = n.length > 3 ? n[3] : 1;
+        return n.slice(0, 3).map((c, i) => a * c + (1 - a) * base[i]);
+      };
+      const ratio = (fg, bg) => {
+        const [hi, lo] = [rel(fg), rel(bg)].sort((x, y) => y - x);
+        return (hi + 0.05) / (lo + 0.05);
+      };
+      const btn = doc.getElementById('btnStrokePractice');
+      if (!btn) return;
+      const CARD = [255, 255, 255];              // card back is white
+      const bad = [];
+
+      const measure = label => {
+        const cs = win.getComputedStyle(btn);
+        const bg = over(cs.backgroundColor, CARD);
+        const r = ratio(over(cs.color, bg), bg);
+        if (r < 4.5) bad.push(`${label} ${r.toFixed(2)}:1`);
+      };
+      measure('resting');
+
+      // Force the :hover rule by re-declaring it as a plain rule, since
+      // headless can't actually hover. Read, then remove.
+      const hoverRule = [...doc.styleSheets]
+        .filter(sh => { try { return sh.cssRules; } catch (e) { return false; } })
+        .flatMap(sh => [...sh.cssRules])
+        .find(r => r.selectorText === '.stroke-toggle-btn:hover');
+      if (hoverRule) {
+        const probe = doc.createElement('style');
+        probe.textContent = `.stroke-toggle-btn{${hoverRule.style.cssText}}`;
+        doc.head.appendChild(probe);
+        measure('hover');
+        probe.remove();
+      }
+      assertEqual(bad.length, 0, `accent control below AA 4.5:1 — ${bad.join(', ')}`);
+    });
+
     it('自定义 modal: focus rings are not clipped by the scroll container', () => {
       // The modal is a fixed-height flex column with overflow:hidden on
       // #modalContent so only the card list scrolls. Elements sitting flush

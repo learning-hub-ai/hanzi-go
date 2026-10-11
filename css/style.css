@@ -43,10 +43,60 @@
      .card-pinyin-back) are display numerals sized 36-56px, treated as
      art like the display font-sizes above, and left literal. */
 
-  --primary:#4f46e5;--primary-light:#818cf8;--primary-dark:#3730a3;
+  /* Primary ramp. --primary/-light/-dark are kept as the names 68 existing
+     declarations already use; the numbered steps are new and exist because
+     31 places were hardcoding purple instead, having no token to reach for:
+     14 rgba(79,70,229,α) tints at 7 different alphas, plus 10 near-identical
+     pale purples (#fafafe #f5f3ff #eff0ff #eff6ff #eef2ff …) that resolve to
+     only 3 visually distinguishable values, plus 7 literal repeats of the
+     token values themselves. Flattened against white, the 7 alphas land on
+     #fbfbfe…#dcdafa — so most of that variation was invisible. */
+  --primary-50:#f6f6fe;    /* faintest wash: hover tint on cards/rows */
+  --primary-100:#eef2ff;   /* pale fill: active chips, banners, callouts */
+  --primary-200:#dcdafa;   /* visible tint: active mobile rows */
+  --primary-300:#c7d2fe;   /* light border on a --primary-100 fill */
+  --primary:#4f46e5;       /* = --primary-500, the one accent colour */
+  --primary-light:#818cf8; /* = --primary-300 in weight, used for borders/gradients */
+  --primary-dark:#3730a3;  /* = --primary-700 */
+  --primary-600:#4338ca;   /* hover/pressed state of --primary */
+  --primary-violet:#7c3aed;/* second stop of the two CTA gradients only */
+  /* Glow shadows must stay translucent (they sit over varying backdrops),
+     so these keep an alpha rather than becoming ramp steps — the point is
+     to stop repeating the raw 79,70,229 triplet in 4 more places. */
+  --primary-glow:rgba(79,70,229,.4);--primary-glow-strong:rgba(79,70,229,.6);
   --success:#10b981;--success-glow:rgba(16,185,129,.3);
   --error:#ef4444;--error-glow:rgba(239,68,68,.3);
   --warning:#f59e0b;
+
+  /* Content-category accents. The app's content has four natural kinds —
+     拼音 / 组词 / 例句 / 笔顺 on the card back, mirrored by the four
+     复习区 entries — but every one of them was rendered in the single
+     --primary purple, so the card back read as a wall of one colour and
+     the sidebar entries were told apart only by their emoji. Meanwhile
+     --primary itself was carrying eight unrelated meanings (selected tab,
+     selected row, pinyin text, progress bar, primary button, focus ring,
+     quiz dot, score), which is why no single one of them read as strong.
+     Values are the ones already in production in the sibling qinshihuang
+     reading project (--zi / --ci / --py / --star), so the two projects
+     share a palette rather than each inventing one.
+
+     Two variants per category, because that project uses these colours as
+     borders and background fills behind dark text — as *text* on the white
+     card back they measure 2.64-3.57:1 against white, under the 4.5 AA
+     needs for normal-size text. The -text steps are the same hue and
+     saturation darkened until they clear 4.5, so the colour coding reads
+     the same while staying legible. Use -bg/-base for fills and borders,
+     -text when the colour is the type itself.
+
+     Note --accent-stroke-text is derived against --accent-stroke-bg, not
+     white: the 笔顺 button carries its own tinted fill, and a value that
+     measured 4.53 on white came to only 4.44 on that fill. The other
+     three are plain text on the white card, so white is the right
+     reference for them. */
+  --accent-pinyin:#5b8fc9;  --accent-pinyin-bg:#eaf2fb;  --accent-pinyin-text:#3d79bb;
+  --accent-words:#d98f3d;   --accent-words-bg:#fdf0e3;   --accent-words-text:#a76821;
+  --accent-sentence:#5d9463;--accent-sentence-bg:#e9f3ea;--accent-sentence-text:#518156;
+  --accent-stroke:#b8860b;  --accent-stroke-bg:#fffdf2;  --accent-stroke-text:#976e09;
   --bg:#f8fafc;--card:#fff;--text:#1e293b;--text-secondary:#475569;--text-muted:#94a3b8;
   --border:#e2e8f0;--border-light:#f1f5f9;
   --shadow-sm:0 1px 3px rgba(0,0,0,.06);--shadow-md:0 4px 12px rgba(0,0,0,.08);
@@ -69,7 +119,7 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--text);min-hei
 /* === 2. Header === */
 header{
   position:fixed;top:0;left:0;right:0;height:var(--header-height);
-  background:linear-gradient(to right, #fafafe, #f5f3ff);
+  background:linear-gradient(to right, #fff, var(--primary-50));
   border-bottom:2px solid var(--border);
   display:grid;grid-template-columns:1fr auto 1fr;align-items:center;
   padding:0 var(--s4);z-index:100;
@@ -230,7 +280,7 @@ header{
    --primary-light fill of the active 上册/下册 row nested directly
    beneath it (two near-identical purples, stacked). */
 .sidebar-grade-header.active{
-  color:var(--primary);background:rgba(79,70,229,.06);border-color:rgba(79,70,229,.15);
+  color:var(--primary);background:var(--primary-50);border-color:var(--primary-300);
 }
 .sidebar-grade-icon{font-size:var(--text-lg);margin-right:var(--s1);flex-shrink:0}
 .grade-icon-pink{filter:hue-rotate(300deg) saturate(1.8) brightness(1.1)}
@@ -243,7 +293,7 @@ header{
   border-radius:50%;background:var(--border-light);
 }
 .sidebar-grade-header:hover .sidebar-grade-arrow{background:var(--border);color:var(--text)}
-.sidebar-grade-header.active .sidebar-grade-arrow{background:rgba(79,70,229,.1);color:var(--primary)}
+.sidebar-grade-header.active .sidebar-grade-arrow{background:var(--primary-100);color:var(--primary)}
 .sidebar-grade-children{
   overflow:hidden;max-height:0;
   transition:max-height var(--duration-normal) var(--ease-out);
@@ -305,10 +355,14 @@ main{
 .card-char.card-char--len2{font-size:clamp(56px, 9vw, 92px)}
 .card-char.card-char--len4{font-size:clamp(40px, 7vw, 68px)}
 .card-char.card-char--long{font-size:clamp(28px, 5vw, 48px)}
-.card-pinyin-small{font-size:var(--text-lg);color:var(--primary);margin-top:var(--s2);font-weight:var(--weight-semibold);z-index:1}
-.card-pinyin-back{font-size:36px;color:var(--primary);font-weight:800;margin-bottom:var(--s5)}
-.card-words{font-size:var(--text-xl);color:var(--text-secondary);margin-bottom:var(--s5);font-weight:var(--weight-semibold)}
-.card-sentence{font-size:var(--text-lg);color:var(--primary-dark);text-align:center;line-height:1.7;max-width:380px;font-weight:var(--weight-medium)}
+/* Card back: one colour per kind of information, so 拼音/组词/例句/笔顺 are
+   told apart at a glance instead of being four shades of the same purple.
+   --primary is left for "selected / primary action" only. The small pinyin
+   on the front face keeps the same pinyin colour so the two faces agree. */
+.card-pinyin-small{font-size:var(--text-lg);color:var(--accent-pinyin-text);margin-top:var(--s2);font-weight:var(--weight-semibold);z-index:1}
+.card-pinyin-back{font-size:36px;color:var(--accent-pinyin-text);font-weight:800;margin-bottom:var(--s5)}
+.card-words{font-size:var(--text-xl);color:var(--accent-words-text);margin-bottom:var(--s5);font-weight:var(--weight-semibold)}
+.card-sentence{font-size:var(--text-lg);color:var(--accent-sentence-text);text-align:center;line-height:1.7;max-width:380px;font-weight:var(--weight-medium)}
 
 /* === 6b. Stroke-order Practice Panel (card back, 学习模式) ===
    The back face is a fixed-size box (see .card-face position:absolute,
@@ -317,11 +371,13 @@ main{
    pinyin/words/sentence inside that fixed box, on any screen size. */
 .card-back-content{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;width:100%}
 .stroke-toggle-btn{
-  margin-top:var(--s4);font-size:var(--text-base);font-weight:var(--weight-semibold);color:var(--primary);
-  background:var(--border-light);border:1px solid var(--border);border-radius:var(--radius-full);
+  margin-top:var(--s4);font-size:var(--text-base);font-weight:var(--weight-semibold);color:var(--accent-stroke-text);
+  background:var(--accent-stroke-bg);border:1px solid var(--accent-stroke);border-radius:var(--radius-full);
   padding:6px 16px;cursor:pointer;transition:all var(--duration-fast) ease;
 }
-.stroke-toggle-btn:hover{background:var(--primary);color:#fff;border-color:var(--primary)}
+/* hover 用 -text 变体做底色而不是 --accent-stroke：#b8860b 上压白字只有
+   3.25:1，低于 13px 文字需要的 4.5；-text 变体（#996f09）是 4.53。 */
+.stroke-toggle-btn:hover{background:var(--accent-stroke-text);color:#fff;border-color:var(--accent-stroke-text)}
 .stroke-panel{
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   height:100%;width:100%;gap:var(--s2);
@@ -460,7 +516,7 @@ main{
 .profile-list{display:flex;flex-wrap:wrap;gap:var(--s3);justify-content:center;margin-bottom:var(--s5)}
 .profile-item{display:flex;flex-direction:column;align-items:center;gap:var(--s1);padding:var(--s3);border-radius:var(--radius-md);border:2px solid var(--border);cursor:pointer;transition:all var(--duration-fast) ease;min-width:72px;position:relative}
 .profile-item:hover{border-color:var(--primary-light);transform:translateY(-2px)}
-.profile-item.active{border-color:var(--primary);background:#eff6ff}
+.profile-item.active{border-color:var(--primary);background:var(--primary-100)}
 .profile-item .avatar{font-size:var(--text-3xl)}
 .profile-item .name{font-size:var(--text-sm);font-weight:var(--weight-semibold)}
 .profile-item .edit-icon{font-size:var(--text-2xs);opacity:.3;position:absolute;top:3px;right:3px}
@@ -472,7 +528,7 @@ main{
 .add-profile-form input:focus{outline:none;border-color:var(--primary)}
 .avatar-picker{display:flex;gap:var(--s2);justify-content:center;flex-wrap:wrap;margin-bottom:var(--s3)}
 .avatar-picker button{font-size:var(--text-2xl);padding:var(--s1);border:2px solid var(--border);border-radius:var(--radius-sm);background:var(--card);cursor:pointer}
-.avatar-picker button.selected{border-color:var(--primary);background:#eff6ff}
+.avatar-picker button.selected{border-color:var(--primary);background:var(--primary-100)}
 .add-profile-form .btn-confirm{padding:var(--s2) var(--s5);border-radius:var(--radius-sm);border:none;background:var(--primary);color:#fff;font-size:var(--text-md);font-weight:var(--weight-semibold);cursor:pointer}
 
 /* === 14. Utility Classes === */
@@ -541,7 +597,7 @@ main{
 }
 .mobile-sheet-item:hover{background:var(--border-light)}
 .mobile-sheet-item:active{background:var(--border)}
-.mobile-sheet-item.active{background:rgba(79,70,229,.06);border-color:rgba(79,70,229,.2);color:var(--primary);font-weight:var(--weight-semibold)}
+.mobile-sheet-item.active{background:var(--primary-50);border-color:var(--primary-300);color:var(--primary);font-weight:var(--weight-semibold)}
 .mobile-sheet-item-icon{font-size:var(--text-xl);flex-shrink:0}
 .mobile-sheet-item-label{flex:1}
 .mobile-sheet-item-count{font-size:var(--text-sm);color:var(--text-muted);background:var(--border-light);padding:2px 8px;border-radius:var(--radius-full)}
@@ -653,7 +709,7 @@ main{
   box-shadow:var(--shadow-sm);
 }
 .quiz-type-btn:hover{border-color:var(--primary-light);color:var(--primary);transform:translateY(-1px);box-shadow:var(--shadow-md)}
-.quiz-type-btn.active{background:#eff0ff;color:var(--primary);border-color:var(--border);font-weight:var(--weight-bold)}
+.quiz-type-btn.active{background:var(--primary-100);color:var(--primary);border-color:var(--border);font-weight:var(--weight-bold)}
 
 /* Quiz count selector (same style as type selector) */
   padding:var(--s2) var(--s3);border-radius:var(--radius-sm);
@@ -686,7 +742,7 @@ main{
 /* Steps */
 .dt-steps{display:flex;flex-direction:column;gap:var(--s3)}
 .dt-step{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) var(--s4);border:2px solid var(--border);border-radius:var(--radius-md);background:#fff;transition:all var(--duration-fast) ease}
-.dt-step.active{border-color:var(--primary);background:rgba(79,70,229,.03)}
+.dt-step.active{border-color:var(--primary);background:var(--primary-50)}
 .dt-step.done{border-color:var(--success);background:rgba(16,185,129,.03);opacity:.8}
 .dt-step.locked{opacity:.45}
 .dt-step-icon{font-size:var(--text-2xl);flex-shrink:0}
@@ -713,11 +769,11 @@ main{
 .dt-card:hover{border-color:var(--primary-light)}
 .dt-card-front,.dt-card-back{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;width:100%}
 .dt-card-char{font-size:80px;font-family:var(--font-char);color:var(--text);line-height:1.2}
-.dt-card-pinyin-small{font-size:var(--text-lg);color:var(--primary);font-weight:var(--weight-semibold);margin-top:var(--s2)}
+.dt-card-pinyin-small{font-size:var(--text-lg);color:var(--accent-pinyin-text);font-weight:var(--weight-semibold);margin-top:var(--s2)}
 .dt-card-hint{font-size:var(--text-sm);color:var(--text-muted);margin-top:var(--s3)}
-.dt-card-pinyin{font-size:var(--text-3xl);color:var(--primary);font-weight:var(--weight-bold);margin-bottom:var(--s3)}
-.dt-card-words{font-size:var(--text-xl);color:var(--text-secondary);font-weight:var(--weight-semibold);margin-bottom:var(--s3)}
-.dt-card-sentence{font-size:var(--text-md);color:var(--text);line-height:1.7;max-width:300px}
+.dt-card-pinyin{font-size:var(--text-3xl);color:var(--accent-pinyin-text);font-weight:var(--weight-bold);margin-bottom:var(--s3)}
+.dt-card-words{font-size:var(--text-xl);color:var(--accent-words-text);font-weight:var(--weight-semibold);margin-bottom:var(--s3)}
+.dt-card-sentence{font-size:var(--text-md);color:var(--accent-sentence-text);line-height:1.7;max-width:300px}
 .dt-card-actions{display:flex;gap:var(--s3);justify-content:center;width:100%}
 
 /* Quiz screen */
@@ -791,7 +847,7 @@ main{
 
 .dt-setup-grades,.dt-setup-semesters{display:flex;flex-direction:column;gap:var(--s2);max-width:320px;margin:0 auto}
 .dt-setup-grade,.dt-setup-sem{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) var(--s4);border:2px solid var(--border);border-radius:var(--radius-md);background:#fff;cursor:pointer;transition:all var(--duration-fast) ease;text-align:left}
-.dt-setup-grade:hover,.dt-setup-sem:hover{border-color:var(--primary);background:rgba(79,70,229,.03);transform:translateY(-1px)}
+.dt-setup-grade:hover,.dt-setup-sem:hover{border-color:var(--primary);background:var(--primary-50);transform:translateY(-1px)}
 .dt-setup-grade:active,.dt-setup-sem:active{transform:scale(.97)}
 .dt-setup-grade-icon{font-size:var(--text-2xl);flex-shrink:0}
 .dt-setup-grade-name,.dt-setup-sem-name{flex:1;font-size:var(--text-md);font-weight:var(--weight-semibold);color:var(--text)}
@@ -799,8 +855,8 @@ main{
 
 .dt-setup-lessons{display:flex;flex-direction:column;gap:var(--s1);max-width:360px;margin:0 auto;max-height:50vh;overflow-y:auto;padding:var(--s2)}
 .dt-setup-lesson{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;cursor:pointer;transition:all var(--duration-fast) ease;text-align:left;font-size:var(--text-base)}
-.dt-setup-lesson:hover{border-color:var(--primary-light);background:rgba(79,70,229,.02)}
-.dt-setup-lesson.highlighted{border-color:var(--primary);background:rgba(79,70,229,.05);font-weight:var(--weight-semibold)}
+.dt-setup-lesson:hover{border-color:var(--primary-light);background:var(--primary-50)}
+.dt-setup-lesson.highlighted{border-color:var(--primary);background:var(--primary-50);font-weight:var(--weight-semibold)}
 .dt-setup-lesson-icon{font-size:var(--text-lg);flex-shrink:0}
 .dt-setup-lesson-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
 .dt-setup-lesson-info{font-size:var(--text-xs);color:var(--text-muted);flex-shrink:0}
@@ -808,7 +864,7 @@ main{
 .dt-setup-back{margin-top:var(--s4);padding:var(--s2) var(--s4);border:none;background:transparent;color:var(--text-muted);font-size:var(--text-base);cursor:pointer}
 .dt-setup-back:hover{color:var(--primary)}
 .dt-change-level-btn{margin-top:var(--s2);padding:6px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;color:var(--text-muted);font-size:var(--text-sm);cursor:pointer;transition:all var(--duration-fast) ease}
-.dt-change-level-btn:hover{border-color:var(--primary);color:var(--primary);background:rgba(79,70,229,.03)}
+.dt-change-level-btn:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-50)}
 
 .dt-semester-progress{display:flex;align-items:center;gap:var(--s2);margin-top:var(--s2);width:100%;max-width:280px}
 .dt-semester-bar{flex:1;height:6px;background:var(--border);border-radius:var(--radius-full);overflow:hidden}
@@ -825,20 +881,20 @@ main{
 
 .dt-complete-hint{font-size:var(--text-base);color:var(--text-muted);margin-top:var(--s2)}
 
-.dt-task-banner{position:fixed;top:var(--header-height);left:var(--sidebar-width);right:0;background:linear-gradient(90deg,#eef2ff,#e0e7ff);border-bottom:1px solid #c7d2fe;padding:8px 16px;display:flex;align-items:center;justify-content:space-between;z-index:90;gap:8px}
-.dt-banner-text{font-size:var(--text-base);font-weight:var(--weight-semibold);color:#4338ca}
-.dt-banner-hint{font-size:var(--text-xs);color:#6366f1}
-.dt-banner-btn{padding:4px 12px;border-radius:var(--radius-sm);border:1px solid #818cf8;background:#fff;color:#4338ca;font-size:var(--text-sm);font-weight:var(--weight-semibold);cursor:pointer;transition:all var(--duration-fast) ease;position:relative;z-index:2}
-.dt-banner-btn:hover{background:#eef2ff;border-color:#4338ca}
+.dt-task-banner{position:fixed;top:var(--header-height);left:var(--sidebar-width);right:0;background:linear-gradient(90deg,var(--primary-100),var(--primary-200));border-bottom:1px solid var(--primary-300);padding:8px 16px;display:flex;align-items:center;justify-content:space-between;z-index:90;gap:8px}
+.dt-banner-text{font-size:var(--text-base);font-weight:var(--weight-semibold);color:var(--primary-600)}
+.dt-banner-hint{font-size:var(--text-xs);color:var(--primary-light)}
+.dt-banner-btn{padding:4px 12px;border-radius:var(--radius-sm);border:1px solid var(--primary-light);background:#fff;color:var(--primary-600);font-size:var(--text-sm);font-weight:var(--weight-semibold);cursor:pointer;transition:all var(--duration-fast) ease;position:relative;z-index:2}
+.dt-banner-btn:hover{background:var(--primary-100);border-color:var(--primary-600)}
 @media(max-width:768px){
   .dt-task-banner{left:0}
 }
 
-.dt-floating-btn{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:12px 24px;border-radius:var(--radius-full);border:none;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;font-size:var(--text-md);font-weight:var(--weight-bold);cursor:pointer;box-shadow:0 4px 16px rgba(79,70,229,0.4);z-index:90;transition:all var(--duration-fast) ease;animation:dtFloatPulse 2s ease-in-out infinite}
-.dt-floating-btn:hover{transform:translateX(-50%) scale(1.05);box-shadow:0 6px 20px rgba(79,70,229,0.5)}
+.dt-floating-btn{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:12px 24px;border-radius:var(--radius-full);border:none;background:linear-gradient(135deg,var(--primary),var(--primary-violet));color:#fff;font-size:var(--text-md);font-weight:var(--weight-bold);cursor:pointer;box-shadow:0 4px 16px var(--primary-glow);z-index:90;transition:all var(--duration-fast) ease;animation:dtFloatPulse 2s ease-in-out infinite}
+.dt-floating-btn:hover{transform:translateX(-50%) scale(1.05);box-shadow:0 6px 20px var(--primary-glow-strong)}
 .dt-floating-btn-disabled{background:linear-gradient(135deg,#94a3b8,#64748b);cursor:default;animation:none;box-shadow:0 2px 8px rgba(0,0,0,0.15)}
 .dt-floating-btn-disabled:hover{transform:translateX(-50%);box-shadow:0 2px 8px rgba(0,0,0,0.15)}
-@keyframes dtFloatPulse{0%,100%{box-shadow:0 4px 16px rgba(79,70,229,0.4)}50%{box-shadow:0 4px 24px rgba(79,70,229,0.6)}}
+@keyframes dtFloatPulse{0%,100%{box-shadow:0 4px 16px var(--primary-glow)}50%{box-shadow:0 4px 24px var(--primary-glow-strong)}}
 @media(max-width:768px){
   .dt-floating-btn{bottom:72px}
 }
@@ -850,7 +906,7 @@ main{
   .dt-floating-btn-disabled:hover{transform:none}
 }
 
-.dt-return-btn{background:linear-gradient(135deg,#4f46e5,#7c3aed)!important;color:#fff!important;border:none!important;font-weight:var(--weight-bold)}
+.dt-return-btn{background:linear-gradient(135deg,var(--primary),var(--primary-violet))!important;color:#fff!important;border:none!important;font-weight:var(--weight-bold)}
 
 /* Inline feedback under the 自定义字卡 form */
 .form-msg{font-size:var(--text-base);min-height:18px;margin-top:6px}
@@ -906,8 +962,8 @@ main{
    made per-line character counts diverge. That concern doesn't apply here:
    this change is justified by height/scroll, not by visual alignment, so
    the character-count mismatch is an acceptable tradeoff this time.) */
-.help-lead{font-size:var(--text-md);color:var(--text);background:var(--primary-bg,#eef2ff);
-  border:1px solid #c7d2fe;border-radius:var(--radius-sm);padding:11px 12px;margin:0 0 14px;line-height:1.7}
+.help-lead{font-size:var(--text-md);color:var(--text);background:var(--primary-100);
+  border:1px solid var(--primary-300);border-radius:var(--radius-sm);padding:11px 12px;margin:0 0 14px;line-height:1.7}
 /* 说明页：小节 = 带标题栏的方框
    Bold alone did not separate the levels: section titles were 14px/700 and
    item names 13px/600, too close to scan. Borrowed from
@@ -984,7 +1040,7 @@ main{
 .rep-week{display:flex;justify-content:center;gap:4px;margin:6px 0 2px}
 .rep-day{display:flex;flex-direction:column;align-items:center;width:34px;
   padding:3px 0;border-radius:6px;line-height:1.25}
-.rep-day--today{background:var(--primary-bg,#eef2ff);box-shadow:inset 0 0 0 1px #c7d2fe}
+.rep-day--today{background:var(--primary-100);box-shadow:inset 0 0 0 1px var(--primary-300)}
 .rep-day-mark{font-size:var(--text-md)}
 .rep-day-wd{font-size:var(--text-xs);color:var(--text-muted)}
 .rep-day-dom{font-size:var(--text-2xs);color:#cbd5e1}
