@@ -2,6 +2,8 @@
   "questionsPerRound": 10,
   "autoPlayIntervalMs": 3000,
   "streakThresholdForFire": 3,
+  "streakTierMid": 5,
+  "streakTierHot": 10,
   "wrongAnswersToRemoveFromErrorBook": 2,
   "cardFlipDurationMs": 400,
   "quizFeedbackDelayMs": 1200,

@@ -445,13 +445,78 @@ main{
   display:flex;align-items:center;justify-content:center;
 }
 .quiz-option:hover{border-color:var(--primary-light);transform:translateY(-1px);box-shadow:var(--shadow-md)}
-.quiz-option.correct{background:#dcfce7;border-color:var(--success);color:#166534;box-shadow:0 0 0 2px var(--success-glow);animation:correctPulse .4s var(--ease-bounce)}
+/* Answer feedback. Correct and wrong are deliberately asymmetric: right is
+   quick and springs upward (reward), wrong is slower and shakes in place
+   (stop and look). Both were a flat .4s before, which made them read as
+   the same kind of event. */
+.quiz-option.correct{background:#dcfce7;border-color:var(--success);color:#166534;box-shadow:0 0 0 2px var(--success-glow);animation:correctPulse .25s var(--ease-bounce);position:relative}
 .quiz-option-char{font-family:var(--font-char);font-size:28px}
-.quiz-option.wrong{background:#fef2f2;border-color:var(--error);color:#991b1b;box-shadow:0 0 0 2px var(--error-glow);animation:shake .4s ease}
+.quiz-option.wrong{background:#fef2f2;border-color:var(--error);color:#991b1b;box-shadow:0 0 0 2px var(--error-glow);animation:shake .45s ease}
 .quiz-option.disabled{pointer-events:none;opacity:.8}
-@keyframes correctPulse{0%{transform:scale(1)}50%{transform:scale(1.03)}100%{transform:scale(1)}}
-@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-3px)}40%{transform:translateX(3px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
-.quiz-stats{display:flex;justify-content:space-around;margin:var(--s3) 0;font-size:var(--text-xl);font-weight:var(--weight-semibold);color:var(--text-secondary)}
+/* 1.03 was close to invisible on a phone. The streak tiers escalate the
+   same pulse — a longer run is more of the same reward, not a different
+   effect — and add a widening glow ring so the escalation is legible even
+   after the scale animation has finished. */
+@keyframes correctPulse{0%{transform:scale(1)}50%{transform:scale(1.08)}100%{transform:scale(1)}}
+@keyframes correctPulseMid{0%{transform:scale(1)}45%{transform:scale(1.12)}100%{transform:scale(1)}}
+@keyframes correctPulseHot{0%{transform:scale(1)}40%{transform:scale(1.16) rotate(-1deg)}70%{transform:scale(1.06) rotate(.5deg)}100%{transform:scale(1)}}
+.quiz-option.correct.streak-warm{box-shadow:0 0 0 3px var(--success-glow)}
+.quiz-option.correct.streak-mid{box-shadow:0 0 0 5px var(--success-glow);animation:correctPulseMid .3s var(--ease-bounce)}
+.quiz-option.correct.streak-hot{box-shadow:0 0 0 7px var(--success-glow);animation:correctPulseHot .4s var(--ease-bounce)}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+
+/* Floating "+1" — the gain shows up where the child is already looking
+   (the answer they tapped), not only in the counter above. */
+.score-gain{
+  position:absolute;top:0;right:8px;
+  font-size:var(--text-md);font-weight:var(--weight-bold);color:var(--success);
+  pointer-events:none;animation:scoreGain .9s var(--ease-out) forwards;
+}
+@keyframes scoreGain{
+  0%{opacity:0;transform:translateY(0) scale(.8)}
+  20%{opacity:1;transform:translateY(-6px) scale(1)}
+  100%{opacity:0;transform:translateY(-28px) scale(1)}
+}
+
+/* Long-run banner. Anchored below the stats row rather than above it:
+   as a fixed element under the header it covered the lesson dropdown,
+   and placed above .quiz-stats it covered the quiz-type buttons. Sitting
+   just under the stats line keeps it in the child's eyeline (next to the
+   连对 counter it refers to) while overlapping no control.
+   Self-removes on animationend. */
+.streak-banner{
+  position:absolute;top:calc(100% + var(--s1));left:50%;
+  transform:translateX(-50%);z-index:150;
+  padding:6px 18px;border-radius:var(--radius-full);
+  background:var(--success);color:#fff;
+  font-size:var(--text-md);font-weight:var(--weight-bold);
+  box-shadow:var(--shadow-md);pointer-events:none;white-space:nowrap;
+  animation:streakBanner 1.6s var(--ease-out) forwards;
+}
+@keyframes streakBanner{
+  0%{opacity:0;transform:translateX(-50%) translateY(-12px) scale(.9)}
+  12%{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}
+  80%{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}
+  100%{opacity:0;transform:translateX(-50%) translateY(-8px) scale(.95)}
+}
+
+/* The 🔥 beside the counter grows with the tier too, so the stats row and
+   the answer agree about how hot the run is. */
+.streak-fire.streak-warm{font-size:20px}
+.streak-fire.streak-mid{font-size:24px}
+.streak-fire.streak-hot{font-size:28px}
+
+/* Respect a reduced-motion preference: keep the colour/ring feedback,
+   which carries the actual information, and drop the movement. */
+@media (prefers-reduced-motion:reduce){
+  .quiz-option.correct,.quiz-option.wrong,
+  .quiz-option.correct.streak-mid,.quiz-option.correct.streak-hot{animation:none}
+  .score-gain{animation:scoreGainStill .9s linear forwards}
+  .streak-banner{animation:streakBannerStill 1.6s linear forwards}
+  @keyframes scoreGainStill{0%,100%{opacity:0}20%,80%{opacity:1}}
+  @keyframes streakBannerStill{0%,100%{opacity:0}12%,80%{opacity:1}}
+}
+.quiz-stats{display:flex;justify-content:space-around;margin:var(--s3) 0;font-size:var(--text-xl);font-weight:var(--weight-semibold);color:var(--text-secondary);position:relative}
 .quiz-stats span{display:flex;align-items:center;gap:4px}
 .streak-fire{font-size:20px;animation:fireAnim .5s ease infinite alternate}
 @keyframes fireAnim{from{transform:scale(1) rotate(-2deg)}to{transform:scale(1.15) rotate(2deg)}}

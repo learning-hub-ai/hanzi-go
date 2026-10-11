@@ -292,6 +292,12 @@ const CardUI = (() => {
 
 /** Quiz UI — question rendering, feedback animations, end screen */
 const QuizUI = (() => {
+  // Fallback lifetimes for the two transient feedback elements, kept a
+  // little longer than their CSS animations (.9s / 1.6s) so the animation
+  // is what normally removes them and the timer is only a backstop.
+  const GAIN_LIFETIME_MS = 1200;
+  const BANNER_LIFETIME_MS = 2000;
+
   /** Render a quiz question with options and progress dots */
   function renderQuestion(question, score, streak, progress, total) {
     const quizCharEl = document.getElementById('quizChar');
@@ -347,10 +353,24 @@ const QuizUI = (() => {
     });
   }
 
+  /**
+   * Visual feedback for one answer.
+   *
+   * The correct/wrong styling is deliberately asymmetric: a right answer
+   * reads as a reward (quick, scales up, bounces) while a wrong one reads
+   * as a stop (slower, shakes, holds the eye). Both used to be a flat
+   * 400ms with the same weight, which made them feel like the same event.
+   *
+   * On top of that the streak is expressed in three tiers rather than a
+   * single 🔥 that appeared at 3 and then never changed again — a run of
+   * 10 looked exactly like a run of 3, so there was nothing to build
+   * towards. Tiers come from config so they can be tuned without code.
+   */
   function showFeedback(selectedIdx, correctIdx, isCorrect) {
     const options = document.querySelectorAll('.quiz-option');
     options.forEach(o => o.classList.add('disabled'));
-    options[correctIdx].classList.add('correct');
+    const correctEl = options[correctIdx];
+    correctEl.classList.add('correct');
     if (!isCorrect && selectedIdx >= 0) options[selectedIdx].classList.add('wrong');
 
     // Update dot color
@@ -361,17 +381,97 @@ const QuizUI = (() => {
       dots[quiz.current].classList.add(isCorrect ? 'correct' : 'wrong');
     }
 
-    // Score bounce
     if (isCorrect) {
+      // Score bounce + a floating "+1" so the gain is visible where the
+      // child is already looking (the answer), not only in the counter.
       const scoreEl = document.getElementById('quizScore');
       scoreEl.classList.add('score-bounce');
       setTimeout(() => scoreEl.classList.remove('score-bounce'), 300);
+      _floatGain(correctEl);
+
+      // Streak tier — escalates the same pulse rather than adding a
+      // separate effect, so a longer run feels like more of the same
+      // reward instead of a different one.
+      const tier = _streakTier(quiz.streak);
+      if (tier) {
+        correctEl.classList.add(`streak-${tier}`);
+        if (tier === 'hot') _showStreakBanner(quiz.streak);
+      }
     }
+  }
+
+  /**
+   * Which streak tier a run qualifies for, or null below the first one.
+   * Thresholds are config-driven; 'warm' reuses streakThresholdForFire so
+   * the tier and the 🔥 icon stay in step.
+   */
+  function _streakTier(streak) {
+    const warm = State.config('streakThresholdForFire', 3);
+    const hot = State.config('streakTierHot', 10);
+    const mid = State.config('streakTierMid', 5);
+    if (streak >= hot) return 'hot';
+    if (streak >= mid) return 'mid';
+    if (streak >= warm) return 'warm';
+    return null;
+  }
+
+  /**
+   * Float a "+1" up from the answer the child just picked.
+   *
+   * Cleanup is belt-and-braces: animationend normally fires, but if the
+   * child leaves 挑战 before the animation completes the view is hidden
+   * (display:none) rather than destroyed, the animation never runs, and
+   * the event never arrives — leaving the element in the DOM for the rest
+   * of the session. A timer bounded to the same duration guarantees
+   * removal either way; whichever fires first wins, and remove() on an
+   * already-detached node is a no-op.
+   */
+  function _floatGain(anchorEl) {
+    const gain = document.createElement('span');
+    gain.className = 'score-gain';
+    gain.textContent = '+1';
+    gain.setAttribute('aria-hidden', 'true');   // the score itself is announced
+    anchorEl.appendChild(gain);
+    const drop = () => gain.remove();
+    gain.addEventListener('animationend', drop, { once: true });
+    setTimeout(drop, GAIN_LIFETIME_MS);
+  }
+
+  /**
+   * Brief banner for a long run. Replaces any banner still on screen so
+   * rapid answers can't stack them. Mounted inside the quiz stats row
+   * rather than on body: as a fixed element under the header it covered
+   * the lesson dropdown in .content-header.
+   *
+   * Same bounded cleanup as _floatGain — and it matters more here, since
+   * .quiz-stats survives a mode switch, so a leaked banner would reappear
+   * the next time the child opened 挑战.
+   */
+  function _showStreakBanner(streak) {
+    const prev = document.getElementById('streakBanner');
+    if (prev) prev.remove();
+    const el = document.createElement('div');
+    el.id = 'streakBanner';
+    el.className = 'streak-banner';
+    el.setAttribute('role', 'status');
+    el.textContent = `🔥 ${streak} 连对！`;
+    const host = document.querySelector('#challengeMode .quiz-stats')
+      || document.getElementById('challengeMode')
+      || document.body;
+    host.appendChild(el);
+    const drop = () => el.remove();
+    el.addEventListener('animationend', drop, { once: true });
+    setTimeout(drop, BANNER_LIFETIME_MS);
   }
 
   function updateStreak(streak) {
     document.getElementById('quizStreak').textContent = streak;
-    document.getElementById('streakFire').classList.toggle('hidden', streak < State.config('streakThresholdForFire', 3));
+    const fire = document.getElementById('streakFire');
+    fire.classList.toggle('hidden', streak < State.config('streakThresholdForFire', 3));
+    // Grow the 🔥 with the run so the counter area also reflects the tier.
+    const tier = _streakTier(streak);
+    fire.classList.remove('streak-warm', 'streak-mid', 'streak-hot');
+    if (tier) fire.classList.add(`streak-${tier}`);
     document.getElementById('quizScore').textContent = State.get('quiz').score;
   }
 

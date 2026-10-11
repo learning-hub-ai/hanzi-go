@@ -163,6 +163,10 @@ SCALE = {10, 11, 12, 13, 14, 16, 18, 24, 32}
 TOP = max(SCALE)
 EXEMPT_SIZE = {
     '.fav-btn', '.streak-fire', '.modal-item .char-display',
+    # The 🔥 grows with the streak tier — same emoji-as-icon exemption as
+    # the base .streak-fire rule above, sized to match the stats row art
+    # rather than to sit in the text hierarchy.
+    '.streak-fire.streak-warm', '.streak-fire.streak-mid', '.streak-fire.streak-hot',
     '.avatar-picker button', '.mobile-bottom-bar button',
     '.quiz-option-char', '.dt-step-icon', '.dt-setup-grade-icon',
     '.dt-setup-lesson-icon', '.mobile-sheet-item-icon', '.profile-avatar',

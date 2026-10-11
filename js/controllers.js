@@ -657,6 +657,23 @@ const ChallengeController = (() => {
     }
   }
 
+  /**
+   * Check badge conditions and celebrate anything newly unlocked.
+   *
+   * Lives here rather than being called only from endRound() because 6 of
+   * the 11 badges depend on getTotalCount() or consecutiveDays — values
+   * that move in Learn mode and in the daily task, not just at the end of
+   * a quiz round. Before this, a child could learn 50 characters through
+   * the daily task and never see 识字萌芽 fire; the badge was silently
+   * awarded later, the first time they happened to finish a quiz.
+   *
+   * Safe to call often: checkAndAward() only returns badges not already
+   * held, so repeat calls are no-ops once everything is unlocked.
+   */
+  function _celebrateNewBadges() {
+    BadgeService.checkAndAward().forEach(b => BadgePopupUI.show(b));
+  }
+
   function endRound() {
     const quiz = State.get('quiz');
     const milestone = StatsService.recordRound(quiz.score, quiz.questions.length);
@@ -669,8 +686,7 @@ const ChallengeController = (() => {
       BadgePopupUI.show(milestone);
     }
 
-    const newBadges = BadgeService.checkAndAward();
-    newBadges.forEach(b => BadgePopupUI.show(b));
+    _celebrateNewBadges();
   }
 
   // Track consecutive correct answers for favorites removal
@@ -689,7 +705,8 @@ const ChallengeController = (() => {
     _favCorrectCounts[char] = 0;
   }
 
-  return { start, answer, setType, getType, setCount, getCount, setTimer, stop: _clearTimer };
+  return { start, answer, setType, getType, setCount, getCount, setTimer, stop: _clearTimer,
+           celebrateNewBadges: _celebrateNewBadges };
 })();
 
 const AppController = (() => {

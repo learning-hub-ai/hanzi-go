@@ -428,6 +428,9 @@ window.CustomCardService = CustomCardService;
 // ModalUI/CardUI were never exported, leaving the renderers untestable
 window.ModalUI = ModalUI;
 window.CardUI = CardUI;
+// Same for QuizUI — the streak-tier feedback can only be tested by driving
+// showFeedback() with a known streak value.
+window.QuizUI = QuizUI;
 window.LearnController = LearnController;
 window.ChallengeController = ChallengeController;
 window.ProfileManager = ProfileManager;

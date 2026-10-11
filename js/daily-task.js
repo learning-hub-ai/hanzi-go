@@ -848,6 +848,12 @@ const DailyTaskController = (() => {
       } else {
         DailyTaskService.completeRecap(_cardStack.length);
       }
+      // recordAnswer above may have pushed the learned-character count past
+      // a growth milestone (识字萌芽 at 50, 百字小能手 at 100, …). Badges
+      // used to be checked only at the end of a quiz round, so a child
+      // working purely through the daily task would not be told until the
+      // next time they happened to finish a quiz.
+      ChallengeController.celebrateNewBadges();
       render();
     } else {
       _renderRecallCard();
@@ -987,6 +993,12 @@ const DailyTaskController = (() => {
         const quiz = State.get('quiz');
         // Complete the quiz immediately (so progress is saved even if user navigates away)
         DailyTaskService.completeQuiz(quiz.score, quiz.questions.length);
+        // completeQuiz advances the daily streak (via StatsService
+        // .recordDailyTask), which can unlock 连续学习 at 7 days. Checked
+        // here rather than inside the service so the service layer stays
+        // free of UI calls; ChallengeController.endRound covers the plain
+        // challenge path.
+        ChallengeController.celebrateNewBadges();
         // Add a "返回任务" button to the end screen
         setTimeout(() => {
           _addReturnButton();
