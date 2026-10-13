@@ -63,7 +63,18 @@ CHAR_LIST_ROW = re.compile(r'^\s*(?:[\u4e00-\u9fff]\s+){3,}[\u4e00-\u9fff]\s*$')
 INSTRUCTION = re.compile(
     r'(朗读课文|默读课文|分角色朗读|朗读并背诵|背诵课文|背诵第|抄写下来|抄写句子'
     r'|字词句运用|交流平台|初试身手|词句段运用|日积月累|读一读|写一写|想一想'
-    r'|不要指读|注意读好|注意对话|有感情地朗读|读出自己的感受|选做)'
+    r'|不要指读|注意读好|注意对话|有感情地朗读|读出自己的感受|选做'
+    # Section headings that sit flush against the text that follows them.
+    # Found on re-audit: 「钢」 carried '滑滑梯\n弹钢琴…\n字词句运用\n比一比'
+    # and 「积」 carried '日积月累予人玫瑰，手有余香。'
+    r'|我爱阅读|快乐读书吧|和大人一起读|比一比|填一填|连一连|数一数'
+    # 拓展活动 / 口语交际 etc. are activity headings, found on a later audit
+    # when the check was widened and 「命」 picked up '拓展活动我还想去找…'.
+    r'|拓展活动|口语交际|识字加油站|语文园地|讲给别人听'
+    # Appendix table headings. 「绚」's replacement still carried
+    # '识字表猬绚礼…' — the table body itself, which the spaced-row test
+    # misses because pdftotext ran the entries together.
+    r'|识字表|写字表|词语表|不计入生字总数)'
 )
 
 # Lines that are page furniture rather than text.
@@ -251,6 +262,11 @@ def _tidy(s):
     s = TITLE_PREFIX.sub('', s, count=1)
     if not s or _cn(s) < MIN_CN:
         return ''
+    # A candidate must itself be clean — otherwise a replacement can carry
+    # the very defect being fixed (this is how '日积月累予人玫瑰' would get
+    # swapped for another 日积月累 line).
+    if INSTRUCTION.search(s):
+        return ''
     return s
 
 
@@ -268,15 +284,26 @@ def _cn(s):
 
 def is_polluted(sentence, lesson_chars):
     """
-    True when a sentence opens with a run of this lesson's own 生字 — the
-    fingerprint of a 生字表 row that was parsed as prose.
+    True when a sentence is not usable prose.
 
-    Requiring the instruction text as well (or a long run) keeps real
-    sentences out: 「一二三四五，金木水火土。」 legitimately opens with five
-    of its lesson's characters.
+    Three patterns, all produced by the same root cause — PDF layout being
+    flattened before it was classified:
+
+    1. Opens with a run of this lesson's own 生字: a 生字表 row parsed as
+       prose. Requiring the instruction text as well (or a long run) keeps
+       real sentences out — 「一二三四五，金木水火土。」 legitimately opens
+       with five of its lesson's characters.
+    2. Contains teaching apparatus (朗读课文/日积月累/我爱阅读/字词句运用):
+       a section heading or exercise glued onto the text.
+    3. Spans three or more typeset lines: the extractor joined unrelated
+       lines, e.g. '滑滑梯\\n弹钢琴捏泥围滚铁环滑梯\\n字词句运用\\n比一比'.
     """
     if not sentence:
         return False
+    if INSTRUCTION.search(sentence):
+        return True
+    if sentence.count('\n') >= 2:
+        return True
     run = 0
     for ch in sentence:
         if ch in lesson_chars:

@@ -268,7 +268,10 @@ import json, glob, re, sys
 INSTRUCTION = re.compile(
     r'(朗读课文|默读课文|分角色朗读|朗读并背诵|背诵课文|背诵第|抄写下来|抄写句子'
     r'|字词句运用|交流平台|初试身手|词句段运用|日积月累|读一读|写一写|想一想'
-    r'|不要指读|注意读好|注意对话|有感情地朗读|读出自己的感受|选做)'
+    r'|不要指读|注意读好|注意对话|有感情地朗读|读出自己的感受|选做'
+    r'|我爱阅读|快乐读书吧|和大人一起读|比一比|填一填|连一连|数一数'
+    r'|拓展活动|口语交际|识字加油站|语文园地|讲给别人听'
+    r'|识字表|写字表|词语表|不计入生字总数)'
 )
 
 bad = []
@@ -280,26 +283,36 @@ for path in sorted(glob.glob('data/grade*.json')):
             s = entry.get('sentence') or ''
             if not s:
                 continue
-            run = 0
-            for ch in s:
-                if ch in chars:
-                    run += 1
-                else:
-                    break
-            # A long opening run of the lesson's own 生字, or a shorter one
-            # followed by teaching instructions, is the fingerprint. Four or
-            # five alone is not enough: 一二三四五，金木水火土。 legitimately
-            # opens with five of its lesson's characters.
-            if run >= 4 and (INSTRUCTION.search(s) or run >= 6):
-                bad.append(f\"{path.split('/')[-1]} {lesson['id']} {entry['char']}: {s[:34]}\")
+            why = ''
+            # Section heading or exercise glued onto the text.
+            if INSTRUCTION.search(s):
+                why = 'teaching apparatus'
+            # Three or more typeset lines joined into one 'sentence'.
+            elif s.count('\n') >= 2:
+                why = 'joined lines'
+            else:
+                run = 0
+                for ch in s:
+                    if ch in chars:
+                        run += 1
+                    else:
+                        break
+                # A long opening run of the lesson's own 生字 is the 生字表
+                # fingerprint. Four or five alone is not enough:
+                # 一二三四五，金木水火土。 legitimately opens with five.
+                if run >= 6:
+                    why = 'character-list row'
+            if why:
+                bad.append(f\"{path.split('/')[-1]} {lesson['id']} {entry['char']} [{why}]: {s[:30]}\")
 
 if bad:
-    print(f'❌ {len(bad)} example sentence(s) look like 生字表 rows:')
+    print(f'❌ {len(bad)} example sentence(s) are not usable prose:')
     for b in bad[:12]:
         print(f'  {b}')
     if len(bad) > 12:
         print(f'  ... and {len(bad) - 12} more')
     print('  Fix: python3 scripts/fix_polluted_sentences.py --apply')
+    print('   or: python3 scripts/tidy_sentences.py --apply')
     sys.exit(1)
-print('✅ Example sentences: no 生字表 rows mis-parsed as prose')
+print('✅ Example sentences: usable prose, no 生字表 rows or exercise text')
 " || exit 1
