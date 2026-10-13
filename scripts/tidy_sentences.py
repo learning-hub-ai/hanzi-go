@@ -46,6 +46,32 @@ SECTION = re.compile(rf'^第[一二三四五六七八九十]+单元[·\s]*[{CN}]
 # Wide spaces the textbook uses for alignment inside headings.
 WIDE_SPACE = re.compile(r'[\u2002\u2003\u2009\u200a]+')
 
+# Poets whose names appear in the 古诗 lessons, longest first so 刘禹锡 is
+# matched before any two-character prefix of it.
+#
+# An explicit list, not a pattern: a poet's name is two or three characters
+# and runs straight into the first line of the poem, so a length-based regex
+# cannot tell where the name ends. Trying `[\u4e00-\u9fff]{2,4}` turned
+# '[唐]王之涣白日依山尽' into '日依山尽' — it ate 王之涣 plus the 白 that
+# opens the verse, losing the very character the card teaches.
+POETS = sorted([
+    '王之涣', '杜甫', '刘禹锡', '杜牧', '叶绍翁', '李清照', '龚自珍',
+    '孟浩然', '于谦', '李白', '王充', '葛洪', '苏轼', '白居易', '王维',
+    '贺知章', '杨万里', '范成大', '辛弃疾', '陆游', '张志和', '卢钰',
+    '毛泽东', '林升', '查慎行',
+], key=len, reverse=True)
+POET_RE = re.compile('|'.join(map(re.escape, POETS)))
+
+# A poem heading: title, optional (其七), then [朝代], then the poet.
+POEM_HEAD = re.compile(
+    rf'^[{CN}\s（）()其一二三四五六七八九十]*?'
+    rf'[\[［【]\s*[{CN}]{{1,3}}\s*[\]］】]\s*'
+)
+# An attributed quotation: '—《论语》◎' / '—— 王充◎' / '—葛洪◎'
+QUOTE_SRC = re.compile(rf'^[—\-\s]+(?:《[{CN}]+》|[{CN}]{{2,4}})?\s*[◎※]\s*')
+# A lesson title glued to its body with an asterisk: '璀璨的明珠*香港位于…'
+TITLE_STAR = re.compile(rf'^[{CN}，、\s]{{2,14}}\*\s*')
+
 
 def tidy(s):
     """Return (cleaned, [what changed]). Never shortens meaningful text."""
@@ -64,8 +90,28 @@ def tidy(s):
 
     before = out
     out = SECTION.sub('', out)
-    out = ATTRIBUTION.sub('', out)
-    out = LEADING_MARK.sub('', out)
+
+    # Poem heading: '山 行[唐] 杜 牧远上寒山石径斜' → strip title + dynasty,
+    # then the poet by name. The textbook spaces out two-character names
+    # (杜 牧), so spaces are dropped before the name is matched.
+    head = POEM_HEAD.match(out)
+    if head:
+        rest = WIDE_SPACE.sub('', out[head.end():]).replace(' ', '')
+        poet = POET_RE.match(rest)
+        if poet:
+            out = rest[poet.end():]
+        else:
+            # Unknown poet: leave the sentence alone rather than guess a
+            # name length and risk eating the opening of the verse.
+            out = before
+
+    if out == before:
+        out = QUOTE_SRC.sub('', out, count=1)
+    if out == before:
+        out = TITLE_STAR.sub('', out, count=1)
+    if out == before:
+        out = ATTRIBUTION.sub('', out, count=1)
+        out = LEADING_MARK.sub('', out)
     if out != before:
         changes.append('strip-mark')
 

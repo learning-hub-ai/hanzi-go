@@ -305,6 +305,27 @@ for path in sorted(glob.glob('data/grade*.json')):
             if why:
                 bad.append(f\"{path.split('/')[-1]} {lesson['id']} {entry['char']} [{why}]: {s[:30]}\")
 
+# Poem titles and author attributions glued to the verse, e.g.
+# '山 行[唐] 杜 牧远上寒山石径斜' — which reads as though the poet were
+# called 杜牧远. Checked separately because the fix is to strip the prefix
+# (tidy_sentences.py), not to find a different sentence.
+decor = []
+DECOR = re.compile(r'[◇◆◎※*△▲□■●•]')
+ATTRIB = re.compile(r'[\[［【][\u4e00-\u9fff]{1,3}[\]］】]')
+for path in sorted(glob.glob('data/grade*.json')):
+    data = json.load(open(path))
+    for lesson in data['lessons']:
+        for entry in lesson['chars']:
+            s = entry.get('sentence') or ''
+            if ATTRIB.search(s) or DECOR.search(s):
+                decor.append(f\"{path.split('/')[-1]} {lesson['id']} {entry['char']}: {s[:34]}\")
+if decor:
+    print(f'❌ {len(decor)} sentence(s) carry a title/author/editorial prefix:')
+    for b in decor[:10]:
+        print(f'  {b}')
+    print('  Fix: python3 scripts/tidy_sentences.py --apply')
+    sys.exit(1)
+
 if bad:
     print(f'❌ {len(bad)} example sentence(s) are not usable prose:')
     for b in bad[:12]:
