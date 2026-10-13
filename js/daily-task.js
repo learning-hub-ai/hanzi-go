@@ -840,11 +840,11 @@ const DailyTaskController = (() => {
         document.querySelector('.dt-card-back').classList.remove('hidden');
         document.getElementById('dtCardActions').classList.remove('hidden');
         flipped = true;
-        Speech.speak(char.char);
+        Speech.speakChar(char);
       }
     });
 
-    document.getElementById('dtCardSpeak').addEventListener('click', () => Speech.speak(char.char));
+    document.getElementById('dtCardSpeak').addEventListener('click', () => Speech.speakChar(char));
     document.getElementById('dtCardKnew').addEventListener('click', () => _advanceCard(true));
     document.getElementById('dtCardForgot').addEventListener('click', () => _advanceCard(false));
   }

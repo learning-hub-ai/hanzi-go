@@ -401,7 +401,7 @@ const LearnController = (() => {
 
   function speakCurrent() {
     const chars = State.get('filteredChars');
-    Speech.speak(chars[State.get('currentIndex')].char);
+    Speech.speakChar(chars[State.get('currentIndex')]);
   }
 
   /**
@@ -447,7 +447,7 @@ const LearnController = (() => {
             // Small reward, consistent with 朗读 elsewhere on this card —
             // the child just finished writing the character, hearing it
             // read aloud reinforces the character/sound pairing.
-            if (charData) Speech.speak(charData.char);
+            if (charData) Speech.speakChar(charData);
           }
         });
       });
@@ -637,7 +637,7 @@ const ChallengeController = (() => {
       // to look at the highlighted answer afterwards. Speech.speak's onDone
       // is guaranteed to fire eventually even if every audio source fails
       // (bounded by speech.startTimeoutMs internally), so this never hangs.
-      Speech.speak(q.target.char, () => {
+      Speech.speakChar(q.target, () => {
         setTimeout(() => _advanceToNext(quiz), feedbackDelayMs);
       });
     } else {
@@ -1427,6 +1427,11 @@ const AppController = (() => {
 
       // Preload speech voices (async in some browsers)
       Speech.init();
+      // Load the 多音字 table so 爪 is read zhuǎ (as the textbook annotates
+      // it) rather than the engine default zhǎo. Not awaited: a slow or
+      // failed fetch must not delay first paint, and speakChar() falls back
+      // to the bare character while the table is empty.
+      Speech.loadHeteronyms();
 
       // Load character data
       const { allChars } = await DataService.loadAll();

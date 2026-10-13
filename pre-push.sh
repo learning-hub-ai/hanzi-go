@@ -263,7 +263,7 @@ print(f'✅ Offline cache: all {len(loaded)} scripts are pre-cached')
 # were never committed (only gen_g2s1.py is in the repo), so the data files are
 # effectively hand-maintained and a bad sentence can only be caught here.
 python3 -c "
-import json, glob, re, sys
+import json, glob, os, re, sys
 
 INSTRUCTION = re.compile(
     r'(朗读课文|默读课文|分角色朗读|朗读并背诵|背诵课文|背诵第|抄写下来|抄写句子'
@@ -346,6 +346,48 @@ if quotes:
     if len(quotes) > 10:
         print(f'  ... and {len(quotes) - 10} more')
     print('  Fix: python3 scripts/fix_quotes.py --apply')
+    sys.exit(1)
+
+# The 多音字 table must stay in step with the data it was generated from.
+# 爪 is annotated zhuǎ but every TTS engine says zhǎo for the bare
+# character, so Speech.speakChar() reads such characters inside a word that
+# selects the right reading. A card whose pinyin changed, or a newly added
+# 多音字, silently loses that correction unless the table is regenerated.
+het_path = 'data/heteronyms.json'
+if not os.path.exists(het_path):
+    print(f'❌ {het_path} is missing — 多音字 would be mispronounced')
+    print('  Fix: python3 scripts/gen_heteronyms.py')
+    sys.exit(1)
+het = json.load(open(het_path))
+# A character can legitimately carry different readings in different
+# lessons (答 is dā in 1-1-36's 回答 but dá elsewhere), so the table is
+# keyed by word, not by character alone, and the check has to ask whether
+# any card justifies each mapping — not whether every card agrees with it.
+justified = {}
+for path in sorted(glob.glob('data/grade*.json')):
+    data = json.load(open(path))
+    for lesson in data['lessons']:
+        for entry in lesson['chars']:
+            ch, want = entry['char'], (entry.get('pinyin') or '').strip()
+            if not want:
+                continue
+            for word in (entry.get('words') or []):
+                if isinstance(word, str) and ch in word:
+                    justified.setdefault((ch, word), set()).add(want)
+stale = []
+for ch, mapping in het.items():
+    for word, reading in mapping.items():
+        seen = justified.get((ch, word))
+        if not seen:
+            stale.append(f'{ch}: table maps {word} but no card pairs them')
+        elif reading not in seen:
+            cards = '/'.join(sorted(seen))
+            stale.append(f'{ch}: table says {word}={reading}, cards say {cards}')
+if stale:
+    print(f'❌ {len(stale)} 多音字 table entries disagree with the data:')
+    for b in stale[:10]:
+        print(f'  {b}')
+    print('  Fix: python3 scripts/gen_heteronyms.py')
     sys.exit(1)
 
 if bad:

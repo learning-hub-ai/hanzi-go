@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'hanzigo-v84';
+const CACHE_VERSION = 'hanzigo-v85';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -15,7 +15,10 @@ const STATIC_ASSETS = [
   './js/daily-task.js',
   './js/mobile.js',
   './assets/icon-192.png',
-  './assets/icon-512.png'
+  './assets/icon-512.png',
+  // 多音字 readings — without this the offline app speaks 爪 as zhǎo
+  // instead of the textbook's zhuǎ.
+  './data/heteronyms.json'
 ];
 
 // Data files to cache (all grade/semester JSON)

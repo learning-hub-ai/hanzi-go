@@ -681,6 +681,48 @@ async function runTests() {
     it('Speech module loaded', () => {
       assert(typeof app.Speech !== 'undefined');
       assert(typeof app.Speech.speak === 'function');
+      assert(typeof app.Speech.speakChar === 'function');
+    });
+
+    // 爪 is annotated zhuǎ in the grade 1 textbook ('爪子'), but every TTS
+    // engine says zhǎo for the bare character because that reading is
+    // commoner. 262 of 4014 characters are annotated with a reading that
+    // differs from the bare-character default, so a 多音字 has to be spoken
+    // inside a word that selects the right reading.
+    it('speakChar speaks a 多音字 inside a word that pins the reading', async () => {
+      await app.Speech.loadHeteronyms();
+      const pick = app.Speech._readingContext(
+        { char: '爪', pinyin: 'zhuǎ', words: ['爪子', '鸡爪'] });
+      assert(pick === '爪子', `expected 爪子 to pin zhuǎ, got ${pick}`);
+    });
+
+    it('speakChar leaves unambiguous characters as single characters', () => {
+      // The overwhelming majority of cards are not 多音字; those must keep
+      // speaking the bare character, so the change is scoped to the 187
+      // characters that actually need it.
+      const pick = app.Speech._readingContext(
+        { char: '天', pinyin: 'tiān', words: ['天空', '白天'] });
+      assert(pick === '天', `expected the bare character, got ${pick}`);
+    });
+
+    it('speakChar falls back to the character when no word matches', () => {
+      // 31 cards have 词语 that disagree with their 拼音 (喝 annotated hè
+      // but worded 喝水/喝茶, which an engine reads hē). Speaking such a
+      // word would be actively wrong, so those fall back rather than guess.
+      const pick = app.Speech._readingContext(
+        { char: '爪', pinyin: 'zhuǎ', words: [] });
+      assert(pick === '爪', `expected the bare character, got ${pick}`);
+    });
+
+    it('speakChar tolerates a missing or empty card', () => {
+      let called = false;
+      app.Speech.speakChar(null, () => { called = true; });
+      assert(called, 'onDone must still fire for a missing card');
+    });
+
+    it('heteronym table covers 爪 and the characters the textbook re-annotates', async () => {
+      const n = await app.Speech.loadHeteronyms();
+      assert(n > 100, `expected the full table, loaded ${n}`);
     });
 
     it('BadgeService has 11 badges', () => {
@@ -1013,9 +1055,17 @@ async function runTests() {
     // visible, and the child still gets a feedbackDelayMs pause afterwards.
 
     function withMockedSpeech(mockSpeak, fn) {
+      // The quiz speaks via speakChar() so a 多音字 is read with the
+      // annotated reading; stub both entry points so the test observes the
+      // call whichever path the code takes.
       const real = app.Speech.speak;
+      const realChar = app.Speech.speakChar;
       app.Speech.speak = mockSpeak;
-      try { fn(); } finally { app.Speech.speak = real; }
+      app.Speech.speakChar = (cd, cb) => mockSpeak(cd && cd.char, cb);
+      try { fn(); } finally {
+        app.Speech.speak = real;
+        app.Speech.speakChar = realChar;
+      }
     }
 
     it('on a correct answer, does not advance until Speech.speak signals onDone (playback finished)', () => {
@@ -3757,6 +3807,7 @@ async function runTests() {
       const real = app.Speech.speak;
       let spoken = null;
       app.Speech.speak = (t) => { spoken = t; };
+      app.Speech.speakChar = (cd) => { spoken = cd && cd.char; };
       try { btn.click(); } finally { app.Speech.speak = real; }
       assertEqual(spoken, '\u79e6', `should speak the front, got ${spoken}`);
     });
@@ -4045,6 +4096,7 @@ async function runTests() {
       const real = app.Speech.speak;
       let spoken = null;
       app.Speech.speak = (t) => { spoken = t; };
+      app.Speech.speakChar = (cd) => { spoken = cd && cd.char; };
       try {
         frame.contentDocument.getElementById('cardChar').click();
       } finally { app.Speech.speak = real; }

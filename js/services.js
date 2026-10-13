@@ -84,6 +84,11 @@ const Speech = (() => {
   }
 
   const BAIDU_URL = 'https://fanyi.baidu.com/gettts?lan=zh&spd=4&source=web&text=';
+  // Google honours ttsspeed, but only noticeably on more than one syllable —
+  // a single character comes back byte-identical at any value, which is why
+  // the bare character sounded rushed while Baidu's spd=4 did not. The value
+  // is appended from speech.rate at call time rather than baked in here, so
+  // the two sources stay in step with the Web Speech API path.
   const GOOGLE_URL = 'https://translate.googleapis.com/translate_tts?ie=UTF-8&tl=zh-CN&client=gtx&q=';
 
   // Tiny silent MP3 to unlock iOS audio on first tap
@@ -131,6 +136,35 @@ const Speech = (() => {
     } else {
       _debugLog('unlock: already unlocked, skipping');
     }
+  }
+
+  /**
+   * 多音字 → { word: annotated reading }.
+   *
+   * Populated from data/heteronyms.json by loadHeteronyms(). Left empty on
+   * any load failure, which degrades speakChar() back to speaking the bare
+   * character — the behaviour before this table existed — rather than
+   * breaking playback.
+   */
+  let HETERONYMS = {};
+
+  /**
+   * Load the 多音字 table. Safe to call more than once; a failure is logged
+   * and swallowed, since mispronouncing a 多音字 is a much smaller problem
+   * than no audio at all.
+   * @returns {Promise<number>} How many characters were loaded
+   */
+  async function loadHeteronyms() {
+    try {
+      const res = await fetch('data/heteronyms.json');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      HETERONYMS = await res.json();
+      _debugLog(`heteronyms: loaded ${Object.keys(HETERONYMS).length} characters`);
+    } catch (e) {
+      _debugLog(`heteronyms: load failed (${e.message}) — bare characters will be spoken`);
+      HETERONYMS = {};
+    }
+    return Object.keys(HETERONYMS).length;
   }
 
   /**
@@ -193,10 +227,90 @@ const Speech = (() => {
     const encoded = encodeURIComponent(text);
 
     if (_useLocalTTS) sources.push(`/tts?text=${encoded}`);
-    sources.push(GOOGLE_URL + encoded);
+    // Pass the configured rate to Google too. Without it Google plays at
+    // full speed while Baidu (spd=4) is already slowed, and since Google is
+    // tried first that is the voice a child actually hears — reported as
+    // the reading being too fast to follow.
+    const rate = State.config('speech.rate', 0.8);
+    const gRate = (typeof rate === 'number' && rate > 0 && rate < 1)
+      ? `&ttsspeed=${rate}` : '';
+    sources.push(GOOGLE_URL + encoded + gRate);
     sources.push(BAIDU_URL + encoded);
 
     _playSources(sources, 0, text, done);
+  }
+
+  /**
+   * Speak a taught character, using one of its words to pin the reading.
+   *
+   * A 多音字 read on its own gets whatever the TTS engine considers its
+   * default: 爪 is annotated zhuǎ in the grade 1 textbook ('爪子'), but
+   * every engine says zhǎo for the bare character, because that is the
+   * commoner reading. 262 of the 4014 characters here are annotated with a
+   * reading that differs from the bare-character default, so this is not
+   * one stray card.
+   *
+   * Speaking a WORD instead resolves it — engines disambiguate 多音字 from
+   * context, and '爪子' is said zhuǎ zi. The child is looking at the
+   * character and its words on screen, so hearing '爪子' rather than a bare
+   * 爪 is if anything more useful: it is how the character is actually
+   * pronounced in use.
+   *
+   * The word is only substituted when it is genuinely needed:
+   *   * no pinyin on the card → nothing to check against, speak the char
+   *   * bare char already matches the annotation → speak the char
+   *   * a word exists whose reading matches → speak that word
+   * Falling back to the bare character whenever no word matches keeps the
+   * 31 cards whose 词语 disagree with their 拼音 no worse than before.
+   *
+   * @param {Object} charData - Card data: { char, pinyin, words }
+   * @param {Function} [onDone] - As speak()
+   */
+  function speakChar(charData, onDone) {
+    if (!charData || !charData.char) { if (onDone) onDone(); return; }
+    speak(_readingContext(charData), onDone);
+  }
+
+  /**
+   * Pick the text that makes a TTS engine produce the annotated reading.
+   * Exposed for testing; see speakChar() for why this is needed.
+   * @param {Object} charData - Card data: { char, pinyin, words }
+   * @returns {string} The character, or a word containing it
+   */
+  function _readingContext(charData) {
+    const ch = charData.char;
+    const want = (charData.pinyin || '').trim();
+    const words = Array.isArray(charData.words) ? charData.words : [];
+    if (!want || !words.length) return ch;
+
+    // Only reach for a word when the bare character is actually ambiguous,
+    // so the overwhelming majority of cards keep speaking the single
+    // character exactly as before.
+    if (!HETERONYMS[ch]) return ch;
+
+    const target = _toneless(want);
+    for (const w of words) {
+      if (typeof w !== 'string' || !w.includes(ch)) continue;
+      // Trust the word only if the table says this word selects the
+      // annotated reading. Without that check '喝水' would be offered for
+      // 喝 annotated hè, and the engine would still say hē.
+      const readings = HETERONYMS[ch];
+      if (readings && readings[w] && _toneless(readings[w]) === target) return w;
+    }
+    // A word that contains the character but is not in the table is still
+    // better than nothing when the character is known-ambiguous: engines
+    // read 多音字 more reliably in context than alone.
+    const any = words.find(w => typeof w === 'string' && w.includes(ch) && w.length > 1);
+    return any || ch;
+  }
+
+  /** Strip tone marks so 'zhuǎ' and 'zhua' compare equal. */
+  function _toneless(p) {
+    return p.normalize('NFD').replace(/[\u0300-\u030f]/g, '')
+      .replace(/[āáǎà]/g, 'a').replace(/[ēéěè]/g, 'e')
+      .replace(/[īíǐì]/g, 'i').replace(/[ōóǒò]/g, 'o')
+      .replace(/[ūúǔù]/g, 'u').replace(/[ǖǘǚǜü]/g, 'v')
+      .toLowerCase();
   }
 
   /**
@@ -385,7 +499,11 @@ const Speech = (() => {
     }
   }
 
-  return { speak, init };
+  return {
+    speak, init, speakChar, loadHeteronyms,
+    // Exposed so tests can assert the reading choice without playing audio
+    _readingContext
+  };
 })();
 
 /**
