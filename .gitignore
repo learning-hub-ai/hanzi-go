@@ -10,6 +10,10 @@ server.log
 # 调试页，本地用
 debug.html
 
+# 配色预览工具，本地用 —— 决定主色之后可以删掉
+theme-preview.sh
+theme-preview.html
+
 # 测试用虚拟环境（headless runner 需要 websocket-client）
 .venv/
 

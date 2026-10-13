@@ -1128,19 +1128,29 @@ const ReportService = (() => {
  * key, deliberately NOT in data/*.json — those are generated from textbook
  * PDFs and regenerating them would wipe user content.
  *
- * Cards are shaped exactly like textbook chars ({char, pinyin, words,
- * sentence}) so they flow through the flashcard, SRS and quiz paths unchanged.
- * The 反面 text lands in `sentence`, which is what the card back renders.
+ * The four input fields are deliberately the same four a textbook character
+ * has — 正面/拼音/词语/例句 → {char, pinyin, words, sentence} — so cards flow
+ * through the flashcard, SRS and quiz paths with no special-casing, and all
+ * four question types work.
  *
- * Quiz support depends on which fields are filled:
- *   pinyin given  → 字→音 and 音→字 work
- *   back contains the front → 填空 works
- *   words empty   → 字→词 skips this card (see DataService distractor filter)
+ * Only 正面 is required. Each other field unlocks capability:
+ *   拼音 → 字→音 and 音→字 (without it the card never appears in 挑战,
+ *          so validate() returns a warning rather than accepting silently)
+ *   词语 → 字→词
+ *   例句 containing the front → 填空
+ *
+ * Legacy shape: cards created before 词语/例句 existed have a single `back`
+ * field (labelled "反面（意思、例句、翻译…）"). Those still live in people's
+ * browsers and inside already-downloaded backup files, so reads normalise
+ * `back` → `sentence` on the way out instead of migrating the store in place.
+ * An in-place rewrite would also need the write to succeed, which is the one
+ * thing that cannot be assumed (see State's storage-failure handling).
  */
 const CustomCardService = (() => {
   const MAX_FRONT = 8;    // a card front is a char or short word, not a sentence
   const MAX_BACK = 200;
   const MAX_PINYIN = 60;
+  const MAX_WORDS = 120;  // the whole comma-separated list, not one word
   const MAX_CARDS = 500;  // bound localStorage; far above realistic use
 
   /** @returns {Array} raw stored cards */
@@ -1154,43 +1164,121 @@ const CustomCardService = (() => {
   }
 
   /**
-   * Validate a would-be card without saving it.
-   * @returns {Object} {ok: boolean, error: string}
+   * Split the 词语 field into an array.
+   *
+   * Accepts Chinese and ASCII commas plus whitespace, because a parent
+   * typing on a phone keyboard gets whichever comma the IME offers.
+   *
+   * @param {string|string[]} raw
+   * @returns {string[]}
    */
-  function validate(front, back, pinyin) {
-    const f = (front || '').trim();
-    const b = (back || '').trim();
-    const p = (pinyin || '').trim();
-    if (!f) return { ok: false, error: '正面不能为空' };
-    if (!b) return { ok: false, error: '反面不能为空' };
-    if (f.length > MAX_FRONT) return { ok: false, error: `正面最多 ${MAX_FRONT} 个字` };
-    if (b.length > MAX_BACK) return { ok: false, error: `反面最多 ${MAX_BACK} 个字` };
-    if (p.length > MAX_PINYIN) return { ok: false, error: `拼音最多 ${MAX_PINYIN} 个字符` };
-    if (_load().some(c => c.front === f)) return { ok: false, error: `「${f}」已经有卡片了` };
-    if (_load().length >= MAX_CARDS) return { ok: false, error: `最多 ${MAX_CARDS} 张卡片` };
-    return { ok: true, error: '' };
+  function _parseWords(raw) {
+    if (Array.isArray(raw)) return raw.map(w => String(w).trim()).filter(Boolean);
+    return String(raw || '')
+      .split(/[,，、\s]+/)
+      .map(w => w.trim())
+      .filter(Boolean);
+  }
+
+  /**
+   * Normalise a stored card to the current four-field shape.
+   *
+   * Cards created before 词语/例句 existed have `back` (labelled
+   * "反面（意思、例句、翻译…）") and no `words`. Those are still in people's
+   * browsers and inside already-downloaded backup files, so every read goes
+   * through here rather than migrating the store in place — a rewrite would
+   * also have to succeed on a device where writes fail, which is exactly
+   * the case that cannot be relied on.
+   *
+   * `back` is mapped to `sentence`: that is how it was already being
+   * consumed (asChars put it in `sentence`), so behaviour is unchanged for
+   * existing cards.
+   */
+  function _normalise(c) {
+    if (!c || typeof c !== 'object') return null;
+    const front = String(c.front || '').trim();
+    if (!front) return null;
+    return {
+      front,
+      pinyin: String(c.pinyin || '').trim(),
+      words: _parseWords(c.words),
+      // Prefer the new field; fall back to the legacy one.
+      sentence: String(c.sentence != null ? c.sentence : (c.back || '')).trim(),
+      created: c.created || ''
+    };
+  }
+
+  /**
+   * Validate a would-be card without saving it.
+   *
+   * Only 正面 is required. 拼音 is optional but gates the quiz: without it a
+   * card cannot be asked as 字→音 or 音→字, so the caller is told rather
+   * than the card silently never appearing in a round. 词语 and 例句 are
+   * optional and each unlock one more question type.
+   *
+   * @param {Object|string} input - {front, pinyin, words, sentence} (a bare
+   *   string is treated as `front`, for the older positional call style)
+   * @param {string} [legacySentence] - positional form: add(front, back, pinyin)
+   * @param {string} [legacyPinyin]
+   * @returns {Object} {ok, error, warning}
+   */
+  function validate(input, legacySentence, legacyPinyin) {
+    const o = (typeof input === 'string')
+      ? { front: input, sentence: legacySentence, pinyin: legacyPinyin }
+      : (input || {});
+    const f = String(o.front || '').trim();
+    const p = String(o.pinyin || '').trim();
+    const s = String(o.sentence != null ? o.sentence : (o.back || '')).trim();
+    const wordsRaw = (typeof o.words === 'string') ? o.words : _parseWords(o.words).join('，');
+
+    if (!f) return { ok: false, error: '正面不能为空', warning: '' };
+    if (f.length > MAX_FRONT) return { ok: false, error: `正面最多 ${MAX_FRONT} 个字`, warning: '' };
+    if (p.length > MAX_PINYIN) return { ok: false, error: `拼音最多 ${MAX_PINYIN} 个字符`, warning: '' };
+    if (wordsRaw.length > MAX_WORDS) return { ok: false, error: `词语一共最多 ${MAX_WORDS} 个字`, warning: '' };
+    if (s.length > MAX_BACK) return { ok: false, error: `例句最多 ${MAX_BACK} 个字`, warning: '' };
+
+    const existing = _load();
+    if (existing.some(c => String(c.front || '').trim() === f)) {
+      return { ok: false, error: `「${f}」已经有卡片了`, warning: '' };
+    }
+    if (existing.length >= MAX_CARDS) {
+      return { ok: false, error: `最多 ${MAX_CARDS} 张卡片`, warning: '' };
+    }
+    // Valid, but say so if the card will be unusable in 挑战 — silently
+    // accepting it and never quizzing it is the worse outcome.
+    return {
+      ok: true,
+      error: '',
+      warning: p ? '' : '没填拼音，这张卡不会出现在挑战模式里'
+    };
   }
 
   /**
    * Add a card.
-   * @param {string} front - card front (the prompt)
-   * @param {string} back - card back (meaning, example, translation…)
-   * @param {string} [pinyin] - optional; enables the pinyin quiz types
-   * @returns {Object} {ok: boolean, error: string, card: Object|null}
+   *
+   * @param {Object|string} input - {front, pinyin, words, sentence}, or the
+   *   front string for the older add(front, back, pinyin) call style
+   * @param {string} [legacySentence]
+   * @param {string} [legacyPinyin]
+   * @returns {Object} {ok, error, warning, card}
    */
-  function add(front, back, pinyin) {
-    const check = validate(front, back, pinyin);
-    if (!check.ok) return { ok: false, error: check.error, card: null };
+  function add(input, legacySentence, legacyPinyin) {
+    const o = (typeof input === 'string')
+      ? { front: input, sentence: legacySentence, pinyin: legacyPinyin }
+      : (input || {});
+    const check = validate(o);
+    if (!check.ok) return { ok: false, error: check.error, warning: '', card: null };
     const card = {
-      front: (front || '').trim(),
-      back: (back || '').trim(),
-      pinyin: (pinyin || '').trim(),
+      front: String(o.front || '').trim(),
+      pinyin: String(o.pinyin || '').trim(),
+      words: _parseWords(o.words),
+      sentence: String(o.sentence != null ? o.sentence : (o.back || '')).trim(),
       created: new Date().toISOString().slice(0, 10)
     };
     const cards = _load();
     cards.push(card);
     _save(cards);
-    return { ok: true, error: '', card };
+    return { ok: true, error: '', warning: check.warning, card };
   }
 
   /**
@@ -1199,25 +1287,39 @@ const CustomCardService = (() => {
    */
   function remove(front) {
     const cards = _load();
-    const next = cards.filter(c => c.front !== front);
+    const next = cards.filter(c => String(c.front || '').trim() !== String(front || '').trim());
     if (next.length === cards.length) return false;
     _save(next);
     return true;
   }
 
-  /** @returns {Array} stored cards, newest first */
+  /** @returns {Array} stored cards, newest first, in the four-field shape */
   function getAll() {
-    return _load().slice().reverse();
+    return _load().map(_normalise).filter(Boolean).reverse();
   }
 
-  /** @returns {number} how many custom cards exist */
+  /**
+   * @returns {number} how many usable custom cards exist
+   *
+   * Counts what getAll() would return, not raw array length: _normalise
+   * drops entries with no usable front (null, {}, a blank string — possible
+   * in a hand-edited or partially-corrupt store), and a sidebar badge
+   * reading "5张" above a list showing one card is worse than either number
+   * alone. Every caller here is a count shown next to that list.
+   */
   function count() {
-    return _load().length;
+    return _load().reduce((n, c) => n + (_normalise(c) ? 1 : 0), 0);
   }
 
   /**
    * Cards in the same shape as textbook characters, so every existing path
    * (flashcards, SRS, quiz) consumes them without special-casing.
+   *
+   * Now a straight field-for-field mapping: the four inputs are deliberately
+   * the same four fields a textbook character has ({char, pinyin, words,
+   * sentence}), which is what lets 字→词 work on a custom card at all —
+   * `words` used to be hardcoded empty here, so DataService silently
+   * downgraded that question type to 字→音 (see its pickWord fallback).
    *
    * grade/semester are 0 to mark "not from a textbook" — the same convention
    * the error-book branch already uses for synthesised entries.
@@ -1227,14 +1329,14 @@ const CustomCardService = (() => {
   function asChars() {
     return getAll().map(c => ({
       char: c.front,
-      pinyin: c.pinyin || '',
-      words: [],
-      sentence: c.back,
+      pinyin: c.pinyin,
+      words: c.words,
+      sentence: c.sentence,
       grade: 0,
       semester: 0,
       isCustom: true
     }));
   }
 
-  return { add, remove, getAll, count, asChars, validate };
+  return { add, remove, getAll, count, asChars, validate, parseWords: _parseWords };
 })();

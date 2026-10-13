@@ -551,7 +551,7 @@ async function runTests() {
       if (front) {
         front.value = '测';
         doc.getElementById('ccPinyin').value = 'cè';
-        doc.getElementById('ccBack').value = 'focus-ring guard';
+        doc.getElementById('ccSentence').value = 'focus-ring guard';
         doc.querySelector('[data-action="cc-add"]').click();
       }
 
@@ -3135,19 +3135,230 @@ async function runTests() {
       assertEqual(app.CustomCardService.getAll()[0].pinyin, '', 'empty pinyin kept as empty string');
     });
 
-    it('R8: empty front or back is rejected', () => {
-      assert(!app.CustomCardService.add('', 'back', '').ok, 'empty front must be rejected');
-      assert(!app.CustomCardService.add('front', '', '').ok, 'empty back must be rejected');
-      assert(!app.CustomCardService.add('   ', 'back', '').ok, 'whitespace-only front must be rejected');
+    it('R8: only 正面 is required', () => {
+      // Deliberate rule change: 反面 used to be mandatory, which forced a
+      // parent to invent an example sentence for a card they only wanted to
+      // drill pronunciation on. Now 正面 is the only required field and each
+      // of the other three unlocks a capability instead of gating saving.
+      assert(!app.CustomCardService.add({ front: '', sentence: 'back' }).ok,
+        'empty front must be rejected');
+      assert(!app.CustomCardService.add({ front: '   ' }).ok,
+        'whitespace-only front must be rejected');
       assertEqual(app.CustomCardService.count(), 0, 'nothing should have been stored');
+
+      const bare = app.CustomCardService.add({ front: '\u5b57' });
+      assert(bare.ok, 'front alone must be accepted');
+      assertEqual(app.CustomCardService.count(), 1, 'and stored');
+    });
+
+    it('R8: a card with no pinyin is accepted but warns it cannot be quizzed', () => {
+      // Without pinyin the card cannot be asked as 字→音 or 音→字, so it
+      // would simply never show up in a round. Saving it silently would look
+      // like it worked; the warning is the difference between "optional" and
+      // "quietly useless".
+      const noPinyin = app.CustomCardService.add({ front: '\u6c49', sentence: '\u6c49\u5b57' });
+      assert(noPinyin.ok, 'should still save');
+      assert(/\u62fc\u97f3/.test(noPinyin.warning || ''),
+        `should warn about the missing pinyin, got "${noPinyin.warning}"`);
+
+      const withPinyin = app.CustomCardService.add({ front: '\u79e6', pinyin: 'q\u00edn' });
+      assert(withPinyin.ok, 'should save');
+      assertEqual(withPinyin.warning, '', 'and not warn when pinyin is present');
     });
 
     it('R8: input is trimmed', () => {
-      app.CustomCardService.add('  \u5b57  ', '  \u610f\u601d  ', '  z\u00ec  ');
+      app.CustomCardService.add({
+        front: '  \u5b57  ', pinyin: '  z\u00ec  ',
+        words: '  \u5b57\u5178 , \u6587\u5b57 ', sentence: '  \u610f\u601d  '
+      });
       const c = app.CustomCardService.getAll()[0];
       assertEqual(c.front, '\u5b57', `front should be trimmed, got "${c.front}"`);
-      assertEqual(c.back, '\u610f\u601d', `back should be trimmed, got "${c.back}"`);
+      assertEqual(c.sentence, '\u610f\u601d', `sentence should be trimmed, got "${c.sentence}"`);
       assertEqual(c.pinyin, 'z\u00ec', `pinyin should be trimmed, got "${c.pinyin}"`);
+      assertEqual(c.words.join('|'), '\u5b57\u5178|\u6587\u5b57',
+        `words should be split and trimmed, got "${c.words.join('|')}"`);
+    });
+
+    it('R8: a legacy card (back, no words/sentence) still reads correctly', () => {
+      // Cards created before 词语/例句 existed are still in people's browsers
+      // AND inside backup files they have already downloaded, so an import
+      // months from now must still work. Reads normalise rather than the
+      // store being migrated in place — an in-place rewrite would need the
+      // write to succeed, which is the one thing that cannot be assumed.
+      app.State.save('customCards', [
+        { front: '\u79e6', back: '\u79e6\u59cb\u7687\u7edf\u4e00\u4e86\u4e2d\u56fd', pinyin: 'q\u00edn', created: '2026-10-01' }
+      ]);
+      const c = app.CustomCardService.getAll()[0];
+      assertEqual(c.front, '\u79e6', 'front survives');
+      assertEqual(c.pinyin, 'q\u00edn', 'pinyin survives');
+      assertEqual(c.sentence, '\u79e6\u59cb\u7687\u7edf\u4e00\u4e86\u4e2d\u56fd',
+        `legacy "back" should surface as sentence, got "${c.sentence}"`);
+      assertEqual(c.words.length, 0, 'and words defaults to empty, not undefined');
+
+      // The flashcard/quiz adapter must see the same thing.
+      const asChar = app.CustomCardService.asChars()[0];
+      assertEqual(asChar.sentence, '\u79e6\u59cb\u7687\u7edf\u4e00\u4e86\u4e2d\u56fd',
+        'asChars should carry the legacy text through');
+      assert(Array.isArray(asChar.words), 'words must always be an array');
+    });
+
+    it('R8: asChars matches the textbook character shape field for field', () => {
+      // This is the whole point of the four-field design: every existing
+      // path (flashcards, SRS, all four question types) consumes a custom
+      // card with no special-casing. If the shapes drift apart, the quiz
+      // starts silently skipping question types again.
+      app.State.save('customCards', []);
+      app.CustomCardService.add({
+        front: '\u79e6', pinyin: 'q\u00edn',
+        words: '\u79e6\u671d\uff0c\u79e6\u56fd',
+        sentence: '\u79e6\u59cb\u7687\u7edf\u4e00\u4e86\u4e2d\u56fd'
+      });
+      const custom = app.CustomCardService.asChars()[0];
+      const textbook = (app.State.get('allChars') || [])[0];
+      assert(textbook, 'need a textbook char to compare against');
+
+      ['char', 'pinyin', 'words', 'sentence'].forEach(k => {
+        assert(k in custom, `custom card missing "${k}"`);
+        assertEqual(typeof custom[k], typeof textbook[k],
+          `"${k}" type differs: custom ${typeof custom[k]} vs textbook ${typeof textbook[k]}`);
+      });
+      assert(Array.isArray(custom.words) && Array.isArray(textbook.words),
+        'words must be an array on both');
+      assertEqual(custom.words.join('|'), '\u79e6\u671d|\u79e6\u56fd', 'words carried through');
+    });
+
+    it('R8: 字→词 works on a custom card that has 词语', () => {
+      // The bug this change fixes: asChars hardcoded words:[] so
+      // DataService.pickWord found nothing and silently fell back to
+      // pickPinyin — one of the four question types never applied to custom
+      // cards at all. Drive the generator directly with only custom cards
+      // in the pool and assert the type actually comes out.
+      app.State.save('customCards', []);
+      app.SpacedRepService.resetCache();
+      // Several cards so the generator has distractors to draw on.
+      [['\u79e6', 'q\u00edn', '\u79e6\u671d\uff0c\u79e6\u56fd'],
+       ['\u6c49', 'h\u00e0n', '\u6c49\u5b57\uff0c\u6c49\u8bed'],
+       ['\u5510', 't\u00e1ng', '\u5510\u671d\uff0c\u5510\u8bd7'],
+       ['\u5b8b', 's\u00f2ng', '\u5b8b\u671d\uff0c\u5b8b\u8bcd']
+      ].forEach(([f, p, w]) => app.CustomCardService.add({ front: f, pinyin: p, words: w }));
+
+      const chars = app.CustomCardService.asChars();
+      app.State.set('filteredChars', chars);
+      const qs = app.DataService.generateQuizQuestions(false, 'pickWord', 8);
+      assert(qs && qs.length, 'should generate questions from custom cards');
+      const kinds = new Set(qs.map(q => q.type));
+      assert(kinds.has('pickWord'),
+        `字→词 should be reachable on custom cards, got only: ${[...kinds].join(',')}`);
+    });
+
+    it('R8: a custom card with no 词语 degrades to 字→音 rather than breaking', () => {
+      // 词语 is optional, so the generator must still produce a usable
+      // question — the old behaviour for every custom card, now only the
+      // behaviour for cards that genuinely have no words.
+      app.State.save('customCards', []);
+      app.SpacedRepService.resetCache();
+      [['\u79e6', 'q\u00edn'], ['\u6c49', 'h\u00e0n'], ['\u5510', 't\u00e1ng'], ['\u5b8b', 's\u00f2ng']]
+        .forEach(([f, p]) => app.CustomCardService.add({ front: f, pinyin: p }));
+      app.State.set('filteredChars', app.CustomCardService.asChars());
+      const qs = app.DataService.generateQuizQuestions(false, 'pickWord', 6);
+      assert(qs && qs.length, 'should still generate questions');
+      qs.forEach(q => {
+        assert(q.options && q.options.length > 1, 'each question needs options');
+        assert(q.type !== 'pickWord', 'with no words it must fall back, not fake a 字→词');
+      });
+    });
+
+    it('R8: count() agrees with getAll() even on a partly-corrupt store', () => {
+      // Found in review: _normalise drops entries with no usable front
+      // (null, {}, a blank string — reachable via a hand-edited store or a
+      // truncated import), but count() returned the raw array length. The
+      // sidebar badge and the modal title both use count(), so they read
+      // "5张" above a list showing one card. Either number alone is fine;
+      // disagreeing is not.
+      app.State.save('customCards', [
+        { front: '\u6c49', pinyin: 'h\u00e0n' },
+        null,
+        {},
+        { front: '' },
+        { front: '   ' }
+      ]);
+      assertEqual(app.CustomCardService.getAll().length, 1, 'only one usable card');
+      assertEqual(app.CustomCardService.count(), 1,
+        `count() must match getAll(), got ${app.CustomCardService.count()}`);
+      assertEqual(app.CustomCardService.asChars().length, 1, 'and asChars too');
+    });
+
+    it('R8: the older positional add(front, back, pinyin) still works', () => {
+      // Kept deliberately: the signature changed to an object for the
+      // fourth field, but external callers and older tests use the
+      // positional form, and silently dropping it would be a breaking
+      // change for a one-field addition.
+      app.State.save('customCards', []);
+      const r = app.CustomCardService.add('\u53e4', '\u610f\u601d', 'g\u01d4');
+      assert(r.ok, 'positional call should still be accepted');
+      assertEqual(r.card.front, '\u53e4', 'front from arg 1');
+      assertEqual(r.card.sentence, '\u610f\u601d', 'arg 2 maps to sentence (was "back")');
+      assertEqual(r.card.pinyin, 'g\u01d4', 'pinyin from arg 3');
+      assert(Array.isArray(r.card.words) && r.card.words.length === 0,
+        'words defaults to an empty array, never undefined');
+    });
+
+    it('R8: an oversized 词语 list is rejected the same way in both input forms', () => {
+      // The field accepts a comma string from the form but an array when
+      // read back from storage, so the length cap has to apply to both or
+      // a round-trip could smuggle a huge list past validation.
+      app.State.save('customCards', []);
+      const longStr = '\u8bcd'.repeat(200);
+      assert(!app.CustomCardService.add({ front: 'a1', words: longStr }).ok,
+        'an over-long comma string must be rejected');
+      assert(!app.CustomCardService.add({ front: 'a2', words: Array(200).fill('\u8bcd') }).ok,
+        'and so must the equivalent array');
+      assertEqual(app.CustomCardService.count(), 0, 'neither should have been stored');
+    });
+
+    it('R8: the four-field form is no taller than the old three-field one', () => {
+      // This modal trades height between the fixed form and the scrolling
+      // list — that is why the 例句 textarea is rows=1 (see the test below).
+      // Adding 词语 as a fourth row would have eaten ~56px of list space, so
+      // 正面 and 拼音 share one row instead. Measured: 279px before the
+      // change and 279px after. The cap guards against a future field being
+      // added as another full-width row without reconsidering the layout.
+      const prevHeight = frame.style.height;
+      frame.style.height = '880px';
+      try {
+        app.State.save('customCards', [{ front: '\u79e6', pinyin: 'q\u00edn' }]);
+        app.AppController.showCustomCards();
+        const foot = frame.contentDocument.querySelector('.cc-footer');
+        const list = frame.contentDocument.querySelector('.cc-list-wrap');
+        assert(foot, 'form should render');
+        const footH = foot.getBoundingClientRect().height;
+        assert(footH <= 300,
+          `form grew to ${Math.round(footH)}px; keep it <=300 or the card list loses room`);
+        // And the list must still get a usable share of the modal.
+        if (list) {
+          assertGreater(list.getBoundingClientRect().height, 100,
+            'the card list needs at least ~100px to be scannable');
+        }
+      } finally {
+        app.ModalUI.close();
+        frame.style.height = prevHeight;
+      }
+    });
+
+    it('R8: 词语 accepts both Chinese and ASCII separators', () => {
+      // A parent typing on a phone gets whichever comma the IME offers, so
+      // accepting only one of them would silently collapse the list into a
+      // single bogus "word".
+      const p = app.CustomCardService.parseWords;
+      assertEqual(p('\u79e6\u671d\uff0c\u79e6\u56fd').join('|'), '\u79e6\u671d|\u79e6\u56fd', 'Chinese comma');
+      assertEqual(p('\u79e6\u671d,\u79e6\u56fd').join('|'), '\u79e6\u671d|\u79e6\u56fd', 'ASCII comma');
+      assertEqual(p('\u79e6\u671d\u3001\u79e6\u56fd').join('|'), '\u79e6\u671d|\u79e6\u56fd', 'enumeration comma');
+      assertEqual(p('\u79e6\u671d \u79e6\u56fd').join('|'), '\u79e6\u671d|\u79e6\u56fd', 'whitespace');
+      assertEqual(p('\u79e6\u671d\uff0c\uff0c \u79e6\u56fd\uff0c').join('|'), '\u79e6\u671d|\u79e6\u56fd',
+        'repeated and trailing separators should not produce empties');
+      assertEqual(p('').length, 0, 'empty input gives no words');
+      assertEqual(p(['\u79e6\u671d', ' \u79e6\u56fd ']).join('|'), '\u79e6\u671d|\u79e6\u56fd',
+        'an array (as stored) passes through trimmed');
     });
 
     it('R8: duplicate fronts are rejected', () => {
@@ -3248,7 +3459,7 @@ async function runTests() {
 
     it('R8: form renders with all three inputs', () => {
       const html = app.ModalUI.renderCustomCards(app.CustomCardService.getAll());
-      for (const id of ['ccFront', 'ccPinyin', 'ccBack']) {
+      for (const id of ['ccFront', 'ccPinyin', 'ccWords', 'ccSentence']) {
         assert(html.includes(id), `form missing input ${id}`);
       }
       assert(html.includes('cc-add'), 'form missing the add button');
@@ -3425,14 +3636,14 @@ async function runTests() {
       const doc = frame.contentDocument;
       doc.getElementById('ccFront').value = '\u79e6';
       doc.getElementById('ccPinyin').value = 'q\u00edn';
-      doc.getElementById('ccBack').value = '\u7edf\u4e00\u4e2d\u56fd';
+      doc.getElementById('ccSentence').value = '\u7edf\u4e00\u4e2d\u56fd';
       doc.querySelector('[data-action="cc-add"]').click();
 
       // Form must still be there — re-rendering the modal would lose it
       assert(doc.getElementById('ccFront'), 'the form must stay open for the next card');
       assertEqual(doc.getElementById('ccFront').value, '', '正面 should be cleared');
       assertEqual(doc.getElementById('ccPinyin').value, '', '拼音 should be cleared');
-      assertEqual(doc.getElementById('ccBack').value, '', '反面 should be cleared');
+      assertEqual(doc.getElementById('ccSentence').value, '', '反面 should be cleared');
       assertEqual(app.CustomCardService.count(), 1, 'the card should be stored');
     });
 
@@ -3441,7 +3652,7 @@ async function runTests() {
       const doc = frame.contentDocument;
       for (const [front, back] of [['\u4e00', 'a'], ['\u4e8c', 'b'], ['\u4e09', 'c']]) {
         doc.getElementById('ccFront').value = front;
-        doc.getElementById('ccBack').value = back;
+        doc.getElementById('ccSentence').value = back;
         doc.querySelector('[data-action="cc-add"]').click();
       }
       assertEqual(app.CustomCardService.count(), 3,
@@ -3457,7 +3668,7 @@ async function runTests() {
       assert(listBefore, 'list container should exist when cards are present');
 
       doc.getElementById('ccFront').value = '\u65b0';
-      doc.getElementById('ccBack').value = 'added';
+      doc.getElementById('ccSentence').value = 'added';
       doc.querySelector('[data-action="cc-add"]').click();
 
       assert(doc.getElementById('ccList').innerHTML.includes('\u65b0'),
@@ -3472,12 +3683,12 @@ async function runTests() {
       app.AppController.showCustomCards();
       const doc = frame.contentDocument;
       doc.getElementById('ccFront').value = '\u91cd';   // duplicate
-      doc.getElementById('ccBack').value = 'typed text that must survive';
+      doc.getElementById('ccSentence').value = 'typed text that must survive';
       doc.querySelector('[data-action="cc-add"]').click();
 
       assertEqual(doc.getElementById('ccFront').value, '\u91cd',
         'the typed front must NOT be cleared on failure');
-      assertEqual(doc.getElementById('ccBack').value, 'typed text that must survive',
+      assertEqual(doc.getElementById('ccSentence').value, 'typed text that must survive',
         'the typed back must NOT be cleared on failure');
       assert(doc.getElementById('ccMsg').textContent.length > 0, 'an error should be shown');
       assertEqual(app.CustomCardService.count(), 1, 'nothing extra should be stored');
@@ -3488,13 +3699,13 @@ async function runTests() {
       app.AppController.showCustomCards();
       const doc = frame.contentDocument;
       doc.getElementById('ccFront').value = '\u597d';
-      doc.getElementById('ccBack').value = 'ok';
+      doc.getElementById('ccSentence').value = 'ok';
       doc.querySelector('[data-action="cc-add"]').click();
       const okMsg = doc.getElementById('ccMsg').textContent;
       assert(okMsg.includes('\u5df2\u52a0\u5165'), `expected a success note, got "${okMsg}"`);
 
       doc.getElementById('ccFront').value = '\u597d';   // duplicate now
-      doc.getElementById('ccBack').value = 'again';
+      doc.getElementById('ccSentence').value = 'again';
       doc.querySelector('[data-action="cc-add"]').click();
       const errMsg = doc.getElementById('ccMsg').textContent;
       assert(errMsg.includes('\u5df2\u7ecf\u6709'), `expected the duplicate error, got "${errMsg}"`);
@@ -3505,10 +3716,10 @@ async function runTests() {
       app.AppController.showCustomCards();
       const doc = frame.contentDocument;
       doc.getElementById('ccFront').value = '\u56de';
-      doc.getElementById('ccBack').value = 'via Enter';
+      doc.getElementById('ccSentence').value = 'via Enter';
       const ev = new frame.contentWindow.KeyboardEvent('keydown',
         { key: 'Enter', bubbles: true, cancelable: true });
-      doc.getElementById('ccBack').dispatchEvent(ev);
+      doc.getElementById('ccSentence').dispatchEvent(ev);
       assertEqual(app.CustomCardService.count(), 1,
         'Enter should add the card without reaching for the mouse');
       clearCards();
@@ -3518,10 +3729,10 @@ async function runTests() {
       app.AppController.showCustomCards();
       const doc = frame.contentDocument;
       doc.getElementById('ccFront').value = '\u6362';
-      doc.getElementById('ccBack').value = 'line one';
+      doc.getElementById('ccSentence').value = 'line one';
       const ev = new frame.contentWindow.KeyboardEvent('keydown',
         { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true });
-      doc.getElementById('ccBack').dispatchEvent(ev);
+      doc.getElementById('ccSentence').dispatchEvent(ev);
       assertEqual(app.CustomCardService.count(), 0,
         'Shift+Enter must insert a newline, not submit');
       clearCards();
@@ -3674,7 +3885,7 @@ async function runTests() {
       app.ModalUI.filterCustomCardList('\u65e7');
 
       frame.contentDocument.getElementById('ccFront').value = '\u65b0';
-      frame.contentDocument.getElementById('ccBack').value = 'brand new';
+      frame.contentDocument.getElementById('ccSentence').value = 'brand new';
       frame.contentDocument.querySelector('[data-action="cc-add"]').click();
 
       assertEqual(searchEl.value, '', 'the search box should be cleared after adding');
@@ -3814,7 +4025,7 @@ async function runTests() {
       const html = app.ModalUI.renderCustomCards(app.CustomCardService.getAll());
       assert(html.includes('rows="1"'), 'the 反面 textarea should default to 1 row, not 2');
       app.AppController.showCustomCards();
-      assertEqual(frame.contentDocument.getElementById('ccBack').rows, 1,
+      assertEqual(frame.contentDocument.getElementById('ccSentence').rows, 1,
         'the rendered textarea must actually have rows=1');
     });
   });
@@ -3931,9 +4142,18 @@ async function runTests() {
     });
 
     it('Help: explains that 拼音 is what makes a custom card quizzable', () => {
+      // Asserts the substance, not one phrasing. The previous version
+      // matched the exact string "拼音填了才能用在挑战里" and broke the
+      // moment the sentence was rewritten for the four-field form — the
+      // same literal-match trap hit earlier with the 数据存在哪 section.
       const html = app.ModalUI.renderHelp();
-      assert(html.includes('\u62fc\u97f3\u586b\u4e86\u624d\u80fd\u7528\u5728\u6311\u6218\u91cc'),
-        'a custom card without pinyin cannot be quizzed — users need to know');
+      assert(/拼音/.test(html), 'help should mention 拼音');
+      assert(/挑战/.test(html), 'help should mention 挑战');
+      // The two must appear in the same sentence, or the causal link
+      // ("no pinyin → never quizzed") is not actually communicated.
+      const sentences = html.split(/[。；]/);
+      assert(sentences.some(s => /拼音/.test(s) && /挑战/.test(s)),
+        'help should state in one sentence that pinyin is what enables 挑战');
     });
 
     it('Help: mentions 加强记忆 (reinforce/shuffle-triple) in learn mode', () => {

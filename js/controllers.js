@@ -1072,11 +1072,17 @@ const AppController = (() => {
   function addCustomCard() {
     const frontEl = document.getElementById('ccFront');
     const pinyinEl = document.getElementById('ccPinyin');
-    const backEl = document.getElementById('ccBack');
+    const wordsEl = document.getElementById('ccWords');
+    const sentenceEl = document.getElementById('ccSentence');
     const msgEl = document.getElementById('ccMsg');
-    if (!frontEl || !backEl) return;
+    if (!frontEl) return;
 
-    const result = CustomCardService.add(frontEl.value, backEl.value, pinyinEl ? pinyinEl.value : '');
+    const result = CustomCardService.add({
+      front: frontEl.value,
+      pinyin: pinyinEl ? pinyinEl.value : '',
+      words: wordsEl ? wordsEl.value : '',
+      sentence: sentenceEl ? sentenceEl.value : ''
+    });
     if (!result.ok) {
       // Keep what was typed — re-rendering would discard it
       _setFormMessage(result.error, false);
@@ -1084,10 +1090,16 @@ const AppController = (() => {
       return;
     }
 
-    const okMessage = `已加入「${result.card.front}」✓`;
+    // Surface the "no pinyin → never quizzed" warning alongside the success,
+    // rather than letting the card look fully added when it is not usable in
+    // 挑战. Still a success: the card is saved and works in 学习.
+    const okMessage = result.warning
+      ? `已加入「${result.card.front}」✓ ${result.warning}`
+      : `已加入「${result.card.front}」✓`;
     frontEl.value = '';
-    backEl.value = '';
     if (pinyinEl) pinyinEl.value = '';
+    if (wordsEl) wordsEl.value = '';
+    if (sentenceEl) sentenceEl.value = '';
     FilterUI.updateCustomCount();
 
     // Update the list in place where possible. On the very first card the list
@@ -1762,11 +1774,11 @@ const AppController = (() => {
     });
     // Enter submits the custom-card form. Delegated because the modal content
     // is replaced wholesale, so direct listeners would not survive a re-render.
-    // Shift+Enter still inserts a newline in the 反面 textarea.
+    // Shift+Enter still inserts a newline in the 例句 textarea.
     document.getElementById('modalContent').addEventListener('keydown', (e) => {
       if (e.key !== 'Enter' || e.shiftKey) return;
       const t = e.target;
-      if (!t || !['ccFront', 'ccPinyin', 'ccBack'].includes(t.id)) return;
+      if (!t || !['ccFront', 'ccPinyin', 'ccWords', 'ccSentence'].includes(t.id)) return;
       e.preventDefault();
       addCustomCard();
     });

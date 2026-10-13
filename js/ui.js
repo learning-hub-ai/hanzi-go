@@ -695,13 +695,17 @@ const ModalUI = (() => {
    * already have" actions) rather than search getting a sticky row of its
    * own, which previously overclaimed otherwise-usable list height.
    *
-   * 反面's textarea is 1 row, not 2: the fixed footer was taking roughly
+   * 例句's textarea is 1 row, not 2: the fixed footer was taking roughly
    * half the modal's height on its own, which is exactly what you do not
    * want while scanning search results — less list is visible per pixel of
    * modal. Still resizable by drag for anyone typing a longer sentence.
    *
-   * Three inputs in the form, not two: 拼音 is separate because the quiz reads
-   * that field directly. Without it a card can only be flipped, never quizzed.
+   * Four inputs, matching a textbook character exactly (正面/拼音/词语/例句
+   * → char/pinyin/words/sentence). That parity is what makes all four quiz
+   * types work on a hand-made card: 词语 used to be absent, so DataService
+   * silently downgraded 字→词 to 字→音 for every custom card. 正面 and 拼音
+   * share a row so the fourth field costs no extra height (measured: 279px
+   * before and after).
    *
    * Built for entering several cards in one sitting (the Anki model): the form
    * stays put, clears after each add and returns focus to 正面, so adding ten
@@ -712,18 +716,35 @@ const ModalUI = (() => {
    * @returns {string} HTML
    */
   function renderCustomCards(cards) {
+    // Four fields now, matching a textbook character exactly (字/拼音/词语/
+    // 例句) so all four question types work. To keep the form from growing a
+    // row taller — this modal already trades height between the form and the
+    // scrolling list — 正面 and 拼音 share one row: both are short, and they
+    // are the two the parent always fills.
+    const inputStyle = 'width:100%;padding:8px;border:1px solid #cbd5e1;'
+      + 'border-radius:6px;font-size:16px;box-sizing:border-box';
+    const labelStyle = 'display:block;font-size:13px;color:#475569;margin-bottom:4px';
     const formHtml = `<div class="cc-footer">
-      <label for="ccFront" style="display:block;font-size:13px;color:#475569;margin-bottom:4px">正面（字或词，最多 8 个字）</label>
-      <input id="ccFront" type="text" maxlength="8" placeholder="例：秦" autocomplete="off"
-        style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:16px;box-sizing:border-box">
+      <div style="display:flex;gap:8px">
+        <div style="flex:1;min-width:0">
+          <label for="ccFront" style="${labelStyle}">正面（必填，最多 8 字）</label>
+          <input id="ccFront" type="text" maxlength="8" placeholder="例：秦" autocomplete="off"
+            style="${inputStyle}">
+        </div>
+        <div style="flex:1;min-width:0">
+          <label for="ccPinyin" style="${labelStyle}">拼音（不填不能挑战）</label>
+          <input id="ccPinyin" type="text" maxlength="60" placeholder="例：qín" autocomplete="off"
+            style="${inputStyle}">
+        </div>
+      </div>
 
-      <label for="ccPinyin" style="display:block;font-size:13px;color:#475569;margin:10px 0 4px">拼音（可不填；填了才能用于挑战）</label>
-      <input id="ccPinyin" type="text" maxlength="60" placeholder="例：qín" autocomplete="off"
-        style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:16px;box-sizing:border-box">
+      <label for="ccWords" style="${labelStyle};margin-top:10px">词语（可不填，用逗号隔开）</label>
+      <input id="ccWords" type="text" maxlength="120" placeholder="例：秦朝，秦国" autocomplete="off"
+        style="${inputStyle}">
 
-      <label for="ccBack" style="display:block;font-size:13px;color:#475569;margin:10px 0 4px">反面（意思、例句、翻译…）—— 按 Enter 直接加入</label>
-      <textarea id="ccBack" maxlength="200" rows="1" placeholder="例：秦始皇统一了中国。"
-        style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:15px;box-sizing:border-box;resize:vertical"></textarea>
+      <label for="ccSentence" style="${labelStyle};margin-top:10px">例句（可不填）—— 按 Enter 直接加入</label>
+      <textarea id="ccSentence" maxlength="200" rows="1" placeholder="例：秦始皇统一了中国。"
+        style="${inputStyle};font-size:15px;resize:vertical"></textarea>
 
       <div id="ccMsg" class="form-msg"></div>
       <button data-action="cc-add" class="btn-modal-action btn-modal-action--primary"
@@ -731,7 +752,8 @@ const ModalUI = (() => {
     </div>`;
 
     if (!cards.length) {
-      return '<p style="color:#999">还没有自定义字卡。下面填好正反面就能加。</p>' + formHtml;
+      return '<p style="color:#999">还没有自定义字卡。填好下面的「正面」就能加，'
+        + '其余三项不填也可以 —— 填了拼音才能用于挑战。</p>' + formHtml;
     }
 
     // Search shares the header row with 复习卡片 rather than claiming a row
@@ -765,17 +787,28 @@ const ModalUI = (() => {
    * @returns {string} HTML
    */
   function renderCustomCardList(cards) {
-    return cards.map(c => `<div class="modal-item" data-cc-item="${escapeHtml(c.front)}">
+    return cards.map(c => {
+      // Show 词语 and 例句 on one secondary line, separated — the list is a
+      // scan-and-manage view, so a card with only 词语 should not render an
+      // empty gap where 例句 would be. A card with neither (front+pinyin
+      // only, which is now valid) shows a hint that it is quiz-ready but
+      // has nothing to read on the card back.
+      const words = (c.words || []).join('、');
+      const detail = [words, c.sentence].filter(Boolean).join(' · ')
+        || (c.pinyin ? '只有拼音（可挑战）' : '没有拼音，不会出现在挑战里');
+      const dim = (words || c.sentence) ? '#94a3b8' : '#cbd5e1';
+      return `<div class="modal-item" data-cc-item="${escapeHtml(c.front)}">
       <span>
         <span class="char-display" style="font-size:20px">${escapeHtml(c.front)}</span>
         ${c.pinyin ? `<small style="color:#64748b;margin-left:6px">${escapeHtml(c.pinyin)}</small>` : ''}
-        <br><small style="color:#94a3b8">${escapeHtml(c.back)}</small>
+        <br><small style="color:${dim}">${escapeHtml(detail)}</small>
       </span>
       <span style="display:flex;gap:4px;flex-shrink:0">
         <button data-action="cc-speak" data-front="${escapeHtml(c.front)}" aria-label="朗读" title="朗读">🔊</button>
         <button data-action="cc-remove" data-front="${escapeHtml(c.front)}" aria-label="删除" title="删除">✕</button>
       </span>
-    </div>`).join('');
+    </div>`;
+    }).join('');
   }
 
   /**
@@ -860,7 +893,7 @@ const ModalUI = (() => {
       row('📈 智能复习', '<strong>自动算出来的</strong> —— 哪个字该复习了，它说了算。刚学会的隔一天再问，记牢了拉长到一周、两周、一个月。每天内容都不一样，照着练就行。') +
       row('❤️ 练生字', '你自己收藏的字。看卡片时点卡片上的 ❤️ 收进来，再点一下取消。') +
       row('📖 练错题', `答错过的字。<strong>连续答对 ${toRemove} 次才自动移出去</strong> —— 不能手动删。这正是它的用处：错过的字得真学会才算过关。`) +
-      row('✏️ 自定义', '课本没有、但你想记的词都行。填好正面反面就能加，一张接一张按 Enter。<strong>拼音填了才能用在挑战里</strong>。🗑 要点两次才删。'))}
+      row('✏️ 自定义', '课本没有、但你想记的词都行。四项跟课本的字一样：<strong>正面、拼音、词语、例句</strong> —— 只有正面必填，一张接一张按 Enter。填得越全，能出的题型越多：<strong>拼音</strong>才能用在挑战里，<strong>词语</strong>解锁「字→词」，<strong>例句</strong>解锁「填空」。🗑 要点两次才删。'))}
 
     ${block('本子和设置', '看看自己已经学了多少 —— 攒徽章、换用户都在这',
       row('❤️ 生字本', '收藏过的字，不想要了点 ✕ 取消。想拿来练，点「📚 复习卡片」「🎮 生字挑战」，或复习区的 练生字。') +
