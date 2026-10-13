@@ -714,6 +714,30 @@ async function runTests() {
       assert(pick === '爪', `expected the bare character, got ${pick}`);
     });
 
+    it('speakChar does not speak a word the table does not vouch for', async () => {
+      // Regression: the first version fell back to "any word containing the
+      // character" when no word matched the annotation. That made 156 cards
+      // speak an unvalidated word — 喝 annotated hè was read as 喝水 (hē),
+      // and 间 annotated jiān picked up 中间, which the table records as
+      // jiàn from a different lesson. Hearing the wrong reading inside a
+      // word is more confusing than hearing the bare character.
+      await app.Speech.loadHeteronyms();
+      const pick = app.Speech._readingContext(
+        { char: '喝', pinyin: 'hè', words: ['喝水', '喝茶'] });
+      assert(pick === '喝',
+        `must not speak an unvouched word, got ${pick}`);
+    });
+
+    it('speakChar picks the reading for THIS card, not another lesson', async () => {
+      // 间 is annotated jiān here, but the table also holds 中间=jiàn from
+      // a different lesson. The lookup is per-word-and-reading, so the
+      // mismatched entry must not be used.
+      await app.Speech.loadHeteronyms();
+      const pick = app.Speech._readingContext(
+        { char: '间', pinyin: 'jiān', words: ['中间', '时间'] });
+      assert(pick === '间', `expected the bare character, got ${pick}`);
+    });
+
     it('speakChar tolerates a missing or empty card', () => {
       let called = false;
       app.Speech.speakChar(null, () => { called = true; });

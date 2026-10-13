@@ -390,6 +390,43 @@ if stale:
     print('  Fix: python3 scripts/gen_heteronyms.py')
     sys.exit(1)
 
+# The table must not claim a word produces a reading it does not have.
+# Matching tone-insensitively equates hē with hè, which is how 喝水 (hē)
+# came to be listed for a card annotated hè — the player then spoke '喝水'
+# for a character the card says is read hè. Tone may only be ignored when
+# the annotation itself is neutral (written without a mark, as 爪子's zi).
+#
+# This needs a pronunciation source, so it runs only where pypinyin is
+# installed (the dev venv). Skipped elsewhere rather than failing, since
+# gen_heteronyms.py already enforces the rule at generation time.
+TONE_MARKS = 'āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ'
+try:
+    from pypinyin import pinyin as _py, Style as _St
+
+    def _word_reading(word, char):
+        syl = _py(word, style=_St.TONE, heteronym=False)
+        for i, c in enumerate(word):
+            if c == char and i < len(syl):
+                return syl[i][0]
+        return None
+
+    toned = []
+    for ch, mapping in het.items():
+        for word, reading in mapping.items():
+            if not any(c in TONE_MARKS for c in reading):
+                continue  # neutral-tone annotation; tone difference expected
+            actual = _word_reading(word, ch)
+            if actual and actual != reading:
+                toned.append(f'{ch}: {word} mapped to {reading} but reads {actual}')
+    if toned:
+        print(f'❌ {len(toned)} 多音字 mappings claim a reading the word lacks:')
+        for b in toned[:10]:
+            print(f'  {b}')
+        print('  Fix: python3 scripts/gen_heteronyms.py')
+        sys.exit(1)
+except ImportError:
+    pass
+
 if bad:
     print(f'❌ {len(bad)} example sentence(s) are not usable prose:')
     for b in bad[:12]:

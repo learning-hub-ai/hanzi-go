@@ -289,19 +289,21 @@ const Speech = (() => {
     if (!HETERONYMS[ch]) return ch;
 
     const target = _toneless(want);
+    const readings = HETERONYMS[ch];
     for (const w of words) {
       if (typeof w !== 'string' || !w.includes(ch)) continue;
-      // Trust the word only if the table says this word selects the
-      // annotated reading. Without that check '喝水' would be offered for
-      // 喝 annotated hè, and the engine would still say hē.
-      const readings = HETERONYMS[ch];
-      if (readings && readings[w] && _toneless(readings[w]) === target) return w;
+      // Use the word only when the table says that word selects the reading
+      // THIS card is annotated with. Without the check, 喝 annotated hè
+      // would be read as 喝水 (hē), and 间 annotated jiān would pick up
+      // 中间 — which the table records as jiàn from a different lesson.
+      if (readings && _toneless(readings[w] || '') === target) return w;
     }
-    // A word that contains the character but is not in the table is still
-    // better than nothing when the character is known-ambiguous: engines
-    // read 多音字 more reliably in context than alone.
-    const any = words.find(w => typeof w === 'string' && w.includes(ch) && w.length > 1);
-    return any || ch;
+    // No word is known to produce the annotated reading, so there is nothing
+    // to gain by guessing: an unvalidated word is as likely to be wrong as
+    // the bare character, and hearing '喝水' for a card that says hè is more
+    // confusing to a child than hearing a single character. 157 cards land
+    // here, and for most of them the bare character is already correct.
+    return ch;
   }
 
   /** Strip tone marks so 'zhuǎ' and 'zhua' compare equal. */

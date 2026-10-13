@@ -43,6 +43,15 @@ except ImportError:
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_PATH = os.path.join(REPO_ROOT, 'data', 'heteronyms.json')
 
+# Tone marks, used to tell a neutral-tone annotation ('zi', 'de') from a
+# toned one. The textbook omits the mark for neutral tone; pypinyin does not.
+TONE_MARKS = 'āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ'
+
+
+def has_tone(syllable):
+    """True if the syllable carries a tone mark."""
+    return any(c in TONE_MARKS for c in syllable)
+
 
 def reading_of(word, char):
     """The reading pypinyin gives `char` where it appears in `word`."""
@@ -85,10 +94,21 @@ def build():
                     got = reading_of(word, char)
                     if not got:
                         continue
-                    # Accept an exact match, or a match ignoring tone: the
+                    # Require the tones to agree, with ONE exception: the
                     # textbook writes neutral tone without a mark ('爪子' as
-                    # zi) where pypinyin supplies one.
-                    if got == want or to_normal(got) == to_normal(want):
+                    # zi) where pypinyin supplies a toned syllable.
+                    #
+                    # Ignoring tone in general was the original defect: it
+                    # equates hē with hè, so 喝水 (hē) was accepted for a
+                    # card annotated hè and the player then spoke '喝水' —
+                    # the wrong reading, inside a word, which is more
+                    # confusing to a child than a bare character.
+                    if got == want:
+                        hits[word] = want
+                    elif not has_tone(want) and to_normal(got) == to_normal(want):
+                        # Annotation is neutral tone; the word's toned
+                        # syllable is the same syllable, so the word does
+                        # select this reading.
                         hits[word] = want
                 if hits:
                     table.setdefault(char, {}).update(hits)
