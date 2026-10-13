@@ -326,6 +326,28 @@ if decor:
     print('  Fix: python3 scripts/tidy_sentences.py --apply')
     sys.exit(1)
 
+# Unbalanced quotation marks. 163 sentences carried a lone “ or ” because the
+# textbook sets dialogue across typeset lines and the extraction kept only one
+# half: '“嘿，我回来啦。' lost both the closing quote and '桑娜！”'. Deleting
+# the stray mark alone would leave a sentence that reads fine but is not what
+# the book says, so the missing half is recovered from the PDF.
+quotes = []
+for path in sorted(glob.glob('data/grade*.json')):
+    data = json.load(open(path))
+    for lesson in data['lessons']:
+        for entry in lesson['chars']:
+            s = entry.get('sentence') or ''
+            if s.count('\u201c') != s.count('\u201d'):
+                quotes.append(f\"{path.split('/')[-1]} {lesson['id']} {entry['char']}: {s[:34]}\")
+if quotes:
+    print(f'❌ {len(quotes)} sentence(s) have unbalanced quotation marks:')
+    for b in quotes[:10]:
+        print(f'  {b}')
+    if len(quotes) > 10:
+        print(f'  ... and {len(quotes) - 10} more')
+    print('  Fix: python3 scripts/fix_quotes.py --apply')
+    sys.exit(1)
+
 if bad:
     print(f'❌ {len(bad)} example sentence(s) are not usable prose:')
     for b in bad[:12]:
