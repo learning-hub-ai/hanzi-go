@@ -32,6 +32,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import sys
 
 try:
@@ -47,6 +48,9 @@ OUT_PATH = os.path.join(REPO_ROOT, 'data', 'heteronyms.json')
 # toned one. The textbook omits the mark for neutral tone; pypinyin does not.
 TONE_MARKS = 'āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ'
 
+# Runs of Hanzi. pypinyin is only given these — see reading_of().
+HANZI_RUN = re.compile(r'[\u4e00-\u9fff]+')
+
 
 def has_tone(syllable):
     """True if the syllable carries a tone mark."""
@@ -54,11 +58,22 @@ def has_tone(syllable):
 
 
 def reading_of(word, char):
-    """The reading pypinyin gives `char` where it appears in `word`."""
-    syllables = pinyin(word, style=Style.TONE, heteronym=False)
-    for i, c in enumerate(word):
-        if c == char and i < len(syllables):
-            return syllables[i][0]
+    """
+    The reading pypinyin gives `char` where it appears in `word`.
+
+    Only runs of Hanzi are handed to pypinyin. Passing mixed text is unsafe:
+    pypinyin collapses a run of punctuation into ONE list entry, so character
+    index and syllable index drift apart after it, and the wrong syllable
+    comes back. One word in the data ('哦，是你') already contains
+    punctuation, so this is not hypothetical.
+    """
+    for run in HANZI_RUN.findall(word):
+        syl = [s[0] for s in pinyin(run, style=Style.TONE, heteronym=False)]
+        if len(syl) != len(run):
+            continue  # alignment not guaranteed — skip rather than guess
+        for c, p in zip(run, syl):
+            if c == char:
+                return p
     return None
 
 

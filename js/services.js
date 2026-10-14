@@ -288,7 +288,6 @@ const Speech = (() => {
     // character exactly as before.
     if (!HETERONYMS[ch]) return ch;
 
-    const target = _toneless(want);
     const readings = HETERONYMS[ch];
     for (const w of words) {
       if (typeof w !== 'string' || !w.includes(ch)) continue;
@@ -296,14 +295,37 @@ const Speech = (() => {
       // THIS card is annotated with. Without the check, 喝 annotated hè
       // would be read as 喝水 (hē), and 间 annotated jiān would pick up
       // 中间 — which the table records as jiàn from a different lesson.
-      if (readings && _toneless(readings[w] || '') === target) return w;
+      //
+      // Tone must agree exactly, mirroring scripts/gen_heteronyms.py. A
+      // tone-insensitive compare equates hē with hè, which is precisely how
+      // 喝水 came to be spoken for a card reading hè; the table is clean
+      // today, but the player must not depend on that.
+      if (readings && readings[w] && _readingMatches(readings[w], want)) return w;
     }
     // No word is known to produce the annotated reading, so there is nothing
     // to gain by guessing: an unvalidated word is as likely to be wrong as
     // the bare character, and hearing '喝水' for a card that says hè is more
-    // confusing to a child than hearing a single character. 157 cards land
-    // here, and for most of them the bare character is already correct.
+    // confusing to a child than hearing a single character. Most cards that
+    // land here are already correct as a bare character.
     return ch;
+  }
+
+  /**
+   * Does `reading` satisfy the card's annotation `want`?
+   *
+   * Exact match, or — only when the annotation is neutral tone, which the
+   * textbook writes without a mark ('爪子' as zi) — the same syllable
+   * ignoring tone. Never ignores tone between two toned syllables.
+   */
+  function _readingMatches(reading, want) {
+    if (reading === want) return true;
+    if (_hasTone(want)) return false;
+    return _toneless(reading) === _toneless(want);
+  }
+
+  /** True if the syllable carries a tone mark (so not neutral tone). */
+  function _hasTone(syllable) {
+    return /[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]/.test(syllable);
   }
 
   /** Strip tone marks so 'zhuǎ' and 'zhua' compare equal. */

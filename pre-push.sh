@@ -404,10 +404,16 @@ try:
     from pypinyin import pinyin as _py, Style as _St
 
     def _word_reading(word, char):
-        syl = _py(word, style=_St.TONE, heteronym=False)
-        for i, c in enumerate(word):
-            if c == char and i < len(syl):
-                return syl[i][0]
+        # Only Hanzi runs go to pypinyin: it collapses a punctuation run into
+        # one entry, which shifts every syllable after it. Mirrors
+        # reading_of() in scripts/gen_heteronyms.py.
+        for run in re.findall(r'[\u4e00-\u9fff]+', word):
+            syl = [s[0] for s in _py(run, style=_St.TONE, heteronym=False)]
+            if len(syl) != len(run):
+                continue
+            for c, p in zip(run, syl):
+                if c == char:
+                    return p
         return None
 
     toned = []

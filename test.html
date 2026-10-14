@@ -119,6 +119,11 @@ function resetProfileData() {
   }
 }
 
+// Deliberately synchronous. An async `it` would need `tests[tests.length-1]`
+// captured at call time rather than when the promise runs, or tests land in
+// whichever group happens to be last by then. Anything needing async setup
+// must be prepared before the suite — see the heteronym preload in
+// runTests() — and assert synchronously.
 function it(name, fn) {
   const group = tests[tests.length - 1];
   try {
@@ -205,6 +210,15 @@ async function runTests() {
     document.getElementById('results').innerHTML = '<p style="color:red">❌ Failed: app.State not accessible. Make sure test.html is served from the same origin (http://localhost:8080/test.html)</p>';
     return;
   }
+
+  // Load the 多音字 table once, here, so the tests that assert on it can be
+  // synchronous. `it` is deliberately not async (see its note), so a test
+  // that awaited this itself would be recorded as passing before its
+  // assertions ran.
+  let heteronymCount = 0;
+  try {
+    heteronymCount = await app.Speech.loadHeteronyms();
+  } catch (e) { /* asserted below; a failure must not abort the suite */ }
 
   // === 1. Data Files ===
   describe('📂 Data Files', () => {
@@ -689,8 +703,7 @@ async function runTests() {
     // commoner. 262 of 4014 characters are annotated with a reading that
     // differs from the bare-character default, so a 多音字 has to be spoken
     // inside a word that selects the right reading.
-    it('speakChar speaks a 多音字 inside a word that pins the reading', async () => {
-      await app.Speech.loadHeteronyms();
+    it('speakChar speaks a 多音字 inside a word that pins the reading', () => {
       const pick = app.Speech._readingContext(
         { char: '爪', pinyin: 'zhuǎ', words: ['爪子', '鸡爪'] });
       assert(pick === '爪子', `expected 爪子 to pin zhuǎ, got ${pick}`);
@@ -714,25 +727,23 @@ async function runTests() {
       assert(pick === '爪', `expected the bare character, got ${pick}`);
     });
 
-    it('speakChar does not speak a word the table does not vouch for', async () => {
+    it('speakChar does not speak a word the table does not vouch for', () => {
       // Regression: the first version fell back to "any word containing the
       // character" when no word matched the annotation. That made 156 cards
       // speak an unvalidated word — 喝 annotated hè was read as 喝水 (hē),
       // and 间 annotated jiān picked up 中间, which the table records as
       // jiàn from a different lesson. Hearing the wrong reading inside a
       // word is more confusing than hearing the bare character.
-      await app.Speech.loadHeteronyms();
       const pick = app.Speech._readingContext(
         { char: '喝', pinyin: 'hè', words: ['喝水', '喝茶'] });
       assert(pick === '喝',
         `must not speak an unvouched word, got ${pick}`);
     });
 
-    it('speakChar picks the reading for THIS card, not another lesson', async () => {
+    it('speakChar picks the reading for THIS card, not another lesson', () => {
       // 间 is annotated jiān here, but the table also holds 中间=jiàn from
       // a different lesson. The lookup is per-word-and-reading, so the
       // mismatched entry must not be used.
-      await app.Speech.loadHeteronyms();
       const pick = app.Speech._readingContext(
         { char: '间', pinyin: 'jiān', words: ['中间', '时间'] });
       assert(pick === '间', `expected the bare character, got ${pick}`);
@@ -744,9 +755,29 @@ async function runTests() {
       assert(called, 'onDone must still fire for a missing card');
     });
 
-    it('heteronym table covers 爪 and the characters the textbook re-annotates', async () => {
-      const n = await app.Speech.loadHeteronyms();
+    it('heteronym table covers 爪 and the characters the textbook re-annotates', () => {
+      const n = heteronymCount;
       assert(n > 100, `expected the full table, loaded ${n}`);
+    });
+
+    it('speakChar requires the tone to match, not just the syllable', () => {
+      // The original defect: the lookup compared readings with tone marks
+      // stripped, so hē and hè counted as equal and 喝水 (hē) was spoken for
+      // a card annotated hè. A toned annotation must match exactly.
+      const pick = app.Speech._readingContext(
+        { char: '喝', pinyin: 'hē', words: ['喝采'] });
+      // 喝采 is in the table as hè; a card annotated hē must not use it.
+      assert(pick === '喝',
+        `hē must not be satisfied by the hè word 喝采, got ${pick}`);
+    });
+
+    it('speakChar still allows a neutral-tone annotation to match', () => {
+      // The textbook writes neutral tone without a mark ('爪子' as zi) while
+      // pypinyin supplies a toned syllable, so that one case must stay
+      // tone-insensitive or those cards would lose their word.
+      const pick = app.Speech._readingContext(
+        { char: '爪', pinyin: 'zhuǎ', words: ['爪子'] });
+      assert(pick === '爪子', `expected 爪子, got ${pick}`);
     });
 
     it('BadgeService has 11 badges', () => {
