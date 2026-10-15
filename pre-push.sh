@@ -433,8 +433,29 @@ try:
 except ImportError:
     pass
 
-if bad:
-    print(f'❌ {len(bad)} example sentence(s) are not usable prose:')
+# Word-fallback sentences ('试一试 · 考试') are a last resort for characters
+# the textbook only prints in a 生字表 or 词语表, never in prose. They are
+# legitimate but weak — a child sees two words instead of a sentence — so the
+# count must not creep back up. 40 remain, all verified as having no usable
+# sentence anywhere in their volume.
+FALLBACK_BUDGET = 40
+fallbacks = []
+for path in sorted(glob.glob('data/grade*.json')):
+    data = json.load(open(path))
+    for lesson in data['lessons']:
+        for entry in lesson['chars']:
+            if ' · ' in (entry.get('sentence') or ''):
+                fallbacks.append(lesson['id'] + ' ' + entry['char'])
+if len(fallbacks) > FALLBACK_BUDGET:
+    print(f'❌ {len(fallbacks)} word-fallback sentences, budget is {FALLBACK_BUDGET}:')
+    for b in fallbacks[:10]:
+        print(f'  {b}')
+    print('  A new fallback means a real sentence was replaced by two words.')
+    print('  Fix: recover the sentence from the PDF, or lower the budget if')
+    print('       the character genuinely has no prose example.')
+    sys.exit(1)
+
+
     for b in bad[:12]:
         print(f'  {b}')
     if len(bad) > 12:
