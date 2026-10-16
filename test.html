@@ -2396,14 +2396,66 @@ async function runTests() {
       }
     });
 
-    it('a stored volume that no longer exists is ignored', () => {
-      // Guards against a hand-edited or stale value booting the app into an
-      // empty character list; grade 9 semester 3 cannot exist.
+    // Launch order. resetProfileData clears favourites but not lastVolume,
+    // so every test below sets lastVolume itself rather than inheriting one.
+    function withFavourite(fn) {
+      app.FavoriteService.toggle('\u5929');   // 天
+      try { fn(); } finally {
+        if (app.FavoriteService.isFavorite('\u5929')) app.FavoriteService.toggle('\u5929');
+      }
+    }
+
+    it('launch: the remembered volume wins over favourites', () => {
+      // The point of this change. A child who had favourited even one
+      // character used to be sent to 收藏 on every launch.
+      app.State.save('lastVolume', { grade: '5', semester: '2' });
+      withFavourite(() => {
+        app.AppController._restoreInitialView();
+        assertEqual(app.State.get('selectedGrade'), '5', 'should reopen grade 5, not 收藏');
+        assertEqual(app.State.get('selectedSemester'), '2', 'should reopen semester 2');
+      });
+    });
+
+    it('launch: favourites still win when no volume is remembered', () => {
+      // First run, or a device that has never picked a volume: keep the
+      // old default rather than ignore the child's favourites.
+      localStorage.removeItem(Object.keys(localStorage).find(k => k.endsWith('_lastVolume')) || '');
+      assert(app.State.load('lastVolume', null) === null, 'test premise: no remembered volume');
+      withFavourite(() => {
+        app.AppController._restoreInitialView();
+        assertEqual(app.State.get('selectedGrade'), 'fav', 'should open 收藏');
+      });
+    });
+
+    it('launch: a remembered volume that no longer exists falls through', () => {
+      // A hand-edited or stale value must not boot into an empty list.
+      // 9-3 cannot exist; with no favourites the fallback is 一上.
       app.State.save('lastVolume', { grade: '9', semester: '3' });
-      const last = app.State.load('lastVolume', null);
-      const hasChars = (app.State.get('allChars') || []).some(
-        c => String(c.grade) === last.grade && String(c.semester) === last.semester);
-      assert(!hasChars, 'test premise broken: 9-3 should not exist');
+      app.AppController._restoreInitialView();
+      assertEqual(app.State.get('selectedGrade'), '1', 'should fall back to grade 1');
+      assertEqual(app.State.get('selectedSemester'), '1', 'should fall back to semester 1');
+      assert(app.State.get('filteredChars').length > 0, 'fell back to an empty list');
+    });
+
+    it('launch: a stale volume plus favourites opens 收藏, not 一上', () => {
+      app.State.save('lastVolume', { grade: '9', semester: '3' });
+      withFavourite(() => {
+        app.AppController._restoreInitialView();
+        assertEqual(app.State.get('selectedGrade'), 'fav', 'stale volume should fall through to 收藏');
+      });
+    });
+
+    it('launch: the sidebar points at the restored volume', () => {
+      app.State.save('lastVolume', { grade: '5', semester: '2' });
+      app.AppController.switchMode('learn');
+      app.AppController._restoreInitialView();
+      const active = frame.contentDocument.querySelector('.sidebar-item.active');
+      assert(active, 'no sidebar row is highlighted');
+      assertEqual(active.dataset.grade + '-' + active.dataset.sem, '5-2',
+        'sidebar highlights the wrong row');
+      const group = active.closest('.sidebar-grade-children');
+      assert(group && group.classList.contains('expanded'),
+        'the restored grade group is still collapsed');
     });
 
     it('the stored volume is per profile, not shared', () => {

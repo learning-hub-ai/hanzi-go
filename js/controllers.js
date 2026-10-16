@@ -806,6 +806,47 @@ const AppController = (() => {
   }
 
   /**
+   * Choose what 学习/挑战 show when the app starts.
+   *
+   * Order, first match wins:
+   *   1. the volume this child was last reading (see selectSemester)
+   *   2. 收藏, if there are favourites — only on a first run with no
+   *      remembered volume, which is the old default
+   *   3. 一年级上册
+   *
+   * The remembered volume comes first because it is where the child
+   * actually is in the textbook. 收藏 is a handful of characters picked
+   * from across volumes, and putting it first meant that any child who had
+   * favourited even one character was sent there on every launch and had
+   * to find their volume again by hand — the exact chore remembering the
+   * volume was meant to remove.
+   *
+   * The highlight painted here is dropped again by _syncSidebarSelection if
+   * we booted into 任务, where the sidebar selection is not used.
+   */
+  function _restoreInitialView() {
+    const last = State.load('lastVolume', null);
+    // Re-validate rather than trust storage: a volume could have been
+    // removed from data/, and a hand-edited or corrupt value must not boot
+    // the app into an empty character list.
+    const hasChars = !!last && (State.get('allChars') || []).some(
+      c => String(c.grade) === last.grade && String(c.semester) === last.semester);
+    if (hasChars) {
+      selectSemester(last.semester, last.grade);
+      _pointSidebarAt(last.grade, last.semester);
+      return;
+    }
+    if (FavoriteService.getAll().length > 0) {
+      selectSemester('fav', 'fav');
+      document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+      const favItem = document.querySelector('.sidebar-item[data-grade="fav"]');
+      if (favItem) favItem.classList.add('active');
+      return;
+    }
+    selectSemester('1', '1');
+  }
+
+  /**
    * Point the sidebar at a grade/semester: highlight the row, and expand its
    * grade group if it is collapsed.
    *
@@ -853,11 +894,13 @@ const AppController = (() => {
     //
     // Only real volumes are stored. 'fav'/'err'/'srs'/'custom' are filters,
     // not volumes: restoring 错题本 on launch would show an empty screen
-    // once the mistakes were cleared, and restoring 收藏 is already handled
-    // by the boot rule below. Stored per profile (State.save is
-    // profile-scoped) so two children on one device keep their own volume,
-    // and deliberately NOT added to EXPORT_KEYS — which volume you are
-    // reading is device-local, not something to carry to another device.
+    // once the mistakes were cleared. Skipping them also means opening 收藏
+    // does not overwrite the volume the child was reading, so the next
+    // launch still returns to it (see _restoreInitialView). Stored per
+    // profile (State.save is profile-scoped) so two children on one device
+    // keep their own volume, and deliberately NOT added to EXPORT_KEYS —
+    // which volume you are reading is device-local, not something to carry
+    // to another device.
     if (/^[1-9]$/.test(String(grade)) && /^[12]$/.test(String(sem))) {
       State.save('lastVolume', { grade: String(grade), semester: String(sem) });
     }
@@ -1529,32 +1572,7 @@ const AppController = (() => {
           FilterUI.updateCustomCount();
           FilterUI.updateStreakDisplay();
 
-          // Default view: preload favorites if any, otherwise the volume
-          // this child was last reading (see selectSemester), falling back
-          // to 一上 on a first run.
-          // The highlight below is painted unconditionally, then dropped by
-          // _syncSidebarSelection if we booted into 任务 — where the sidebar
-          // selection is not used and a highlight claims one that is not.
-          const favorites = FavoriteService.getAll();
-          if (favorites.length > 0) {
-            selectSemester('fav', 'fav');
-            document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
-            const favItem = document.querySelector('.sidebar-item[data-grade="fav"]');
-            if (favItem) favItem.classList.add('active');
-          } else {
-            const last = State.load('lastVolume', null);
-            // Re-validate rather than trust storage: a volume could have
-            // been removed from data/, and a hand-edited or corrupt value
-            // must not boot the app into an empty character list.
-            const hasChars = last && (State.get('allChars') || []).some(
-              c => String(c.grade) === last.grade && String(c.semester) === last.semester);
-            if (hasChars) {
-              selectSemester(last.semester, last.grade);
-              _pointSidebarAt(last.grade, last.semester);
-            } else {
-              selectSemester('1', '1');
-            }
-          }
+          _restoreInitialView();
           _syncSidebarSelection(State.get('mode'));
           // Mirrors switchMode()'s bottom-bar visibility rule for the
           // mode we actually booted into — boot does not go through
@@ -1903,6 +1921,9 @@ const AppController = (() => {
 
   return { init, switchMode, selectSemester, selectLesson, showFavorites,
            showBadges, showReport, showHelp, showDataTransfer, showCustomCards, addCustomCard, removeCustomCard,
+           // Exported for tests: boot runs once per page load, so the
+           // launch-order rules can only be exercised by calling this directly.
+           _restoreInitialView,
            // Exported for tests: the once-per-session latch in State means a
            // failed write only shows the banner the first time, so a test
            // needs to render it directly to assert its wording.
