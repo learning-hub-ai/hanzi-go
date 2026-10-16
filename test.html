@@ -2416,6 +2416,21 @@ async function runTests() {
         `expected a profile-scoped key, got ${keys.join(', ')}`);
     });
 
+    it('entering 学习 renders the selected volume, not a stale card', () => {
+      // Found in a mobile screenshot: after the last-read volume (五年级下册)
+      // was restored while 任务 was showing, switching to 学习 still showed
+      // 一上's 「天」 at 1/45 under a 五年级下册 header. selectSemester skips
+      // rendering in 任务, and switchMode('learn') never re-rendered.
+      app.AppController.switchMode('dailyTask');
+      app.AppController.selectSemester('2', '5');
+      app.AppController.switchMode('learn');
+      const first = app.State.get('filteredChars')[app.State.get('currentIndex')];
+      const shown = frame.contentDocument.querySelector('#learnMode .card-char, #cardChar, .flashcard-char');
+      assert(shown, 'card character element not found');
+      assertEqual(shown.textContent.trim(), first.char,
+        `学习 shows ${shown.textContent.trim()} but the selection starts with ${first.char}`);
+    });
+
     it('the stored volume stays out of export', () => {
       // Which volume you are reading is device-local; a backup restored on
       // another device should not move the child's reading position.

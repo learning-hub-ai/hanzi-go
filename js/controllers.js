@@ -795,6 +795,13 @@ const AppController = (() => {
       if (learnEl && filterEl) {
         learnEl.insertBefore(filterEl, learnEl.firstChild);
       }
+      // Render the card for the current selection. selectSemester skips
+      // rendering while 任务 is showing, so the card on screen is whatever
+      // was last drawn — at boot that is 一上's first character. Entering
+      // 学习 after the last-read volume was restored showed 「天」 1/45
+      // under a 五年级下册 header. It went unnoticed only because the boot
+      // volume used to be 一上 too, so the stale card happened to match.
+      LearnController.showCurrent();
     }
   }
 
