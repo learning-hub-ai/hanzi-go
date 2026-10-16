@@ -776,13 +776,6 @@ main{
 .quiz-type-btn:hover{border-color:var(--primary-light);color:var(--primary);transform:translateY(-1px);box-shadow:var(--shadow-md)}
 .quiz-type-btn.active{background:var(--primary-100);color:var(--primary);border-color:var(--border);font-weight:var(--weight-bold)}
 
-/* Quiz count selector (same style as type selector) */
-  padding:var(--s2) var(--s3);border-radius:var(--radius-sm);
-  border:1px solid var(--border);background:#fff;
-  font-size:var(--text-base);font-weight:var(--weight-semibold);cursor:pointer;
-  color:var(--text-secondary);box-shadow:var(--shadow-sm);
-}
-
 /* Quiz timer */
 .quiz-timer-select{
   padding:var(--s2) var(--s3);border-radius:var(--radius-sm);
@@ -845,13 +838,6 @@ main{
 .dt-quiz-screen{width:100%}
 .dt-quiz-content{display:flex;flex-direction:column;align-items:center}
 .dt-quiz-char{font-size:72px;font-family:var(--font-char);margin:var(--s4) 0}
-/* .dt-quiz-prompt is dead: no element in index.html or js/ carries this
-   class (found by the type-scale check in pre-push.sh). Left in place
-   rather than deleted in the same change as the typography work — but it
-   is a deletion candidate, along with the orphaned declaration block
-   above .quiz-timer-select whose selector line is missing entirely
-   (/* Quiz count selector */ ... }, present since the first commit). */
-.dt-quiz-prompt{font-size:var(--text-2xl);font-weight:var(--weight-semibold);margin:var(--s4) 0;color:var(--text)}
 .dt-quiz-options{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3);width:100%;margin:var(--s4) 0}
 .dt-quiz-option{padding:var(--s3) var(--s4);border:2px solid var(--border);border-radius:var(--radius-sm);background:#fff;font-size:var(--text-xl);font-weight:var(--weight-medium);cursor:pointer;text-align:center;transition:all var(--duration-fast) ease;min-height:44px}
 .dt-quiz-option:hover{border-color:var(--primary-light);transform:translateY(-1px)}

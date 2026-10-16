@@ -233,6 +233,33 @@ if bad:
 print('✅ Colour tokens: no hardcoded brand purple')
 " || exit 1
 
+# === Additional: the stylesheet parses as balanced rules ===
+# An orphaned declaration block — a '{ ... }' body whose selector line is
+# missing — sat above .quiz-timer-select from the very first commit, leaving
+# the file one brace short. CSS parsers recover silently, so nothing broke
+# visibly and nothing caught it for the whole life of the project. Counting
+# braces is crude but would have caught it on day one.
+python3 -c "
+import re, sys
+css = open('css/style.css').read()
+body = re.sub(r'/\*.*?\*/', '', css, flags=re.S)
+opens, closes = body.count('{'), body.count('}')
+if opens != closes:
+    print(f'❌ css/style.css braces unbalanced: {opens} open, {closes} close')
+    print('  A declaration block is missing its selector, or a rule is unclosed.')
+    sys.exit(1)
+
+# A '}' followed by a declaration before any selector means a block lost its
+# selector line — the exact shape of the bug above.
+stripped = '\n'.join(l for l in body.split('\n') if l.strip())
+orphan = re.search(r'\}\s*\n\s*[-a-z]+\s*:[^;\n]+;', stripped)
+if orphan:
+    print('❌ css/style.css has a declaration outside any rule:')
+    print(f'  {orphan.group(0)[:70].strip()}')
+    sys.exit(1)
+print(f'✅ Stylesheet: {opens} rules, braces balanced, no orphaned blocks')
+" || exit 1
+
 # === Additional: every loaded script is in the offline cache manifest ===
 # A script that index.html loads but sw.js doesn't pre-cache breaks the app
 # offline — and for js/error-log.js, which loads first, it would break the
