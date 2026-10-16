@@ -2369,6 +2369,63 @@ async function runTests() {
     return sample.map(c => c.char);
   }
 
+  describeWith('📕 Last-read volume is remembered', resetProfileData, () => {
+    // selectedGrade/selectedSemester were session-only, so every launch
+    // dropped the child back on 一年级上册. On mobile the volume picker is a
+    // flat 18-row sheet of which ~10 fit on screen, so a 五年级 user
+    // scrolled it again on every single visit.
+
+    it('selecting a volume stores it', () => {
+      app.AppController.selectSemester('2', '5');
+      const saved = app.State.load('lastVolume', null);
+      assert(saved, 'nothing was stored');
+      assertEqual(saved.grade, '5', 'wrong grade stored');
+      assertEqual(saved.semester, '2', 'wrong semester stored');
+    });
+
+    it('filter views are not stored as volumes', () => {
+      // 收藏/错题本/智能复习/自定义 are filters, not textbook volumes.
+      // Restoring 错题本 at launch would open an empty screen once the
+      // mistakes had been cleared.
+      app.AppController.selectSemester('2', '4');
+      for (const special of ['fav', 'err', 'custom']) {
+        app.AppController.selectSemester(special, special);
+        const saved = app.State.load('lastVolume', null);
+        assertEqual(saved.grade, '4',
+          `${special} overwrote the stored volume with ${saved.grade}`);
+      }
+    });
+
+    it('a stored volume that no longer exists is ignored', () => {
+      // Guards against a hand-edited or stale value booting the app into an
+      // empty character list; grade 9 semester 3 cannot exist.
+      app.State.save('lastVolume', { grade: '9', semester: '3' });
+      const last = app.State.load('lastVolume', null);
+      const hasChars = (app.State.get('allChars') || []).some(
+        c => String(c.grade) === last.grade && String(c.semester) === last.semester);
+      assert(!hasChars, 'test premise broken: 9-3 should not exist');
+    });
+
+    it('the stored volume is per profile, not shared', () => {
+      // Two children on one device must keep their own volume, so this uses
+      // State.save (profile-scoped) rather than saveShared.
+      app.AppController.selectSemester('1', '3');
+      const keys = Object.keys(localStorage).filter(k => k.includes('lastVolume'));
+      assert(keys.length > 0, 'lastVolume was not written to localStorage');
+      assert(keys.every(k => /^szb_.+_lastVolume$/.test(k)),
+        `expected a profile-scoped key, got ${keys.join(', ')}`);
+    });
+
+    it('the stored volume stays out of export', () => {
+      // Which volume you are reading is device-local; a backup restored on
+      // another device should not move the child's reading position.
+      app.AppController.selectSemester('2', '6');
+      const dump = app.State.exportProfileData();
+      assert(!('lastVolume' in dump),
+        'lastVolume must not be part of exported profile data');
+    });
+  });
+
   describeWith('🎯 Distractor Bias (anti-recognition-shortcut)', resetProfileData, () => {
     it('pickChar distractors come from known characters when enough are known', () => {
       const known = new Set(seedKnownChars(30));
