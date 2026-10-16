@@ -2483,6 +2483,30 @@ async function runTests() {
         `学习 shows ${shown.textContent.trim()} but the selection starts with ${first.char}`);
     });
 
+    it('the mobile sheet remembers a volume even without its sidebar row', () => {
+      // The sheet normally forwards to the sidebar row's click handler. Its
+      // fallback set state by hand and called LearnController.show(), which
+      // does not exist, so a volume picked there was neither shown nor
+      // remembered. Remove the row to force the fallback.
+      const doc = frame.contentDocument;
+      const row = doc.querySelector('.sidebar-item[data-grade="6"][data-sem="1"]');
+      assert(row, 'test premise: sidebar row 6-1 exists');
+      const parent = row.parentNode, next = row.nextSibling;
+      row.remove();
+      try {
+        app.MobileUI._openGradeSheet();
+        const item = doc.querySelector('.mobile-sheet-item[data-grade="6"][data-sem="1"]');
+        assert(item, 'sheet item 6-1 not rendered');
+        item.click();
+        const saved = app.State.load('lastVolume', null);
+        assert(saved && saved.grade === '6' && saved.semester === '1',
+          `fallback did not remember 6-1, stored ${JSON.stringify(saved)}`);
+        assertEqual(app.State.get('selectedGrade'), '6', 'fallback did not select grade 6');
+      } finally {
+        parent.insertBefore(row, next);
+      }
+    });
+
     it('the stored volume stays out of export', () => {
       // Which volume you are reading is device-local; a backup restored on
       // another device should not move the child's reading position.

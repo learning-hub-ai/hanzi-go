@@ -145,11 +145,12 @@ const MobileUI = (() => {
         if (sidebarItem) {
           sidebarItem.click();
         } else {
-          // Fallback: directly set state and refresh
-          State.set('selectedGrade', grade);
-          State.set('selectedSemester', sem);
-          DataService.applyFilter('all');
-          if (typeof LearnController !== 'undefined') LearnController.show();
+          // Fallback when the sidebar row is missing. Go through
+          // selectSemester like every other entry point — it also stores the
+          // last-read volume and refreshes the view. This used to set state
+          // by hand and call LearnController.show(), which does not exist, so
+          // the volume was neither remembered nor shown.
+          AppController.selectSemester(sem, grade);
         }
         _updateGradeLabel();
         _closeSheet();
@@ -373,5 +374,8 @@ const MobileUI = (() => {
     if (bar) bar.classList.toggle('hidden', !visible);
   }
 
-  return { init, onGradeChange, isMobile, setBottomBarVisible };
+  return { init, onGradeChange, isMobile, setBottomBarVisible,
+           // Exported for tests: the sheet's sidebar-less fallback path is
+           // otherwise only reachable when a sidebar row is missing.
+           _openGradeSheet };
 })();
