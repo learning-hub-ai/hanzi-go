@@ -24,8 +24,22 @@ const Speech = (() => {
   let _useLocalTTS = false;
   let _audio = null;
   let _unlocked = false;
-  /** True while a speak() call is in flight — see speak()'s overlap guard. */
-  let _speaking = false;
+  /**
+   * The speak() call currently in flight, or null — see speak()'s overlap
+   * rule. Shape: { text, finish } where finish(reason) fires that call's
+   * onDone exactly once.
+   */
+  let _current = null;
+  /**
+   * Stops whatever the in-flight call is doing right now (pauses the audio
+   * element or cancels the utterance) and turns its pending callbacks into
+   * no-ops. Set by _playSources/_speakWebAPI for each attempt.
+   */
+  let _cancelActive = null;
+  /** Extra time allowed past a clip's known duration before giving up on onended. */
+  const PLAY_END_GRACE_MS = 500;
+  /** Test-only replacement for real playback; see _setPlaybackForTest. */
+  let _testPlayback = null;
 
   // Diagnostic overlay — only active with ?debugSpeech=1 in the URL, so it
   // never shows for normal users. Added to investigate a real-device report
@@ -183,25 +197,50 @@ const Speech = (() => {
   function speak(text, onDone) {
     if (!text) { if (onDone) onDone(); return; }
 
-    // Overlap guard: a real-device log (iPhone 16, iOS Safari) showed two
+    // Overlap rule. A real-device log (iPhone 16, iOS Safari) showed two
     // speak() calls interleaving — a second tap of 朗读 before the first
-    // call had finished. Each call reassigns _audio's onplaying/onended/
-    // onerror listeners and (in the Web Speech API path) calls
-    // speechSynthesis.cancel(), which silently kills whatever the FIRST
-    // call was doing. That's the actual explanation for "no sound at
-    // first, works after tapping 2-3 times" — the first call(s) were
-    // being cut off by the next tap, not failing on their own. Ignoring a
-    // new call while one is already in flight means the sound a child
-    // just triggered is allowed to finish, rather than being restarted
-    // and never completing.
-    if (_speaking) {
-      _debugLog(`speak("${text}") IGNORED — a previous speak() is still in flight`);
-      return;
+    // had finished. Each call reassigns _audio's listeners and (in the Web
+    // Speech path) calls speechSynthesis.cancel(), which silently killed
+    // the first call: "no sound at first, works after tapping 2-3 times".
+    //
+    // So a repeat tap of the SAME text is still ignored — the sound the
+    // child just triggered is allowed to finish. But a DIFFERENT text now
+    // stops the old one and starts immediately. Ignoring everything, as
+    // before, made one slow clip block the whole app: a Huawei browser that
+    // never fired onended held 「人」 "in flight" for the full 4s ceiling and
+    // dropped two taps on 「地」 (on-device log). The old call is settled
+    // first, so its onDone fires exactly once, before the new call starts.
+    if (_current) {
+      if (_current.text === text) {
+        _debugLog(`speak("${text}") IGNORED — the same text is still playing`);
+        return;
+      }
+      _debugLog(`speak("${text}") replaces "${_current.text}", which is stopped`);
+      if (_cancelActive) _cancelActive();
+      _current.finish('replaced');
     }
-    _speaking = true;
-    const done = () => { _speaking = false; if (onDone) onDone(); };
+
+    let settled = false;
+    const call = { text, finish: null };
+    call.finish = (reason) => {
+      if (settled) return;
+      settled = true;
+      if (_current === call) { _current = null; _cancelActive = null; }
+      if (reason) _debugLog(`speak("${text}") done (${reason})`);
+      if (onDone) onDone();
+    };
+    _current = call;
+    const done = () => call.finish();
 
     _debugLog(`speak("${text}") called`);
+
+    if (_testPlayback) {
+      // Test seam: the overlap rule above is what is under test; real audio
+      // cannot be driven from the suite. The stub receives the cancel hook
+      // so it can behave like a real attempt.
+      _testPlayback(text, done, (cancel) => { _cancelActive = cancel; });
+      return;
+    }
 
     // iOS Safari fix: speechSynthesis.speak() only works when called
     // directly inside a user gesture's call stack (or a very short window
@@ -389,6 +428,17 @@ const Speech = (() => {
     let startTimer = null;
     let maxPlayTimer = null;
 
+    // Lets a newer speak() stop this attempt: silence the element and make
+    // every pending callback below a no-op, so the old call cannot fall
+    // through to the next source or fire onDone a second time.
+    _cancelActive = () => {
+      settled = true;
+      if (startTimer) clearTimeout(startTimer);
+      if (maxPlayTimer) clearTimeout(maxPlayTimer);
+      _audio.onplaying = _audio.onended = _audio.onerror = _audio.onstalled = null;
+      try { _audio.pause(); } catch (_e) { /* nothing to stop */ }
+    };
+
     const giveUpOnThisSource = (reason) => {
       if (settled || started) return; // never abandon a source once it's confirmed playing
       settled = true;
@@ -398,10 +448,13 @@ const Speech = (() => {
       _playSources(sources, index + 1, text, onDone);
     };
 
-    const finished = () => {
+    // `via` says what ended playback. The log used to print
+    // "onended/maxPlayMs" for both, which hid that a Huawei browser never
+    // fires onended — it only showed up as a 4.001s gap between timestamps.
+    const finished = (via) => {
       if (settled) return;
       settled = true;
-      _debugLog(`[${index}] ${sourceLabel} finished (onended/maxPlayMs) — onDone firing`);
+      _debugLog(`[${index}] ${sourceLabel} finished via ${via} — onDone firing`);
       if (startTimer) clearTimeout(startTimer);
       if (maxPlayTimer) clearTimeout(maxPlayTimer);
       if (onDone) onDone();
@@ -424,12 +477,29 @@ const Speech = (() => {
     // spurious stall), we still must not hang forever — a single spoken
     // character/word has no business taking longer than this.
     _audio.onplaying = () => {
+      // 'playing' fires again after a mid-clip stall resumes; the ceiling
+      // is set once, from the first start, or timers would stack.
+      if (started) return;
       started = true;
-      _debugLog(`[${index}] ${sourceLabel} onplaying fired — audio IS audibly playing`);
       if (startTimer) clearTimeout(startTimer);
-      maxPlayTimer = setTimeout(finished, State.config('speech.maxPlayMs', 4000));
+      // Prefer the clip's own length as the backstop: a single character is
+      // about 1s, and a browser that never fires onended (Huawei, on-device
+      // log) used to hold every later tap for the full maxPlayMs. The
+      // duration is only known once metadata has loaded; fall back to
+      // maxPlayMs when it is missing, zero or not finite (streams).
+      const maxPlayMs = State.config('speech.maxPlayMs', 4000);
+      const remaining = (_audio.duration - (_audio.currentTime || 0)) * 1000;
+      const known = Number.isFinite(remaining) && remaining > 0;
+      const ceiling = known
+        ? Math.min(Math.ceil(remaining) + PLAY_END_GRACE_MS, maxPlayMs)
+        : maxPlayMs;
+      _debugLog(`[${index}] ${sourceLabel} onplaying fired — audio IS audibly playing ` +
+        `(${known ? `clip ${Math.round(remaining)}ms` : 'length unknown'}, ceiling ${ceiling}ms)`);
+      maxPlayTimer = setTimeout(
+        () => finished(known ? 'clip-length ceiling (onended never fired)' : 'maxPlayMs ceiling (onended never fired)'),
+        ceiling);
     };
-    _audio.onended = finished;
+    _audio.onended = () => finished('onended');
     _audio.onerror = () => giveUpOnThisSource(`onerror, code=${_audio.error && _audio.error.code}`);
     _audio.onstalled = () => giveUpOnThisSource('onstalled');
 
@@ -455,16 +525,32 @@ const Speech = (() => {
    * with an estimated-duration timeout as a hard ceiling.
    */
   function _speakWebAPI(text, onDone) {
-    if (!text || !('speechSynthesis' in window)) { if (onDone) onDone(); return; }
+    if (!text) { if (onDone) onDone(); return; }
+    if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+      // Was a silent return: the log just stopped after "falling back to
+      // Web Speech API", which is all the Huawei/Xiaomi reports showed.
+      _debugLog('WebAPI: speechSynthesis not available in this browser — no sound');
+      if (onDone) onDone();
+      return;
+    }
 
     let settled = false;
     let ceilingTimer = null;
+    let startDelay = null;
     const finish = (via) => {
       if (settled) return;
       settled = true;
       _debugLog(`WebAPI: finished via ${via}`);
       if (ceilingTimer) clearTimeout(ceilingTimer);
       if (onDone) onDone();
+    };
+    // A newer speak() stops this utterance without firing this onDone; the
+    // newer call settles the old one itself (see speak()).
+    _cancelActive = () => {
+      settled = true;
+      if (startDelay) clearTimeout(startDelay);
+      if (ceilingTimer) clearTimeout(ceilingTimer);
+      try { speechSynthesis.cancel(); } catch (_e) { /* nothing to stop */ }
     };
 
     // iOS Safari fix: cancel() immediately followed by speak() on the same
@@ -476,7 +562,8 @@ const Speech = (() => {
     // found" yet "finished via ceilingTimer, onend/onerror never fired").
     // A tiny setTimeout gap is the documented community workaround.
     speechSynthesis.cancel();
-    setTimeout(() => {
+    startDelay = setTimeout(() => {
+      if (settled) return; // replaced by a newer speak() during the gap
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = 'zh-CN';
       const rate = State.config('speech.rate', 0.8);
@@ -526,7 +613,12 @@ const Speech = (() => {
   return {
     speak, init, speakChar, loadHeteronyms,
     // Exposed so tests can assert the reading choice without playing audio
-    _readingContext
+    _readingContext,
+    // Exposed so tests can drive the speak() overlap rule without real
+    // audio. Each attempt is the function that would play one URL source
+    // or utterance; null restores the real one. Test-only.
+    _setPlaybackForTest: (fn) => { _testPlayback = fn; },
+    _isSpeakingForTest: () => _current !== null
   };
 })();
 

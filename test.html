@@ -1214,6 +1214,74 @@ async function runTests() {
     // during implementation; this test only pins the config values these
     // fixes depend on, so a careless edit to config.json can't silently
     // remove the safety nets.
+    // speak() overlap rule. A Huawei browser that never fired onended held
+    // 「人」 "in flight" for the full 4s ceiling and dropped two taps on 「地」
+    // (on-device log). Same text is still ignored; different text replaces.
+    // Playback is stubbed: each attempt records itself and only ends when
+    // the test says so, like a clip whose onended never arrives.
+    function withStubPlayback(fn) {
+      const attempts = [];
+      app.Speech._setPlaybackForTest((text, done, setCancel) => {
+        const a = { text, done, cancelled: false };
+        setCancel(() => { a.cancelled = true; });
+        attempts.push(a);
+      });
+      try { fn(attempts); } finally {
+        app.Speech._setPlaybackForTest(null);
+        // Settle anything left so later suites start idle.
+        attempts.forEach(a => a.done());
+      }
+    }
+
+    it('speak: a different character replaces one still playing', () => {
+      withStubPlayback(attempts => {
+        const ended = [];
+        app.Speech.speak('人', () => ended.push('人'));
+        app.Speech.speak('地', () => ended.push('地'));
+        assertEqual(attempts.length, 2, '「地」 was dropped while 「人」 was in flight');
+        assertEqual(attempts[1].text, '地', 'second attempt should be 「地」');
+        assert(attempts[0].cancelled, '「人」 should be stopped when 「地」 starts');
+        assertEqual(ended.join(','), '人', '「人」 onDone should fire once, when it is replaced');
+      });
+    });
+
+    it('speak: tapping the same character again is still ignored', () => {
+      // Keeps the iPhone fix: a second tap restarting the clip is what made
+      // the first tap silent there.
+      withStubPlayback(attempts => {
+        app.Speech.speak('人');
+        app.Speech.speak('人');
+        assertEqual(attempts.length, 1, 'a repeat tap of the same text must not restart it');
+        assert(!attempts[0].cancelled, 'the playing clip must not be stopped by a repeat tap');
+      });
+    });
+
+    it('speak: onDone fires exactly once per call, even if the stopped attempt ends later', () => {
+      // The quiz chains its advance-to-next-question on onDone, so a double
+      // fire would skip a question.
+      withStubPlayback(attempts => {
+        let count = 0;
+        app.Speech.speak('人', () => count++);
+        app.Speech.speak('地');
+        attempts[0].done();   // a late end from the stopped attempt
+        assertEqual(count, 1, `「人」 onDone fired ${count} times`);
+        assert(app.Speech._isSpeakingForTest(), '「地」 must still count as playing');
+        attempts[1].done();
+        assert(!app.Speech._isSpeakingForTest(), 'nothing should be playing after 「地」 ends');
+      });
+    });
+
+    it('index.html sends no Referer, which the TTS endpoints reject', () => {
+      // translate.googleapis.com returns 404 and fanyi.baidu.com an empty
+      // HTML page when a Referer is present, so <audio> got no MP3 on any
+      // device. Browsers without speechSynthesis (Huawei/Xiaomi reports)
+      // were left silent. <audio> ignores a per-element policy, so this
+      // page-wide tag is the fix and must not be removed.
+      const meta = frame.contentDocument.querySelector('meta[name="referrer"]');
+      assert(meta, 'index.html lost <meta name="referrer">');
+      assertEqual(meta.getAttribute('content'), 'no-referrer', 'referrer policy must be no-referrer');
+    });
+
     it('speech config has startTimeoutMs and maxPlayMs with sane values', () => {
       const startTimeoutMs = app.State.config('speech.startTimeoutMs', null);
       const maxPlayMs = app.State.config('speech.maxPlayMs', null);

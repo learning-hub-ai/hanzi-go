@@ -3,6 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Required for audio. translate.googleapis.com answers 404 and
+     fanyi.baidu.com answers an empty HTML page whenever a Referer is sent,
+     so <audio> got no MP3 (MediaError code 4) on every device. Desktop and
+     iPhone still spoke via the built-in speechSynthesis fallback; browsers
+     without it (reported on Huawei/Xiaomi) stayed silent. <audio> ignores a
+     per-element referrerPolicy, so it has to be page-wide. Nothing else on
+     the page needs a Referer (the only third-party load is hanzi-writer). -->
+<meta name="referrer" content="no-referrer">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
