@@ -29,3 +29,7 @@ keben/
 # 内部设计文档，不公开。仓库是公开的，docs/ 会被 GitHub Pages 部署出去。
 docs/backend-comparison.html
 docs/cloud-sync-proposal-v3.html
+docs/cloud-sync-proposal.html
+docs/requirements-next.md
+# 与 data-generation-spec.md 内容重复；.md 保留公开，LICENSE/README 引用它
+docs/data-generation-spec.html

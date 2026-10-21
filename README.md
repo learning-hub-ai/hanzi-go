@@ -59,7 +59,7 @@ hanzi-go/
 │   └── mobile.js      移动端适配
 ├── data/              18 个学期文件，grade{N}-semester{M}.json
 ├── scripts/           从课本 PDF 生成数据的脚本
-└── docs/              数据生成规范、云同步方案（草案）
+└── docs/              数据生成规范
 ```
 
 ## 加数据
