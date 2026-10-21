@@ -25,3 +25,7 @@ keben/
 
 # TTS 本地测试缓存的音频文件，不进仓库
 .tts-test/
+
+# 内部设计文档，不公开。仓库是公开的，docs/ 会被 GitHub Pages 部署出去。
+docs/backend-comparison.html
+docs/cloud-sync-proposal-v3.html
