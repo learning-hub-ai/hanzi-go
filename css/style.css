@@ -51,19 +51,24 @@
      only 3 visually distinguishable values, plus 7 literal repeats of the
      token values themselves. Flattened against white, the 7 alphas land on
      #fbfbfe…#dcdafa — so most of that variation was invisible. */
-  --primary-50:#f6f6fe;    /* faintest wash: hover tint on cards/rows */
-  --primary-100:#eef2ff;   /* pale fill: active chips, banners, callouts */
-  --primary-200:#dcdafa;   /* visible tint: active mobile rows */
-  --primary-300:#c7d2fe;   /* light border on a --primary-100 fill */
-  --primary:#4f46e5;       /* = --primary-500, the one accent colour */
-  --primary-light:#818cf8; /* = --primary-300 in weight, used for borders/gradients */
-  --primary-dark:#3730a3;  /* = --primary-700 */
-  --primary-600:#4338ca;   /* hover/pressed state of --primary */
-  --primary-violet:#7c3aed;/* second stop of the two CTA gradients only */
+  --primary-50:#f2f4fd;    /* faintest wash: hover tint on cards/rows */
+  --primary-100:#e3e8fb;   /* pale fill: active chips, banners, callouts */
+  --primary-200:#c4cef6;   /* visible tint: active mobile rows */
+  --primary-300:#9aabed;   /* light border on a --primary-100 fill */
+  --primary:#3056d3;       /* = --primary-500, the one accent colour (cobalt) */
+  --primary-light:#6578de; /* = --primary-300 in weight, used for borders/gradients */
+  --primary-dark:#1b317b;  /* = --primary-700 */
+  --primary-600:#2644a8;   /* hover/pressed state of --primary */
+  /* Second stop of the two CTA gradients only. Was violet #7c3aed, which
+     paired with the old indigo; next to cobalt a blue→violet gradient
+     reads as two unrelated colours. Now the ramp's own deeper step, so the
+     gradient is cobalt light→deep. Name kept so the two rules using it
+     need no change. */
+  --primary-violet:#2644a8;
   /* Glow shadows must stay translucent (they sit over varying backdrops),
      so these keep an alpha rather than becoming ramp steps — the point is
      to stop repeating the raw 79,70,229 triplet in 4 more places. */
-  --primary-glow:rgba(79,70,229,.4);--primary-glow-strong:rgba(79,70,229,.6);
+  --primary-glow:rgba(48,86,211,.4);--primary-glow-strong:rgba(48,86,211,.6);
   --success:#10b981;--success-glow:rgba(16,185,129,.3);
   --error:#ef4444;--error-glow:rgba(239,68,68,.3);
   --warning:#f59e0b;
@@ -934,7 +939,10 @@ main{
 
 .dt-task-banner{position:fixed;top:var(--header-height);left:var(--sidebar-width);right:0;background:linear-gradient(90deg,var(--primary-100),var(--primary-200));border-bottom:1px solid var(--primary-300);padding:8px 16px;display:flex;align-items:center;justify-content:space-between;z-index:90;gap:8px}
 .dt-banner-text{font-size:var(--text-base);font-weight:var(--weight-semibold);color:var(--primary-600)}
-.dt-banner-hint{font-size:var(--text-xs);color:var(--primary-light)}
+/* Was --primary-light, which sits on this banner's -100→-200 gradient at
+   2.55-3.25:1 — under the 4.5 small text needs (2.10-2.70 in the old
+   purple). -600 clears it across the whole gradient (5.46-6.95:1). */
+.dt-banner-hint{font-size:var(--text-xs);color:var(--primary-600)}
 .dt-banner-btn{padding:4px 12px;border-radius:var(--radius-sm);border:1px solid var(--primary-light);background:#fff;color:var(--primary-600);font-size:var(--text-sm);font-weight:var(--weight-semibold);cursor:pointer;transition:all var(--duration-fast) ease;position:relative;z-index:2}
 .dt-banner-btn:hover{background:var(--primary-100);border-color:var(--primary-600)}
 @media(max-width:768px){

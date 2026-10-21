@@ -216,8 +216,11 @@ body = re.sub(r':root\s*\{.*?\}', '', css, flags=re.S)  # token definitions
 # Any literal that is recognisably the brand purple or a tint of it.
 PURPLE = re.compile(
     r'#(?:4f46e5|818cf8|3730a3|4338ca|6366f1|7c3aed|'
-    r'eef2ff|e0e7ff|c7d2fe|eff0ff|eff6ff|f5f3ff|fafafe|fbfbfe)'
-    r'|rgba\(\s*79\s*,\s*70\s*,\s*229', re.I)
+    r'eef2ff|e0e7ff|c7d2fe|eff0ff|eff6ff|f5f3ff|fafafe|fbfbfe|'
+    # current cobalt ramp: a literal copy of a token value is the same
+    # drift the guard exists to stop
+    r'3056d3|6578de|2644a8|1b317b|f2f4fd|e3e8fb|c4cef6|9aabed)'
+    r'|rgba\(\s*(?:79\s*,\s*70\s*,\s*229|48\s*,\s*86\s*,\s*211)', re.I)
 
 bad, cur = [], '?'
 for line in body.split('\n'):
@@ -230,7 +233,7 @@ if bad:
     print('❌ Hardcoded brand colour outside the token block:')
     for b in bad: print(f'  {b}')
     sys.exit(1)
-print('✅ Colour tokens: no hardcoded brand purple')
+print('✅ Colour tokens: no hardcoded brand colour')
 " || exit 1
 
 # === Additional: the stylesheet parses as balanced rules ===
