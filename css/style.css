@@ -353,7 +353,7 @@ main{
 .card-face:hover{border-color:#cbd5e1;box-shadow:0 4px 20px rgba(0,0,0,.06)}
 .card-front{z-index:1}
 .card-back{transform:rotateY(180deg);z-index:2}
-.card-char{font-size:clamp(80px, 12vw, 128px);line-height:1.1;color:var(--text);position:relative;z-index:1}
+.card-char{font-size:clamp(96px, 30vw, 160px);line-height:1.1;color:var(--text);position:relative;z-index:1}
 /* Custom cards can have a multi-character front. Scale down proportionally so
    the responsive clamp() above and its breakpoint overrides still apply —
    an inline pixel font-size would defeat all three. */
@@ -364,17 +364,41 @@ main{
    told apart at a glance instead of being four shades of the same purple.
    --primary is left for "selected / primary action" only. The small pinyin
    on the front face keeps the same pinyin colour so the two faces agree. */
-.card-pinyin-small{font-size:var(--text-lg);color:var(--accent-pinyin-text);margin-top:var(--s2);font-weight:var(--weight-semibold);z-index:1}
+.card-pinyin-small{font-size:var(--text-xl);color:var(--accent-pinyin-text);margin-top:var(--s2);font-weight:var(--weight-semibold);z-index:1}
+/* Back-of-card sizes, raised after parents reported the card was hard for
+   children to read: 例句 was 16px — body-text size, though for a child
+   learning characters the sentence is study material, not a caption.
+   Sizes stay on the type scale. 例句 18px: 64% of the 4014 sentences fit
+   one line on a 360px phone, all fit in two. 组词 24px: the longest
+   (11 characters incl. separators) never wraps. */
 .card-pinyin-back{font-size:36px;color:var(--accent-pinyin-text);font-weight:800;margin-bottom:var(--s5)}
-.card-words{font-size:var(--text-xl);color:var(--accent-words-text);margin-bottom:var(--s5);font-weight:var(--weight-semibold)}
-.card-sentence{font-size:var(--text-lg);color:var(--accent-sentence-text);text-align:center;line-height:1.7;max-width:380px;font-weight:var(--weight-medium)}
+.card-words{font-size:var(--text-2xl);color:var(--accent-words-text);margin-bottom:var(--s5);font-weight:var(--weight-semibold)}
+.card-sentence{font-size:var(--text-xl);color:var(--accent-sentence-text);text-align:center;line-height:1.7;max-width:420px;font-weight:var(--weight-medium)}
 
 /* === 6b. Stroke-order Practice Panel (card back, 学习模式) ===
    The back face is a fixed-size box (see .card-face position:absolute,
    inset:0 above) — the stroke panel REPLACES cardBackContent rather than
    stacking alongside it, so it never has to fight for space with
    pinyin/words/sentence inside that fixed box, on any screen size. */
-.card-back-content{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;width:100%}
+/* The back may hold more than fits: the larger text sizes leave one card
+   (「宴」, whose 37-character sentence is the longest in the data) 9-14px
+   taller than the card on 360/375px phones. The face is overflow:hidden,
+   so it was clipped silently. Scroll instead of shrinking the text, which
+   would undo the point of the larger sizes. margin:auto centres the
+   content when it fits, and lets it start at the top when it does not —
+   justify-content:center would push an overflowing top edge out of reach. */
+.card-back-content{display:flex;flex-direction:column;align-items:center;max-height:100%;width:100%;overflow-y:auto;overscroll-behavior:contain;
+  /* A visible scrollbar sat over the last characters of the sentence and
+     pushed the text off-centre (it takes width from one side only). Hide
+     the bar; a soft fade on the bottom edge says there is more instead. */
+  scrollbar-width:none}
+.card-back-content::-webkit-scrollbar{display:none}
+.card-back-content.is-scrollable{
+  -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 28px),transparent);
+  mask-image:linear-gradient(to bottom,#000 calc(100% - 28px),transparent)}
+.card-back-content.is-scrollable.at-end{-webkit-mask-image:none;mask-image:none}
+.card-back-content>:first-child{margin-top:auto}
+.card-back-content>:last-child{margin-bottom:auto}
 .stroke-toggle-btn{
   margin-top:var(--s4);font-size:var(--text-base);font-weight:var(--weight-semibold);color:var(--accent-stroke-text);
   background:var(--accent-stroke-bg);border:1px solid var(--accent-stroke);border-radius:var(--radius-full);
@@ -707,11 +731,16 @@ main{
   .card-container{width:100%;max-width:100%;box-sizing:border-box}
   .card{min-height:220px;height:45vh;max-height:360px;width:100%;box-sizing:border-box}
   .card-face{padding:var(--s5);word-break:break-word}
-  .card-char{font-size:clamp(64px, 16vw, 108px)}
-  .card-pinyin-small{font-size:var(--text-md)}
-  .card-pinyin-back{font-size:30px;margin-bottom:var(--s3)}
-  .card-words{font-size:var(--text-xl);margin-bottom:var(--s3)}
-  .card-sentence{font-size:var(--text-lg);max-width:100%;line-height:1.6}
+  /* The character is the whole point of the card face, so on a phone it is
+     sized from the viewport: 30vw lands at ~108-124px on 360-414px phones,
+     about a third of the card's height. It was 16vw (52-66px, under a fifth
+     of the card), and the 380px breakpoint below shrank it further, so the
+     smallest phones got the smallest character. */
+  .card-char{font-size:clamp(96px, 30vw, 140px)}
+  .card-pinyin-small{font-size:var(--text-lg)}
+  .card-pinyin-back{font-size:36px;margin-bottom:var(--s3)}
+  .card-words{font-size:var(--text-2xl);margin-bottom:var(--s3)}
+  .card-sentence{font-size:var(--text-xl);max-width:100%;line-height:1.6}
   .card-hint{font-size:var(--text-xs)}
 
   /* Hide desktop card controls (replaced by bottom bar) */
@@ -748,7 +777,8 @@ main{
   main{padding:var(--s2);padding-bottom:68px}
   .card{min-height:180px;height:38vh;max-height:280px}
   .card-face{padding:var(--s3)}
-  .card-char{font-size:clamp(52px, 14vw, 80px)}
+  /* No smaller .card-char here: the 768px rule's 96px floor already fits a
+     shorter card, and shrinking it on the smallest phones was backwards. */
   .stroke-canvas-target{width:clamp(130px, 34vw, 190px);height:clamp(130px, 34vw, 190px)}
   .stroke-toggle-btn{font-size:var(--text-sm);padding:5px 12px}
   .quiz-options{grid-template-columns:1fr}
@@ -831,12 +861,15 @@ main{
 .dt-card{width:100%;min-height:250px;max-height:360px;border:2px solid var(--border);border-radius:var(--radius-lg);background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:var(--s5);cursor:pointer;transition:border-color var(--duration-fast) ease;margin-bottom:var(--s3)}
 .dt-card:hover{border-color:var(--primary-light)}
 .dt-card-front,.dt-card-back{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;width:100%}
-.dt-card-char{font-size:80px;font-family:var(--font-char);color:var(--text);line-height:1.2}
-.dt-card-pinyin-small{font-size:var(--text-lg);color:var(--accent-pinyin-text);font-weight:var(--weight-semibold);margin-top:var(--s2)}
+/* Same sizes as the 学习 card (see .card-sentence). This card had its own,
+   smaller set — 例句 at 14px and the character fixed at 80/64px — so the
+   card children see first every day was the hardest one to read. */
+.dt-card-char{font-size:clamp(96px, 30vw, 140px);font-family:var(--font-char);color:var(--text);line-height:1.2}
+.dt-card-pinyin-small{font-size:var(--text-xl);color:var(--accent-pinyin-text);font-weight:var(--weight-semibold);margin-top:var(--s2)}
 .dt-card-hint{font-size:var(--text-sm);color:var(--text-muted);margin-top:var(--s3)}
 .dt-card-pinyin{font-size:var(--text-3xl);color:var(--accent-pinyin-text);font-weight:var(--weight-bold);margin-bottom:var(--s3)}
-.dt-card-words{font-size:var(--text-xl);color:var(--accent-words-text);font-weight:var(--weight-semibold);margin-bottom:var(--s3)}
-.dt-card-sentence{font-size:var(--text-md);color:var(--accent-sentence-text);line-height:1.7;max-width:300px}
+.dt-card-words{font-size:var(--text-2xl);color:var(--accent-words-text);font-weight:var(--weight-semibold);margin-bottom:var(--s3)}
+.dt-card-sentence{font-size:var(--text-xl);color:var(--accent-sentence-text);line-height:1.7;max-width:100%}
 .dt-card-actions{display:flex;gap:var(--s3);justify-content:center;width:100%}
 
 /* Quiz screen */
@@ -876,8 +909,7 @@ main{
 
 @media(max-width:768px){
   #dailyTaskMode{padding:var(--s2) 0}
-  .dt-card{min-height:200px;max-height:300px}
-  .dt-card-char{font-size:64px}
+  .dt-card{min-height:200px;max-height:none}
   .dt-quiz-char{font-size:56px}
   .dt-quiz-options{grid-template-columns:1fr 1fr}
   .dt-complete-emoji{font-size:48px}

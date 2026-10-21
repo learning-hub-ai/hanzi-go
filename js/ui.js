@@ -163,10 +163,41 @@ const CardUI = (() => {
     // a whole word/phrase, which HanziWriter cannot render meaningfully.
     const strokeBtn = document.getElementById('btnStrokePractice');
     if (strokeBtn) strokeBtn.classList.toggle('hidden', frontLen !== 1);
+
+    // New content: start the back at the top and recompute the fade.
+    const back = document.getElementById('cardBackContent');
+    if (back) back.scrollTop = 0;
+    _syncBackScrollHint();
   }
 
   function flip() {
-    document.getElementById('flashcard').classList.toggle('flipped');
+    const card = document.getElementById('flashcard');
+    card.classList.toggle('flipped');
+    // Turning to the back always starts at the top, not wherever the last
+    // look at this card was scrolled to.
+    const back = document.getElementById('cardBackContent');
+    if (back && card.classList.contains('flipped')) back.scrollTop = 0;
+    _syncBackScrollHint();
+  }
+
+  /**
+   * Fade the bottom edge of the card back while there is more to scroll.
+   *
+   * The back scrolls rather than clipping long content (see
+   * .card-back-content in style.css), with the scrollbar hidden so it does
+   * not cover the sentence. Without the fade nothing would say there is
+   * more. Only 「宴」 needs it at today's sizes, on 360-375px phones.
+   */
+  function _syncBackScrollHint() {
+    const el = document.getElementById('cardBackContent');
+    if (!el) return;
+    if (!el.dataset.hintBound) {
+      el.dataset.hintBound = '1';
+      el.addEventListener('scroll', _syncBackScrollHint, { passive: true });
+    }
+    const scrollable = el.scrollHeight > el.clientHeight + 1;
+    el.classList.toggle('is-scrollable', scrollable);
+    el.classList.toggle('at-end', scrollable && el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
   }
 
   function updateFavIcon(isFav) {

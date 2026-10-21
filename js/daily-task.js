@@ -1043,5 +1043,11 @@ const DailyTaskController = (() => {
     });
   }
 
-  return { render };
+  return {
+    render,
+    // Test-only: open the 复习/回顾 card on given characters, so a test can
+    // check how that card's own styles fit real content (e.g. the longest
+    // sentence) without first building a whole day's task state.
+    _startCardSessionForTest: (chars, mode) => _startCardSession(chars, mode)
+  };
 })();

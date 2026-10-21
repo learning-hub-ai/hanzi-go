@@ -1292,6 +1292,49 @@ async function runTests() {
     });
   });
 
+  // === Flashcard text is large enough for children ===
+  // Parents reported the card was hard for children to read. On a 360px
+  // phone the character was 52px (under a fifth of the card) and the
+  // sentence 16px. These pin the floors, measured on the rendered card.
+  describe('🔠 Flashcard Readability', () => {
+    function px(sel) {
+      const el = frame.contentDocument.querySelector(sel);
+      return el ? parseFloat(frame.contentWindow.getComputedStyle(el).fontSize) : NaN;
+    }
+    it('the character on the card front is at least 96px', () => {
+      app.AppController.switchMode('learn');
+      app.AppController.selectSemester('1', '1');
+      app.LearnController.showCurrent();
+      const n = px('#cardChar');
+      assert(n >= 96, `card character is ${n}px, should be >= 96px`);
+    });
+    it('sentence and words on the card back are at least 18px and 24px', () => {
+      const s = px('#cardSentence'), w = px('#cardWords');
+      assert(s >= 18, `sentence is ${s}px, should be >= 18px`);
+      assert(w >= 24, `words are ${w}px, should be >= 24px`);
+    });
+    it('the 复习/回顾 card uses the same floors', () => {
+      // That card had its own smaller set (sentence 14px, character 64px).
+      const c = app.State.get('allChars')[0];
+      app.AppController.switchMode('dailyTask');
+      app.DailyTaskController._startCardSessionForTest([c], 'review');
+      const ch = px('.dt-card-char');
+      frame.contentDocument.getElementById('dtCard').click();
+      const s = px('.dt-card-sentence'), w = px('.dt-card-words');
+      assert(ch >= 96, `review character is ${ch}px, should be >= 96px`);
+      assert(s >= 18, `review sentence is ${s}px, should be >= 18px`);
+      assert(w >= 24, `review words are ${w}px, should be >= 24px`);
+      app.AppController.switchMode('learn');
+    });
+    it('a back too tall for the card scrolls instead of being clipped', () => {
+      // 「宴」 has the longest sentence (37 characters). The face is
+      // overflow:hidden, so without this the end of it was cut off.
+      const back = frame.contentDocument.getElementById('cardBackContent');
+      assertEqual(frame.contentWindow.getComputedStyle(back).overflowY, 'auto',
+        'card back must scroll rather than clip');
+    });
+  });
+
   // === 4d. Stroke-order Practice (✍️ 笔顺) ===
   describe('✍️ Stroke Practice Panel', () => {
     // Re-query elements after every CardUI.render() instead of caching
