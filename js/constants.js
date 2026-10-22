@@ -46,3 +46,6 @@ function escapeHtml(str) {
   div.textContent = str;
   return div.innerHTML;
 }
+
+/** Chinese numerals for grade labels ('一年级'); index = grade, 0 unused. */
+const GRADE_CN = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];

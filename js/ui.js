@@ -617,7 +617,6 @@ const ModalUI = (() => {
    * @returns {string} HTML
    */
   function renderReport(r) {
-    const GRADE = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
     const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
 
     // Nothing learned yet — say so plainly instead of showing a wall of zeros
@@ -632,7 +631,7 @@ const ModalUI = (() => {
 
     // Where they are in the textbook
     if (r.position) {
-      const g = GRADE[r.position.grade] || r.position.grade;
+      const g = GRADE_CN[r.position.grade] || r.position.grade;
       const sem = r.position.semester === 1 ? '上册' : '下册';
       html += row('📍 当前进度', `${g}年级${sem} 第 ${r.position.lessonIndex + 1} 课`);
       html += row('✅ 学完的课', `${r.position.completedCount} 课`);
@@ -762,6 +761,8 @@ const ModalUI = (() => {
       + 'border-radius:6px;font-size:16px;box-sizing:border-box';
     const labelStyle = 'display:block;font-size:13px;color:#475569;margin-bottom:4px';
     const formHtml = `<div class="cc-footer">
+      <div class="cc-form-body">
+      <div id="ccEditingLabel" class="cc-editing-label hidden" aria-live="polite"></div>
       <div style="display:flex;gap:8px">
         <div style="flex:1;min-width:0">
           <label for="ccFront" style="${labelStyle}">正面（必填，最多 8 字）</label>
@@ -775,6 +776,8 @@ const ModalUI = (() => {
         </div>
       </div>
 
+      <div id="ccSuggest" class="cc-suggest hidden" aria-live="polite"></div>
+
       <label for="ccWords" style="${labelStyle};margin-top:10px">词语（可不填，用逗号隔开）</label>
       <input id="ccWords" type="text" maxlength="120" placeholder="例：秦朝，秦国" autocomplete="off"
         style="${inputStyle}">
@@ -784,8 +787,11 @@ const ModalUI = (() => {
         style="${inputStyle};font-size:15px;resize:vertical"></textarea>
 
       <div id="ccMsg" class="form-msg"></div>
-      <button data-action="cc-add" class="btn-modal-action btn-modal-action--primary"
-        style="width:100%">➕ 加入（可连续添加）</button>
+      </div>
+      <div class="cc-actions">
+        <button data-action="cc-cancel-edit" class="btn-modal-action hidden">取消</button>
+        <button data-action="cc-add" class="btn-modal-action btn-modal-action--primary">➕ 加入（可连续添加）</button>
+      </div>
     </div>`;
 
     if (!cards.length) {
@@ -810,6 +816,40 @@ const ModalUI = (() => {
       <p id="ccNoMatch" class="hidden" style="color:#999;text-align:center;padding:12px 0">没有匹配的卡片</p>
     </div>`;
     return html + formHtml;
+  }
+
+  /**
+   * The suggestion strip under 正面 (CardSuggestService.suggest() output).
+   *
+   * One button per reading. A single reading is filled in straight away by
+   * the controller and shown here as "已填入"; several readings (多音字) wait
+   * for the parent to pick, because guessing would put the wrong reading on
+   * the card. The source line tells the parent how far to trust it: a
+   * 生字表 entry is the textbook's own; anything assembled says what to check.
+   *
+   * @param {Object} s - {kind, front, options}
+   * @param {number} [active] - index of the option currently filled in
+   * @returns {string} HTML ('' when there is nothing to suggest)
+   */
+  function renderCardSuggestion(s, active) {
+    if (!s || !s.options || !s.options.length) return '';
+    const many = s.options.length > 1;
+    const head = many
+      ? `<div class="cc-suggest-head">「${escapeHtml(s.front)}」有 ${s.options.length} 个读音，选一个自动填写：</div>`
+      : '';
+    const buttons = s.options.map((o, i) => {
+      const label = o.pinyin
+        ? `${escapeHtml(o.pinyin)}${o.words.length ? ' · ' + escapeHtml(o.words.slice(0, 2).join('、')) : ''}`
+        : '填入例句';
+      const on = i === active;
+      return `<button type="button" data-action="cc-suggest" data-index="${i}"
+        class="cc-suggest-opt${on ? ' is-active' : ''}" aria-pressed="${on}">${label}</button>`;
+    }).join('');
+    const o = s.options[active != null ? active : 0];
+    const status = active != null ? '✓ 已填入，可以修改 · ' : '';
+    const note = o.note ? `<div class="cc-suggest-note">⚠️ ${escapeHtml(o.note)}</div>` : '';
+    return `${head}<div class="cc-suggest-opts">${buttons}</div>
+      <div class="cc-suggest-src">${status}来源：${escapeHtml(o.source)}</div>${note}`;
   }
 
   /**
@@ -842,6 +882,7 @@ const ModalUI = (() => {
       </span>
       <span style="display:flex;gap:4px;flex-shrink:0">
         <button data-action="cc-speak" data-front="${escapeHtml(c.front)}" aria-label="朗读" title="朗读">🔊</button>
+        <button data-action="cc-edit" data-front="${escapeHtml(c.front)}" aria-label="修改「${escapeHtml(c.front)}」" title="修改">✏️</button>
         <button data-action="cc-remove" data-front="${escapeHtml(c.front)}" aria-label="删除" title="删除">✕</button>
       </span>
     </div>`;
@@ -1002,7 +1043,7 @@ const ModalUI = (() => {
     </div>`;
   }
 
-  return { show, close, renderFavorites, renderBadges, renderReport, renderCustomCards, renderCustomCardList, filterCustomCardList, renderHelp, renderDataTransfer };
+  return { show, close, renderFavorites, renderBadges, renderReport, renderCustomCards, renderCustomCardList, renderCardSuggestion, filterCustomCardList, renderHelp, renderDataTransfer };
 })();
 
 /** Badge Popup UI — celebration overlay when earning a new badge */

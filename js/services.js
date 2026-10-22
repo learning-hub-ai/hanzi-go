@@ -1454,9 +1454,12 @@ const CustomCardService = (() => {
    *   string is treated as `front`, for the older positional call style)
    * @param {string} [legacySentence] - positional form: add(front, back, pinyin)
    * @param {string} [legacyPinyin]
+   * @param {Object} [opts]
+   * @param {string} [opts.replacing] - front of the card being edited: it may
+   *   keep its own front, and it does not count against MAX_CARDS
    * @returns {Object} {ok, error, warning}
    */
-  function validate(input, legacySentence, legacyPinyin) {
+  function validate(input, legacySentence, legacyPinyin, opts = {}) {
     const o = (typeof input === 'string')
       ? { front: input, sentence: legacySentence, pinyin: legacyPinyin }
       : (input || {});
@@ -1472,10 +1475,14 @@ const CustomCardService = (() => {
     if (s.length > MAX_BACK) return { ok: false, error: `例句最多 ${MAX_BACK} 个字`, warning: '' };
 
     const existing = _load();
-    if (existing.some(c => String(c.front || '').trim() === f)) {
+    const self = opts.replacing != null ? String(opts.replacing).trim() : null;
+    if (existing.some(c => {
+      const front = String(c.front || '').trim();
+      return front === f && front !== self;
+    })) {
       return { ok: false, error: `「${f}」已经有卡片了`, warning: '' };
     }
-    if (existing.length >= MAX_CARDS) {
+    if (self === null && existing.length >= MAX_CARDS) {
       return { ok: false, error: `最多 ${MAX_CARDS} 张卡片`, warning: '' };
     }
     // Valid, but say so if the card will be unusable in 挑战 — silently
@@ -1496,23 +1503,73 @@ const CustomCardService = (() => {
    * @param {string} [legacyPinyin]
    * @returns {Object} {ok, error, warning, card}
    */
+  /**
+   * The stored shape of a card built from form input. Shared by add() and
+   * update() so the two can never disagree on how a field is cleaned.
+   * @param {Object} o - {front, pinyin, words, sentence} (or legacy `back`)
+   * @param {string} created - YYYY-MM-DD, or '' when unknown
+   */
+  function _cardFrom(o, created) {
+    return {
+      front: String(o.front || '').trim(),
+      pinyin: String(o.pinyin || '').trim(),
+      words: _parseWords(o.words),
+      sentence: String(o.sentence != null ? o.sentence : (o.back || '')).trim(),
+      created
+    };
+  }
+
   function add(input, legacySentence, legacyPinyin) {
     const o = (typeof input === 'string')
       ? { front: input, sentence: legacySentence, pinyin: legacyPinyin }
       : (input || {});
     const check = validate(o);
     if (!check.ok) return { ok: false, error: check.error, warning: '', card: null };
-    const card = {
-      front: String(o.front || '').trim(),
-      pinyin: String(o.pinyin || '').trim(),
-      words: _parseWords(o.words),
-      sentence: String(o.sentence != null ? o.sentence : (o.back || '')).trim(),
-      created: new Date().toISOString().slice(0, 10)
-    };
+    const card = _cardFrom(o, new Date().toISOString().slice(0, 10));
     const cards = _load();
     cards.push(card);
     _save(cards);
     return { ok: true, error: '', warning: check.warning, card };
+  }
+
+  /**
+   * Replace a card's fields in place.
+   *
+   * The card keeps its position and its `created` date, so editing does not
+   * reorder the list or make an old card look new. Validation is the same as
+   * add(), except the card may keep its own front.
+   *
+   * Learning progress (智能复习, 错题本, 收藏) is keyed by the front text. A
+   * changed 拼音/词语/例句 keeps it. A changed 正面 is a different
+   * character: its old progress is deliberately not carried over — the
+   * child's record for 秦 says nothing about 泰 — and `frontChanged` lets
+   * the caller say so.
+   *
+   * @param {string} front - the card's current front
+   * @param {Object} input - {front, pinyin, words, sentence}
+   * @returns {Object} {ok, error, warning, card, frontChanged}
+   */
+  function update(front, input) {
+    const key = String(front || '').trim();
+    const fail = error => ({ ok: false, error, warning: '', card: null, frontChanged: false });
+    const cards = _load();
+    const idx = cards.findIndex(c => String(c.front || '').trim() === key);
+    if (idx < 0) return fail('找不到这张卡片，可能已经删除了');
+    const o = input || {};
+    const check = validate(o, undefined, undefined, { replacing: key });
+    if (!check.ok) return fail(check.error);
+    // A legacy card may lack `created`; keep it absent rather than invent a
+    // date that would misreport when the card was made.
+    const card = _cardFrom(o, cards[idx].created || '');
+    cards[idx] = card;
+    _save(cards);
+    return { ok: true, error: '', warning: check.warning, card, frontChanged: card.front !== key };
+  }
+
+  /** @returns {Object|null} one card in the four-field shape */
+  function get(front) {
+    const key = String(front || '').trim();
+    return getAll().find(c => c.front === key) || null;
   }
 
   /**
@@ -1572,5 +1629,165 @@ const CustomCardService = (() => {
     }));
   }
 
-  return { add, remove, getAll, count, asChars, validate, parseWords: _parseWords };
+  return { add, update, get, remove, getAll, count, asChars, validate, parseWords: _parseWords };
+})();
+
+/**
+ * Suggest 拼音/词语/例句 for a custom card from the textbook data.
+ *
+ * Why the textbook and not a generator: the 4014 生字 already carry checked
+ * pinyin, words and real sentences, and they are loaded at startup
+ * (State.allChars), so suggestions are instant, offline, and are exactly
+ * what the child meets in class. Invented sentences could be wrong in ways a
+ * parent cannot spot. Nothing is saved here: the form is filled for the
+ * parent to edit and confirm, so a suggestion is never a card by itself.
+ *
+ * Result shape, consumed by ModalUI.renderCardSuggestion():
+ *   { kind, front, options: [Option] }
+ *   kind 'char'    the front is one textbook 生字; one Option per distinct
+ *                  reading (多音字 → several, the parent picks)
+ *   kind 'word'    every character of the front is a 生字; pinyin is built
+ *                  per character (ambiguous ones are flagged), and a
+ *                  sentence containing the whole word is looked up
+ *   kind 'none'    nothing usable was found
+ *   Option = { pinyin, words, sentence, source, confidence, note }
+ *     confidence 'textbook'  taken unchanged from a 生字 card
+ *                'partial'   assembled, or only some fields known
+ *
+ * Extending: a new source (an offline pinyin library for characters outside
+ * the textbook, say) is one more entry in STRATEGIES returning the same
+ * shape; the UI needs no change.
+ */
+const CardSuggestService = (() => {
+  // Word-pair fallbacks ('试一试 · 考试') are not sentences; never suggest one.
+  const FALLBACK_MARK = ' · ';
+
+  /** 'X年级上册 · 课文1《…》' for a textbook card. */
+  function sourceLabel(c) {
+    const vol = `${GRADE_CN[c.grade] || c.grade}年级${c.semester === 1 ? '上册' : '下册'}`;
+    return c.lesson ? `${vol} · ${c.lesson}` : vol;
+  }
+
+  /** Textbook cards, ignoring hand-made ones that share State.allChars. */
+  function _textbook() {
+    return (State.get('allChars') || []).filter(c => c && !c.isCustom && c.grade);
+  }
+
+  function _isSentence(s) {
+    return typeof s === 'string' && s.length > 0 && !s.includes(FALLBACK_MARK);
+  }
+
+  /**
+   * One option per distinct reading, earliest volume first. When the same
+   * reading appears in several lessons the first occurrence wins, with any
+   * words from later lessons merged in (deduplicated, at most 4) — the
+   * earliest is the one the child met first.
+   */
+  function _charOptions(ch, cards) {
+    const byReading = new Map();
+    cards
+      .filter(c => c.char === ch)
+      .sort((a, b) => (a.grade - b.grade) || (a.semester - b.semester))
+      .forEach(c => {
+        const key = (c.pinyin || '').trim();
+        if (!key) return;
+        const words = (c.words || []).filter(w => typeof w === 'string' && w.includes(ch));
+        if (!byReading.has(key)) {
+          byReading.set(key, {
+            pinyin: key,
+            words: words.slice(0, 4),
+            sentence: _isSentence(c.sentence) ? c.sentence : '',
+            source: sourceLabel(c),
+            confidence: 'textbook',
+            note: ''
+          });
+          return;
+        }
+        const opt = byReading.get(key);
+        words.forEach(w => { if (opt.words.length < 4 && !opt.words.includes(w)) opt.words.push(w); });
+        if (!opt.sentence && _isSentence(c.sentence)) opt.sentence = c.sentence;
+      });
+    return [...byReading.values()];
+  }
+
+  /** Shortest textbook sentence containing text, or ''. Short reads best on a card. */
+  function _sentenceWith(text, cards) {
+    let best = '';
+    for (const c of cards) {
+      const s = c.sentence;
+      if (_isSentence(s) && s.includes(text) && (!best || s.length < best.length)) best = s;
+    }
+    return best;
+  }
+
+  /** An option with only a lesson sentence; the parent fills the rest. */
+  function _sentenceOnly(sentence, note) {
+    return { pinyin: '', words: [], sentence, source: '课文例句', confidence: 'partial', note };
+  }
+
+  /**
+   * Suggestion sources, tried in order; the first that returns options
+   * wins. Each is (front, chars, cards) → {kind, options} or null.
+   *
+   * Extending: a new source (an offline pinyin library for characters
+   * outside the textbook, say) is one more entry, placed by how much it
+   * should be trusted relative to the others. Nothing else changes: the
+   * result shape is the same, so the UI renders it as it is.
+   */
+  const STRATEGIES = [
+    // A 生字: every reading the textbook gives it, as written there.
+    function textbookChar(front, chars, cards) {
+      if (chars.length !== 1) return null;
+      const options = _charOptions(front, cards);
+      return options.length ? { kind: 'char', options } : null;
+    },
+    // A word made of 生字: pinyin per character. A character with several
+    // readings cannot be resolved without a dictionary, so the earliest
+    // reading is used and the parent is told to check.
+    function textbookWord(front, chars, cards) {
+      if (chars.length < 2) return null;
+      const perChar = chars.map(ch => _charOptions(ch, cards).map(o => o.pinyin));
+      if (perChar.some(r => !r.length)) return null;
+      const sentence = _sentenceWith(front, cards);
+      const ambiguous = chars.filter((_, i) => perChar[i].length > 1);
+      return {
+        kind: 'word',
+        options: [{
+          pinyin: perChar.map(r => r[0]).join(' '),
+          words: [],
+          sentence,
+          source: sentence ? '拼音按生字表，例句来自课文' : '拼音按生字表',
+          confidence: 'partial',
+          note: ambiguous.length ? `「${ambiguous.join('」「')}」是多音字，请核对拼音` : ''
+        }]
+      };
+    },
+    // Not (all) 生字, but the text occurs in a lesson: offer that sentence.
+    function lessonSentence(front, chars, cards) {
+      const sentence = _sentenceWith(front, cards);
+      if (!sentence) return null;
+      const note = chars.length === 1
+        ? '这个字不在生字表里，请自己填拼音和词语'
+        : '有的字不在生字表里，请自己填拼音';
+      return { kind: chars.length === 1 ? 'char' : 'word', options: [_sentenceOnly(sentence, note)] };
+    }
+  ];
+
+  /**
+   * @param {string} front - what the parent typed in 正面
+   * @returns {{kind:string, front:string, options:Array}}
+   */
+  function suggest(front) {
+    const f = String(front || '').trim();
+    if (!f) return { kind: 'none', front: f, options: [] };
+    const cards = _textbook();
+    const chars = [...f];
+    for (const strategy of STRATEGIES) {
+      const r = strategy(f, chars, cards);
+      if (r && r.options.length) return { kind: r.kind, front: f, options: r.options };
+    }
+    return { kind: 'none', front: f, options: [] };
+  }
+
+  return { suggest, sourceLabel };
 })();

@@ -1158,10 +1158,220 @@ const AppController = (() => {
   function showCustomCards() {
     ModalUI.show(`✏️ 自定义字卡 (${CustomCardService.count()}张)`,
       ModalUI.renderCustomCards(CustomCardService.getAll()), { cc: true });
+    _suggestion = _noSuggestion();
+    _editingFront = null;
     // Land the cursor where typing starts, so the keyboard flow works from the
     // moment the panel opens
     const f = document.getElementById('ccFront');
     if (f) f.focus();
+  }
+
+  /**
+   * The custom-card form, in one place. Each entry ties a field's element id
+   * to the card property it edits and how that property is written into the
+   * field. Adding a field to custom cards means one entry here (and the input
+   * in ModalUI.renderCustomCards); filling, clearing, suggesting and editing
+   * all read this table.
+   *   suggested: whether 自动填写 may fill it (正面 is what the parent types)
+   */
+  const _CC_FIELDS = [
+    { id: 'ccFront',    key: 'front',    show: v => v || '',               suggested: false },
+    { id: 'ccPinyin',   key: 'pinyin',   show: v => v || '',               suggested: true },
+    { id: 'ccWords',    key: 'words',    show: v => (v || []).join('，'),  suggested: true },
+    { id: 'ccSentence', key: 'sentence', show: v => v || '',               suggested: true }
+  ];
+
+  /** Current form values as {front, pinyin, words, sentence} strings. */
+  function _readCardForm() {
+    const out = {};
+    for (const f of _CC_FIELDS) {
+      const el = document.getElementById(f.id);
+      out[f.key] = el ? el.value : '';
+    }
+    return out;
+  }
+
+  /** Write a card (or suggestion) into the form; '' everywhere when null. */
+  function _writeCardForm(card) {
+    for (const f of _CC_FIELDS) {
+      const el = document.getElementById(f.id);
+      if (el) el.value = card ? f.show(card[f.key]) : '';
+    }
+  }
+
+  /**
+   * 自动填写 state for the custom-card form.
+   *   result  CardSuggestService.suggest() output for the current 正面
+   *   active  index of the option filled in, or null
+   *   filled  {fieldId: value} last written by a suggestion. A field whose
+   *           current value differs was edited by the parent and is never
+   *           overwritten — picking another reading must not destroy work.
+   */
+  let _suggestion = _noSuggestion();
+
+  function _noSuggestion() { return { result: null, active: null, filled: {} }; }
+
+  /** Recompute suggestions for whatever is in 正面 and redraw the strip. */
+  function updateCardSuggestion() {
+    const frontEl = document.getElementById('ccFront');
+    const box = document.getElementById('ccSuggest');
+    if (!frontEl || !box) return;
+    const result = CardSuggestService.suggest(frontEl.value);
+    const prev = _suggestion.result;
+    // Typing the same front again (or IME re-firing input) changes nothing.
+    if (prev && prev.front === result.front) return;
+    _suggestion.result = result;
+    _suggestion.active = null;
+    // With exactly one reading there is nothing to choose: fill it in now,
+    // which is the whole point of the feature. Several readings wait for the
+    // parent, because a wrong guess would go onto the card.
+    if (result.options.length === 1) {
+      applyCardSuggestion(0);
+      return;
+    }
+    // A new front invalidates what the previous suggestion wrote, but only
+    // where the parent has not since edited it.
+    _clearSuggestedFields();
+    _renderSuggestion();
+  }
+
+  /** Fill the form from option i of the current suggestion. */
+  function applyCardSuggestion(i) {
+    const r = _suggestion.result;
+    if (!r || !r.options[i]) return;
+    const o = r.options[i];
+    for (const f of _CC_FIELDS.filter(x => x.suggested)) {
+      const el = document.getElementById(f.id);
+      if (!el || !_isUntouched(el)) continue;
+      const value = f.show(o[f.key]);
+      el.value = value;
+      _suggestion.filled[f.id] = value;
+    }
+    _suggestion.active = i;
+    _renderSuggestion();
+  }
+
+  /** A field is ours to write if it is empty or still holds what we wrote. */
+  function _isUntouched(el) {
+    return el.value === '' || el.value === _suggestion.filled[el.id];
+  }
+
+  function _clearSuggestedFields() {
+    for (const [id, value] of Object.entries(_suggestion.filled)) {
+      const el = document.getElementById(id);
+      if (el && el.value === value) el.value = '';
+    }
+    _suggestion.filled = {};
+  }
+
+  function _renderSuggestion() {
+    const box = document.getElementById('ccSuggest');
+    if (!box) return;
+    const html = ModalUI.renderCardSuggestion(_suggestion.result, _suggestion.active);
+    box.innerHTML = html;
+    box.classList.toggle('hidden', !html);
+  }
+
+  /**
+   * Editing a custom card.
+   *
+   * Reuses the add form rather than a second form or inline row editing:
+   * one place to type, the same 自动填写, the same validation, and nothing
+   * new for a parent to learn. While editing, the form is labelled with the
+   * card's name, 加入 becomes 保存修改, a 取消 appears, and the card is
+   * highlighted in the list. Leaving edit mode (save, cancel, deleting that
+   * card, reopening the panel) always restores the plain add form.
+   *
+   * 自动填写 stays quiet when editing starts: the fields hold the card's own
+   * values, and filling them over with textbook data would undo the very
+   * correction the parent opened the card to keep. It wakes up only if the
+   * parent changes 正面.
+   */
+  let _editingFront = null;
+
+  function startEditCustomCard(front) {
+    const card = CustomCardService.get(front);
+    if (!card) { _setFormMessage('找不到这张卡片，可能已经删除了', false); return; }
+    _writeCardForm(card);
+    _editingFront = card.front;
+    // 自动填写 must not fill over the card's own values. Marking the card's
+    // front as already handled shows nothing now; if the parent then
+    // changes 正面, _isUntouched() still protects every field that holds the
+    // card's text, because no field is recorded as filled by a suggestion.
+    _suggestion = _noSuggestion();
+    _suggestion.result = { kind: 'none', front: card.front, options: [] };
+    _renderSuggestion();
+    _setFormMessage('', true);
+    _renderEditState();
+    const f = document.getElementById('ccFront');
+    if (f) { f.focus(); f.select(); }
+  }
+
+  function saveCustomCardEdit() {
+    const result = CustomCardService.update(_editingFront, _readCardForm());
+    if (!result.ok) {
+      _setFormMessage(result.error, false);
+      const f = document.getElementById('ccFront');
+      if (f) f.focus();
+      return;
+    }
+    _exitEditMode();
+    _refreshCustomCardList();
+    let msg = result.frontChanged
+      ? `已改成「${result.card.front}」✓ 正面换了字，学习记录从头开始`
+      : `已保存「${result.card.front}」✓`;
+    if (result.warning) msg += ` ${result.warning}`;
+    _setFormMessage(msg, true);
+    // The study view may be showing this very card.
+    if (State.get('selectedGrade') === 'custom') selectSemester('custom', 'custom');
+  }
+
+  function cancelCustomCardEdit() {
+    _exitEditMode();
+    _setFormMessage('', true);
+  }
+
+  /** Back to the plain add form: empty fields, no label, 加入 button. */
+  function _exitEditMode() {
+    _editingFront = null;
+    _resetCardForm();
+    _renderEditState();
+  }
+
+  /** Empty every field and the suggestion strip, and focus 正面. */
+  function _resetCardForm() {
+    _writeCardForm(null);
+    _suggestion = _noSuggestion();
+    _renderSuggestion();
+    const f = document.getElementById('ccFront');
+    if (f) f.focus();
+  }
+
+  /** Reflect _editingFront in the label, buttons and list highlight. */
+  function _renderEditState() {
+    const editing = _editingFront !== null;
+    const label = document.getElementById('ccEditingLabel');
+    if (label) {
+      label.textContent = editing ? `正在修改「${_editingFront}」` : '';
+      label.classList.toggle('hidden', !editing);
+    }
+    const add = document.querySelector('[data-action="cc-add"]');
+    if (add) add.textContent = editing ? '💾 保存修改' : '➕ 加入（可连续添加）';
+    const cancel = document.querySelector('[data-action="cc-cancel-edit"]');
+    if (cancel) cancel.classList.toggle('hidden', !editing);
+    document.querySelectorAll('[data-cc-item]').forEach(row => {
+      row.classList.toggle('is-editing', editing && row.dataset.ccItem === _editingFront);
+    });
+  }
+
+  /** Redraw the card list in place, keeping any active search. */
+  function _refreshCustomCardList() {
+    const list = document.getElementById('ccList');
+    if (!list) return;
+    list.innerHTML = ModalUI.renderCustomCardList(CustomCardService.getAll());
+    const searchEl = document.getElementById('ccSearch');
+    if (searchEl && searchEl.value) ModalUI.filterCustomCardList(searchEl.value);
+    _renderEditState();
   }
 
   /**
@@ -1173,19 +1383,13 @@ const AppController = (() => {
    * be entered one after another (Anki's Add-window behaviour).
    */
   function addCustomCard() {
+    // The same form and the same submit (button or Enter) edit a card when
+    // one is being edited; see startEditCustomCard().
+    if (_editingFront !== null) { saveCustomCardEdit(); return; }
     const frontEl = document.getElementById('ccFront');
-    const pinyinEl = document.getElementById('ccPinyin');
-    const wordsEl = document.getElementById('ccWords');
-    const sentenceEl = document.getElementById('ccSentence');
-    const msgEl = document.getElementById('ccMsg');
     if (!frontEl) return;
 
-    const result = CustomCardService.add({
-      front: frontEl.value,
-      pinyin: pinyinEl ? pinyinEl.value : '',
-      words: wordsEl ? wordsEl.value : '',
-      sentence: sentenceEl ? sentenceEl.value : ''
-    });
+    const result = CustomCardService.add(_readCardForm());
     if (!result.ok) {
       // Keep what was typed — re-rendering would discard it
       _setFormMessage(result.error, false);
@@ -1199,10 +1403,7 @@ const AppController = (() => {
     const okMessage = result.warning
       ? `已加入「${result.card.front}」✓ ${result.warning}`
       : `已加入「${result.card.front}」✓`;
-    frontEl.value = '';
-    if (pinyinEl) pinyinEl.value = '';
-    if (wordsEl) wordsEl.value = '';
-    if (sentenceEl) sentenceEl.value = '';
+    _resetCardForm();
     FilterUI.updateCustomCount();
 
     // Update the list in place where possible. On the very first card the list
@@ -1242,19 +1443,15 @@ const AppController = (() => {
   }
 
   function removeCustomCard(front) {
+    // Deleting the card being edited leaves nothing to save into.
+    if (_editingFront === String(front || '').trim()) _exitEditMode();
     CustomCardService.remove(front);
     FilterUI.updateCustomCount();
-    // In-place list update, same reason as addCustomCard: keep the form intact
-    const list = document.getElementById('ccList');
-    const remaining = CustomCardService.getAll();
-    if (list && remaining.length) {
-      list.innerHTML = ModalUI.renderCustomCardList(remaining);
-      // Re-apply whatever search was active — deleting a card out of a
-      // filtered-down list should not silently reset the filter.
-      const searchEl = document.getElementById('ccSearch');
-      if (searchEl && searchEl.value) {
-        ModalUI.filterCustomCardList(searchEl.value);
-      }
+    // In-place list update, same reason as addCustomCard: keep the form intact.
+    // _refreshCustomCardList re-applies an active search, so deleting from a
+    // filtered-down list does not silently reset the filter.
+    if (document.getElementById('ccList') && CustomCardService.count()) {
+      _refreshCustomCardList();
     } else {
       showCustomCards(); // last card gone — fall back to the empty state
     }
@@ -1885,6 +2082,7 @@ const AppController = (() => {
       if (e.target && e.target.id === 'ccSearch') {
         ModalUI.filterCustomCardList(e.target.value);
       }
+      if (e.target && e.target.id === 'ccFront') updateCardSuggestion();
     });
 
     document.getElementById('modalContent').addEventListener('click', (e) => {
@@ -1908,6 +2106,15 @@ const AppController = (() => {
 
       const ccSpeak = e.target.closest('[data-action="cc-speak"]');
       if (ccSpeak) { Speech.speak(ccSpeak.dataset.front); return; }
+
+      const ccSuggest = e.target.closest('[data-action="cc-suggest"]');
+      if (ccSuggest) { applyCardSuggestion(Number(ccSuggest.dataset.index)); return; }
+
+      const ccEdit = e.target.closest('[data-action="cc-edit"]');
+      if (ccEdit) { startEditCustomCard(ccEdit.dataset.front); return; }
+
+      const ccCancel = e.target.closest('[data-action="cc-cancel-edit"]');
+      if (ccCancel) { cancelCustomCardEdit(); return; }
     });
 
     // --- Keyboard shortcuts ---
@@ -1920,7 +2127,8 @@ const AppController = (() => {
   }
 
   return { init, switchMode, selectSemester, selectLesson, showFavorites,
-           showBadges, showReport, showHelp, showDataTransfer, showCustomCards, addCustomCard, removeCustomCard,
+           showBadges, showReport, showHelp, showDataTransfer, showCustomCards, addCustomCard, removeCustomCard, updateCardSuggestion, applyCardSuggestion,
+           startEditCustomCard, saveCustomCardEdit, cancelCustomCardEdit,
            // Exported for tests: boot runs once per page load, so the
            // launch-order rules can only be exercised by calling this directly.
            _restoreInitialView,

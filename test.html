@@ -137,6 +137,26 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'Assertion failed
 function assertEqual(a, b, msg) { if (a !== b) throw new Error(msg || `Expected ${b}, got ${a}`); }
 function assertGreater(a, min, msg) { if (a <= min) throw new Error(msg || `Expected > ${min}, got ${a}`); }
 
+/**
+ * Make the test iframe re-apply its stylesheet after a resize.
+ *
+ * Tests resize the iframe and measure in the same task. Chromium updates
+ * width-based media queries at once but leaves styles from a height-based
+ * one (max-height:800px, the short-laptop card rules) in place until the
+ * next frame, so a test that follows a 1366×768 test read the laptop margin
+ * at 360×640. A real resize is always followed by a frame; this does the
+ * same synchronously. Call it after any frame.setAttribute('style', …) that
+ * changes the height before measuring.
+ */
+function flushFrameStyle() {
+  // The iframe is looked up here: `frame` is local to runTests().
+  const root = document.getElementById('appFrame').contentDocument.documentElement;
+  root.style.display = 'none';
+  void root.offsetHeight;
+  root.style.display = '';
+  void root.offsetHeight;
+}
+
 function renderResults() {
   let html = '';
   tests.forEach(group => {
@@ -1346,6 +1366,47 @@ async function runTests() {
       const last = [...doc.querySelectorAll('.quiz-option')].pop().getBoundingClientRect().bottom;
       assert(last <= win.innerHeight, `last answer ends at ${Math.round(last)}px, screen is ${win.innerHeight}px`);
     });
+    it('answers are half the question size, with clear space above them', () => {
+      // Parent feedback: answers looked small (18px under a 48-72px
+      // question) and too close to it (16px). Now 24px / 32px gap on a
+      // phone, 32px / 48px on a computer.
+      for (const [w, h, minA, minGap] of [[360, 640, 24, 32], [390, 844, 24, 32], [1366, 768, 32, 48]]) {
+        frame.setAttribute('style', `width:${w}px;height:${h}px`);
+        flushFrameStyle();
+        for (const type of ['pickPinyin', 'pickChar', 'pickWord', 'fillBlank']) {
+          const m = measure(type);
+          assert(m.a >= minA, `${w}×${h} ${type}: answers ${m.a}px, should be >= ${minA}px`);
+          assert(m.gap >= minGap, `${w}×${h} ${type}: question→answers ${m.gap}px, should be >= ${minGap}px`);
+          assert(m.aH >= 44, `${w}×${h} ${type}: answer buttons ${m.aH}px tall`);
+        }
+      }
+    });
+    it('every answer stays on screen and unobstructed on the smallest phone', () => {
+      // At 24px a single column stacked four buttons past the bottom of a
+      // 320×568 screen, so the answers are two columns at every width.
+      frame.setAttribute('style', 'width:320px;height:568px');
+      flushFrameStyle();
+      const doc = frame.contentDocument, win = frame.contentWindow;
+      for (const type of ['pickPinyin', 'pickChar', 'pickWord', 'fillBlank']) {
+        measure(type);
+        for (const o of doc.querySelectorAll('.quiz-option')) {
+          const r = o.getBoundingClientRect();
+          assert(r.bottom <= win.innerHeight, `${type}: "${o.textContent.trim()}" ends at ${Math.round(r.bottom)}px of ${win.innerHeight}`);
+          const hit = doc.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+          assert(hit && o.contains(hit), `${type}: "${o.textContent.trim()}" is covered by ${hit && (hit.id || hit.className)}`);
+        }
+      }
+    });
+    it('the longest answers in the data fit their button on the smallest phone', () => {
+      frame.setAttribute('style', 'width:320px;height:568px');
+      flushFrameStyle();
+      measure('pickWord');
+      const o = frame.contentDocument.querySelector('.quiz-option');
+      for (const text of ['\u4e00\u7baa\u98df\u4e00\u8c46\u7fb9', 'shu\u0101ng', 'zhu\u00e0ng']) {
+        o.textContent = text;
+        assert(o.scrollWidth <= o.clientWidth + 1, `"${text}" overflows its ${o.clientWidth}px button`);
+      }
+    });
     it('(restores the shared iframe size)', () => {
       frame.setAttribute('style', _frameStyle);
       assert(true);
@@ -1467,6 +1528,7 @@ async function runTests() {
       // now louder than the 再看一遍/我来写 buttons. They are hints: readable
       // (>= 4.5:1, >= 14px), but smaller or lighter than 我来写.
       frame.setAttribute('style', 'width:360px;height:640px');
+      flushFrameStyle();
       const win = frame.contentWindow, doc = frame.contentDocument;
       const lum = c => { const v = c.match(/\d+/g).slice(0, 3).map(Number).map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); });
         return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
@@ -3603,7 +3665,7 @@ async function runTests() {
 
     it('R8: service and renderer exist and are exported', () => {
       assert(typeof app.CustomCardService === 'object', 'CustomCardService not exported');
-      for (const fn of ['add', 'remove', 'getAll', 'count', 'asChars', 'validate']) {
+      for (const fn of ['add', 'update', 'get', 'remove', 'getAll', 'count', 'asChars', 'validate']) {
         assert(typeof app.CustomCardService[fn] === 'function', `missing ${fn}()`);
       }
       assert(typeof app.ModalUI.renderCustomCards === 'function', 'renderCustomCards missing');
@@ -4553,6 +4615,441 @@ async function runTests() {
       app.AppController.showCustomCards();
       assertEqual(frame.contentDocument.getElementById('ccSentence').rows, 1,
         'the rendered textarea must actually have rows=1');
+    });
+  });
+
+  // 自动填写. Fixtures are real textbook entries, so a data change that
+  // breaks a suggestion fails here with the character named:
+  //   秦 — one reading (qín)        长 — cháng 长短 / zhǎng 长大 (1-1)
+  //   爪 — zhuǎ 爪子 (1-1) / zhǎo 龙爪 (3-2)
+  //   其 — in 37 sentences, not a 生字    朋友 — both 生字, one reading each
+  describeWith('\u2728 \u81ea\u5b9a\u4e49\u5b57\u5361\u81ea\u52a8\u586b\u5199 (Card suggestions)', resetProfileData, () => {
+    const S = () => app.CardSuggestService;
+    const doc = () => frame.contentDocument;
+    const $ = id => doc().getElementById(id);
+
+    /** Type into 正面 the way a parent does: set the value, fire input. */
+    function typeFront(text) {
+      const el = $('ccFront');
+      el.value = text;
+      el.dispatchEvent(new frame.contentWindow.Event('input', { bubbles: true }));
+    }
+    function openForm() {
+      app.State.save('customCards', []);
+      app.AppController.showCustomCards();
+    }
+
+    it('one reading: pinyin, words and sentence come from the textbook card', () => {
+      const r = S().suggest('\u79e6');
+      assertEqual(r.kind, 'char');
+      assertEqual(r.options.length, 1, '秦 has one reading');
+      const card = app.State.get('allChars').find(c => c.char === '\u79e6' && !c.isCustom);
+      const o = r.options[0];
+      assertEqual(o.pinyin, card.pinyin);
+      assertEqual(o.sentence, card.sentence);
+      assert(o.words.length && o.words.every(w => w.includes('\u79e6')), 'every word contains 秦');
+      assertEqual(o.confidence, 'textbook');
+      assert(/年级(上|下)册/.test(o.source), `source names the volume: ${o.source}`);
+    });
+
+    it('多音字: one option per reading, earliest volume first', () => {
+      const r = S().suggest('\u957f');
+      assertEqual(r.options.map(o => o.pinyin).join('/'), 'ch\u00e1ng/zh\u01ceng');
+      assert(r.options[0].words.includes('\u957f\u77ed'), 'cháng carries 长短');
+      assert(r.options[1].words.includes('\u957f\u5927'), 'zhǎng carries 长大');
+      const claw = S().suggest('\u722a');
+      assertEqual(claw.options[0].pinyin, 'zhu\u01ce', 'grade 1 reading first');
+      assert(claw.options[0].source.startsWith('\u4e00\u5e74\u7ea7'), claw.options[0].source);
+    });
+
+    it('a character outside the 生字表 still gets a lesson sentence, and says what is missing', () => {
+      const r = S().suggest('\u5176');
+      assertEqual(r.options.length, 1);
+      const o = r.options[0];
+      assertEqual(o.pinyin, '', 'no invented pinyin');
+      assert(o.sentence.includes('\u5176'), 'sentence contains 其');
+      assertEqual(o.confidence, 'partial');
+      assert(o.note, 'tells the parent to fill pinyin');
+    });
+
+    it('a word: pinyin per character, and a sentence containing the whole word', () => {
+      const r = S().suggest('\u670b\u53cb');
+      assertEqual(r.kind, 'word');
+      assertEqual(r.options[0].pinyin, 'p\u00e9ng y\u01d2u');
+      assert(r.options[0].sentence.includes('\u670b\u53cb'), r.options[0].sentence);
+    });
+
+    it('a word with a 多音字 is flagged for checking', () => {
+      const r = S().suggest('\u957f\u5927');
+      assert(r.options[0].note.includes('\u957f'), `note should name 长: ${r.options[0].note}`);
+    });
+
+    it('nothing usable, and blank input, suggest nothing', () => {
+      assertEqual(S().suggest('\u{20000}').kind, 'none');
+      assertEqual(S().suggest('   ').kind, 'none');
+    });
+
+    it('custom cards are never a source', () => {
+      // Custom cards live in filteredChars today, not allChars, but nothing
+      // enforces that; if one ever lands in allChars a parent's own typo
+      // would come back as a "textbook" suggestion. Put one there directly.
+      const all = app.State.get('allChars');
+      const fake = { char: '\u79e6', pinyin: 'xxx', words: ['\u79e6x'], sentence: 'made up',
+        grade: 0, semester: 0, isCustom: true };
+      app.State.set('allChars', [fake, ...all]);
+      try {
+        for (const o of S().suggest('\u79e6').options) {
+          assert(o.pinyin !== 'xxx' && o.sentence !== 'made up', 'a hand-made card leaked into suggestions');
+        }
+      } finally {
+        app.State.set('allChars', all);
+      }
+    });
+
+    it('never suggests a word-pair fallback as a sentence', () => {
+      const fallback = app.State.get('allChars').find(c => (c.sentence || '').includes(' \u00b7 '));
+      assert(fallback, 'fixture: data has fallback sentences');
+      for (const o of S().suggest(fallback.char).options) {
+        assert(!o.sentence.includes(' \u00b7 '), `${fallback.char}: suggested "${o.sentence}"`);
+      }
+    });
+
+    it('form: one reading fills all three fields at once', () => {
+      openForm();
+      typeFront('\u79e6');
+      const o = S().suggest('\u79e6').options[0];
+      assertEqual($('ccPinyin').value, o.pinyin);
+      assertEqual($('ccWords').value, o.words.join('\uff0c'));
+      assertEqual($('ccSentence').value, o.sentence);
+      assert(!$('ccSuggest').classList.contains('hidden'), 'source line is shown');
+      assert($('ccSuggest').textContent.includes('\u5df2\u586b\u5165'), 'says it was filled in');
+    });
+
+    it('form: 多音字 fills nothing until a reading is picked', () => {
+      openForm();
+      typeFront('\u957f');
+      assertEqual($('ccPinyin').value, '', 'must not guess a reading');
+      const btns = $('ccSuggest').querySelectorAll('[data-action="cc-suggest"]');
+      assertEqual(btns.length, 2);
+      btns[1].click();
+      assertEqual($('ccPinyin').value, 'zh\u01ceng');
+      assert($('ccWords').value.includes('\u957f\u5927'));
+      assertEqual($('ccSuggest').querySelector('.is-active').dataset.index, '1');
+    });
+
+    it('form: switching reading replaces suggested text but keeps what the parent typed', () => {
+      openForm();
+      typeFront('\u957f');
+      $('ccSuggest').querySelectorAll('[data-action="cc-suggest"]')[0].click();
+      $('ccSentence').value = '\u6211\u81ea\u5df1\u5199\u7684\u4f8b\u53e5\u3002';
+      $('ccSuggest').querySelectorAll('[data-action="cc-suggest"]')[1].click();
+      assertEqual($('ccPinyin').value, 'zh\u01ceng', 'untouched field follows the new reading');
+      assertEqual($('ccSentence').value, '\u6211\u81ea\u5df1\u5199\u7684\u4f8b\u53e5\u3002', 'edited field kept');
+    });
+
+    it('form: changing 正面 clears what the old suggestion filled, not what the parent typed', () => {
+      openForm();
+      typeFront('\u79e6');
+      $('ccWords').value = '\u79e6\u5cad';
+      typeFront('\u957f');
+      assertEqual($('ccPinyin').value, '', '秦\'s suggested pinyin removed');
+      assertEqual($('ccWords').value, '\u79e6\u5cad', 'parent\'s edit kept');
+      typeFront('');
+      assert($('ccSuggest').classList.contains('hidden'), 'no strip for an empty 正面');
+    });
+
+    it('form: nothing is saved until 加入, and the saved card has the edited values', () => {
+      openForm();
+      typeFront('\u79e6');
+      assertEqual(app.CustomCardService.count(), 0, 'a suggestion is not a card');
+      $('ccPinyin').value = 'q\u00edn';
+      $('ccWords').value = '\u79e6\u671d';
+      app.AppController.addCustomCard();
+      const c = app.CustomCardService.getAll()[0];
+      assertEqual(c.front, '\u79e6');
+      assertEqual(c.words.join(), '\u79e6\u671d', 'the parent\'s edit is what gets saved');
+      assertEqual($('ccPinyin').value, '', 'form cleared for the next card');
+      assert($('ccSuggest').classList.contains('hidden'), 'strip cleared with the form');
+    });
+
+    it('form: reading buttons are touch-sized', () => {
+      const prev = frame.getAttribute('style');
+      frame.setAttribute('style', 'width:360px;height:640px');
+      try {
+        openForm();
+        typeFront('\u957f');
+        const b = $('ccSuggest').querySelector('[data-action="cc-suggest"]');
+        assert(b.getBoundingClientRect().height >= 44, `button is ${b.getBoundingClientRect().height}px tall`);
+      } finally {
+        if (prev === null) frame.removeAttribute('style'); else frame.setAttribute('style', prev);
+      }
+    });
+
+    it('form: 加入 stays inside the panel when the suggestion strip grows', () => {
+      // Measured before the fix: on 360×640 with cards in the list, picking
+      // a 多音字 reading pushed 加入 128px below the modal. The inputs now
+      // scroll on their own and 加入 is pinned.
+      const prev = frame.getAttribute('style');
+      frame.setAttribute('style', 'width:360px;height:640px');
+      try {
+        for (const cards of [0, 3]) {
+          app.State.save('customCards', Array.from({ length: cards }, (_, i) => ({ front: 'x' + i, pinyin: 'z\u00ec' })));
+          app.AppController.showCustomCards();
+          typeFront('\u957f');
+          $('ccSuggest').querySelectorAll('[data-action="cc-suggest"]')[1].click();
+          const modal = doc().querySelector('.modal').getBoundingClientRect();
+          const add = doc().querySelector('[data-action="cc-add"]').getBoundingClientRect();
+          assert(add.bottom <= modal.bottom && add.top >= modal.top,
+            `${cards} cards: 加入 at ${Math.round(add.top)}–${Math.round(add.bottom)}, modal ends ${Math.round(modal.bottom)}`);
+          const list = doc().querySelector('.cc-list-wrap');
+          if (list) assert(list.getBoundingClientRect().height >= 79, 'the list keeps its minimum height');
+        }
+      } finally {
+        app.ModalUI.close();
+        if (prev === null) frame.removeAttribute('style'); else frame.setAttribute('style', prev);
+      }
+    });
+  });
+
+  // Editing a custom card: the add form is reused (see startEditCustomCard).
+  describeWith('\u270f\ufe0f \u4fee\u6539\u81ea\u5b9a\u4e49\u5b57\u5361 (Edit custom cards)', resetProfileData, () => {
+    const C = () => app.CustomCardService;
+    const doc = () => frame.contentDocument;
+    const $ = id => doc().getElementById(id);
+    const row = front => doc().querySelector(`[data-cc-item="${front}"]`);
+
+    /** Three cards, oldest first: 秦, 春, 鸟. The list shows newest first. */
+    function seed() {
+      app.State.save('customCards', [
+        { front: '\u79e6', pinyin: 'q\u00edn', words: ['\u79e6\u671d'], sentence: '\u79e6\u59cb\u7687\u3002', created: '2026-01-01' },
+        { front: '\u6625', pinyin: 'ch\u016bn', words: [], sentence: '', created: '2026-01-02' },
+        { front: '\u9e1f', pinyin: 'ni\u01ceo', words: [], sentence: '', created: '2026-01-03' }
+      ]);
+    }
+    function open() { seed(); app.AppController.showCustomCards(); }
+    function edit(front) { row(front).querySelector('[data-action="cc-edit"]').click(); }
+
+    it('service: update changes fields in place, keeping position and created date', () => {
+      seed();
+      const r = C().update('\u6625', { front: '\u6625', pinyin: 'ch\u016bn', words: '\u6625\u5929\uff0c\u6625\u98ce', sentence: '\u6625\u5929\u6765\u4e86\u3002' });
+      assert(r.ok, r.error);
+      assertEqual(r.frontChanged, false);
+      const all = C().getAll();
+      assertEqual(all.map(c => c.front).join(), '\u9e1f,\u6625,\u79e6', 'order unchanged');
+      const c = C().get('\u6625');
+      assertEqual(c.words.join('|'), '\u6625\u5929|\u6625\u98ce');
+      assertEqual(c.created, '2026-01-02', 'an edit is not a new card');
+      assertEqual(C().count(), 3);
+    });
+
+    it('service: may keep its own front, may not take another card\'s', () => {
+      seed();
+      assert(C().update('\u79e6', { front: '\u79e6', pinyin: 'q\u00edn' }).ok, 'same front must be allowed');
+      const r = C().update('\u79e6', { front: '\u6625', pinyin: 'ch\u016bn' });
+      assert(!r.ok && r.error.includes('\u6625'), `must refuse a duplicate: ${r.error}`);
+      assertEqual(C().get('\u79e6').pinyin, 'q\u00edn', 'refused edit stores nothing');
+    });
+
+    it('service: same validation as adding, and a vanished card is reported', () => {
+      seed();
+      assert(!C().update('\u79e6', { front: '' }).ok, 'empty front');
+      assert(!C().update('\u79e6', { front: '\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d' }).ok, 'over 8 characters');
+      assert(!C().update('\u4e0d\u5b58\u5728', { front: 'x' }).ok, 'unknown card');
+      assertEqual(C().count(), 3);
+    });
+
+    it('service: editing at the card limit is allowed', () => {
+      app.State.save('customCards', Array.from({ length: 500 }, (_, i) => ({ front: 'c' + i })));
+      assert(C().update('c7', { front: 'c7', pinyin: 'x' }).ok, 'an edit does not add a card');
+    });
+
+    it('service: changing 正面 is reported so the parent knows progress restarts', () => {
+      seed();
+      const r = C().update('\u79e6', { front: '\u6cf0', pinyin: 't\u00e0i' });
+      assert(r.ok && r.frontChanged, 'frontChanged must be true');
+      assert(!C().get('\u79e6') && C().get('\u6cf0'), 'renamed');
+    });
+
+    it('form: ✏️ loads the card, labels the form, and highlights the row', () => {
+      open();
+      edit('\u79e6');
+      assertEqual($('ccFront').value, '\u79e6');
+      assertEqual($('ccPinyin').value, 'q\u00edn');
+      assertEqual($('ccWords').value, '\u79e6\u671d');
+      assertEqual($('ccSentence').value, '\u79e6\u59cb\u7687\u3002');
+      assert($('ccEditingLabel').textContent.includes('\u79e6'), 'label names the card');
+      assert(doc().querySelector('[data-action="cc-add"]').textContent.includes('\u4fdd\u5b58'), 'button says 保存修改');
+      assert(!doc().querySelector('[data-action="cc-cancel-edit"]').classList.contains('hidden'), '取消 shown');
+      assert(row('\u79e6').classList.contains('is-editing'), 'row highlighted');
+      assert($('ccSuggest').classList.contains('hidden'), '自动填写 stays quiet');
+    });
+
+    it('form: 保存修改 updates the card and returns to the add form', () => {
+      open();
+      edit('\u79e6');
+      $('ccPinyin').value = 'Q\u00cdN';
+      app.AppController.addCustomCard();
+      assertEqual(C().get('\u79e6').pinyin, 'Q\u00cdN');
+      assertEqual(C().count(), 3, 'no card added');
+      assertEqual($('ccFront').value, '', 'form cleared');
+      assert($('ccEditingLabel').classList.contains('hidden'), 'label gone');
+      assert(doc().querySelector('[data-action="cc-add"]').textContent.includes('\u52a0\u5165'), 'back to 加入');
+      assert(!doc().querySelector('.is-editing'), 'no row highlighted');
+      assert(row('\u79e6').textContent.includes('Q\u00cdN'), 'list shows the new value');
+      assert($('ccMsg').textContent.includes('\u5df2\u4fdd\u5b58'), $('ccMsg').textContent);
+    });
+
+    it('form: Enter saves the edit, it does not add a card', () => {
+      open();
+      edit('\u6625');
+      $('ccWords').value = '\u6625\u5929';
+      $('ccWords').dispatchEvent(new frame.contentWindow.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      assertEqual(C().count(), 3);
+      assertEqual(C().get('\u6625').words.join(), '\u6625\u5929');
+    });
+
+    it('form: 取消 discards changes', () => {
+      open();
+      edit('\u79e6');
+      $('ccPinyin').value = 'wrong';
+      doc().querySelector('[data-action="cc-cancel-edit"]').click();
+      assertEqual(C().get('\u79e6').pinyin, 'q\u00edn', 'nothing saved');
+      assertEqual($('ccPinyin').value, '', 'form cleared');
+      assert(doc().querySelector('[data-action="cc-cancel-edit"]').classList.contains('hidden'));
+    });
+
+    it('form: a rejected edit keeps the form in edit mode with what was typed', () => {
+      open();
+      edit('\u79e6');
+      $('ccFront').value = '\u6625';
+      app.AppController.addCustomCard();
+      assert($('ccMsg').textContent.includes('\u6625'), 'says 春 already exists');
+      assertEqual($('ccFront').value, '\u6625', 'input kept');
+      assert(!$('ccEditingLabel').classList.contains('hidden'), 'still editing');
+      assertEqual(C().get('\u79e6').pinyin, 'q\u00edn');
+    });
+
+    it('form: deleting the card being edited leaves edit mode', () => {
+      open();
+      edit('\u79e6');
+      row('\u79e6').querySelector('[data-action="cc-remove"]').click();
+      assertEqual(C().count(), 2);
+      assert($('ccEditingLabel').classList.contains('hidden'), 'not editing a deleted card');
+      app.AppController.addCustomCard();
+      assertEqual(C().count(), 2, 'empty form adds nothing');
+    });
+
+    it('form: renaming the front says progress restarts', () => {
+      open();
+      edit('\u79e6');
+      $('ccFront').value = '\u6cf0';
+      app.AppController.addCustomCard();
+      assert(C().get('\u6cf0'), 'saved as 泰');
+      assert($('ccMsg').textContent.includes('\u4ece\u5934'), $('ccMsg').textContent);
+    });
+
+    it('form: reopening the panel never starts in edit mode', () => {
+      open();
+      edit('\u79e6');
+      app.ModalUI.close();
+      app.AppController.showCustomCards();
+      assert($('ccEditingLabel').classList.contains('hidden'));
+      assertEqual($('ccFront').value, '');
+    });
+
+    it('form: the study view picks up the edit', () => {
+      seed();
+      app.AppController.switchMode('learn');
+      app.AppController.selectSemester('custom', 'custom');
+      app.AppController.showCustomCards();
+      edit('\u79e6');
+      $('ccSentence').value = '\u65b0\u7684\u79e6\u4f8b\u53e5\u3002';
+      app.AppController.addCustomCard();
+      const c = app.State.get('filteredChars').find(x => x.char === '\u79e6');
+      assertEqual(c.sentence, '\u65b0\u7684\u79e6\u4f8b\u53e5\u3002', 'study pool not refreshed');
+    });
+
+    it('form: 保存修改 and 取消 stay inside the panel on a small phone', () => {
+      const prev = frame.getAttribute('style');
+      frame.setAttribute('style', 'width:360px;height:640px');
+      try {
+        open();
+        edit('\u79e6');
+        const modal = doc().querySelector('.modal').getBoundingClientRect();
+        for (const sel of ['[data-action="cc-add"]', '[data-action="cc-cancel-edit"]']) {
+          const b = doc().querySelector(sel).getBoundingClientRect();
+          assert(b.bottom <= modal.bottom && b.height >= 40, `${sel}: ${Math.round(b.top)}–${Math.round(b.bottom)} vs ${Math.round(modal.bottom)}`);
+        }
+        const editBtn = row('\u79e6').querySelector('[data-action="cc-edit"]');
+        assert(editBtn.getAttribute('aria-label').includes('\u79e6'), 'edit button names its card for screen readers');
+      } finally {
+        app.ModalUI.close();
+        if (prev === null) frame.removeAttribute('style'); else frame.setAttribute('style', prev);
+      }
+    });
+  });
+
+  // Desktop card proportions (parent feedback: "too wide"). The card was
+  // 710×478 on 1366×768; it is now capped at 1.3× its height. Short screens
+  // also get smaller back-of-card text, because at 1280×720 737 of the
+  // 4014 backs had to be scrolled.
+  describeWith('\u{1F4D0} Desktop card width (\u5361\u7247\u5bbd\u5ea6)', resetProfileData, () => {
+    function at(w, h, fn) {
+      const prev = frame.getAttribute('style');
+      frame.setAttribute('style', `width:${w}px;height:${h}px`);
+      flushFrameStyle();
+      try {
+        app.AppController.switchMode('learn');
+        app.AppController.selectSemester('all', 'all');
+        fn();
+      } finally {
+        if (prev === null) frame.removeAttribute('style'); else frame.setAttribute('style', prev);
+        flushFrameStyle();
+      }
+    }
+    const rect = () => frame.contentDocument.querySelector('.card').getBoundingClientRect();
+    function showChar(ch) {
+      const all = app.State.get('allChars');
+      app.State.set('filteredChars', all);
+      app.State.set('currentIndex', all.findIndex(c => c.char === ch));
+      app.LearnController.showCurrent();
+    }
+
+    it('short laptops: card is at most 1.3× as wide as it is tall', () => {
+      for (const [w, h] of [[1280, 720], [1366, 768], [1536, 864]]) {
+        at(w, h, () => {
+          const r = rect();
+          assert(r.width / r.height <= 1.31, `${w}×${h}: ${Math.round(r.width)}×${Math.round(r.height)} = ${(r.width / r.height).toFixed(2)}`);
+        });
+      }
+    });
+
+    it('tall screens keep their size', () => {
+      at(1920, 1080, () => {
+        const r = rect();
+        assertEqual(Math.round(r.width), 820, '1920×1080 width');
+        assertEqual(Math.round(r.height), 760, '1920×1080 height');
+      });
+      at(1024, 768, () => assertEqual(Math.round(rect().width), 600, 'tablet landscape width'));
+    });
+
+    it('1280×720: the longest card back fits without scrolling', () => {
+      // 拂 has the longest back in the data (31-character sentence); it was
+      // 79px over before. Every other card is shorter.
+      at(1280, 720, () => {
+        showChar('\u62c2');
+        const b = frame.contentDocument.querySelector('.card-back-content');
+        assert(b.scrollHeight - b.clientHeight <= 1, `拂 back overflows by ${b.scrollHeight - b.clientHeight}px`);
+      });
+    });
+
+    it('tall screens keep the full-size back text', () => {
+      at(1920, 1080, () => {
+        showChar('\u62c2');
+        const fs = q => getComputedStyle(frame.contentDocument.querySelector(q)).fontSize;
+        assertEqual(fs('.card-pinyin-back'), '56px');
+        assertEqual(fs('.card-sentence'), '32px');
+      });
     });
   });
 
