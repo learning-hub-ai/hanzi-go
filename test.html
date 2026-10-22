@@ -138,6 +138,18 @@ function assertEqual(a, b, msg) { if (a !== b) throw new Error(msg || `Expected 
 function assertGreater(a, min, msg) { if (a <= min) throw new Error(msg || `Expected > ${min}, got ${a}`); }
 
 /**
+ * Rounding slack for layout measurements, in CSS px.
+ *
+ * With display scaling (Windows 125%/150%, Citrix, browser zoom) the
+ * browser lays out on fractional pixels, so a 44px button measures 43.99
+ * and a 4px gap 3.9999. Comparisons against a pixel threshold use this so
+ * the suite gives the same verdict at every zoom level. Half a pixel is
+ * well below anything a person could see, and far below every real
+ * regression these tests guard (the smallest was 15px).
+ */
+const PX_SLACK = 0.5;
+
+/**
  * Make the test iframe re-apply its stylesheet after a resize.
  *
  * Tests resize the iframe and measure in the same task. Chromium updates
@@ -425,11 +437,21 @@ async function runTests() {
       const win = frame.contentWindow;
       const ALLOWED = [400, 500, 600, 700, 800];
       const bad = new Map();
-      frame.contentDocument.querySelectorAll('*').forEach(el => {
-        const w = parseInt(win.getComputedStyle(el).fontWeight, 10);
-        if (!w || ALLOWED.includes(w)) return;
-        if (!bad.has(w)) bad.set(w, el.className || el.tagName);
-      });
+      // .sidebar-item has transition:all, so right after a test clicks a
+      // volume its weight is mid-animation (525 between 500 and 600) and the
+      // check failed or passed depending on timing. Read settled values.
+      const still = frame.contentDocument.createElement('style');
+      still.textContent = '*,*::before,*::after{transition:none!important;animation:none!important}';
+      frame.contentDocument.head.appendChild(still);
+      try {
+        frame.contentDocument.querySelectorAll('*').forEach(el => {
+          const w = parseInt(win.getComputedStyle(el).fontWeight, 10);
+          if (!w || ALLOWED.includes(w)) return;
+          if (!bad.has(w)) bad.set(w, el.className || el.tagName);
+        });
+      } finally {
+        still.remove();
+      }
       const found = [...bad].map(([w, who]) => `${w} on ${who}`);
       assertEqual(found.length, 0,
         `off-scale font weights (use a --weight-* token): ${found.join('; ')}`);
@@ -616,7 +638,7 @@ async function runTests() {
           // reports a large negative value, which is position, not clipping.
           const scrolls = cc.overflowY === 'auto' || cc.overflowY === 'scroll';
           const sides = scrolls ? ['left', 'right'] : ['left', 'right', 'top', 'bottom'];
-          const bad = sides.filter(s => room[s] >= 0 && room[s] < NEED);
+          const bad = sides.filter(s => room[s] >= 0 && room[s] < NEED - PX_SLACK);
           if (bad.length) {
             const id = el.id || el.getAttribute('data-action') || el.textContent.trim().slice(0, 10);
             tight.push(`${id} [${bad.map(s => `${s} ${room[s].toFixed(1)}px`).join(', ')}]`);
@@ -1364,7 +1386,7 @@ async function runTests() {
       const q = doc.getElementById('quizChar');
       assert(q.scrollWidth <= q.clientWidth + 1, 'the sentence overflows sideways');
       const last = [...doc.querySelectorAll('.quiz-option')].pop().getBoundingClientRect().bottom;
-      assert(last <= win.innerHeight, `last answer ends at ${Math.round(last)}px, screen is ${win.innerHeight}px`);
+      assert(last <= win.innerHeight + PX_SLACK, `last answer ends at ${Math.round(last)}px, screen is ${win.innerHeight}px`);
     });
     it('answers are half the question size, with clear space above them', () => {
       // Parent feedback: answers looked small (18px under a 48-72px
@@ -1391,7 +1413,7 @@ async function runTests() {
         measure(type);
         for (const o of doc.querySelectorAll('.quiz-option')) {
           const r = o.getBoundingClientRect();
-          assert(r.bottom <= win.innerHeight, `${type}: "${o.textContent.trim()}" ends at ${Math.round(r.bottom)}px of ${win.innerHeight}`);
+          assert(r.bottom <= win.innerHeight + PX_SLACK, `${type}: "${o.textContent.trim()}" ends at ${Math.round(r.bottom)}px of ${win.innerHeight}`);
           const hit = doc.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2);
           assert(hit && o.contains(hit), `${type}: "${o.textContent.trim()}" is covered by ${hit && (hit.id || hit.className)}`);
         }
@@ -4779,7 +4801,7 @@ async function runTests() {
         openForm();
         typeFront('\u957f');
         const b = $('ccSuggest').querySelector('[data-action="cc-suggest"]');
-        assert(b.getBoundingClientRect().height >= 44, `button is ${b.getBoundingClientRect().height}px tall`);
+        assert(b.getBoundingClientRect().height >= 44 - PX_SLACK, `button is ${b.getBoundingClientRect().height}px tall`);
       } finally {
         if (prev === null) frame.removeAttribute('style'); else frame.setAttribute('style', prev);
       }
@@ -4799,7 +4821,7 @@ async function runTests() {
           $('ccSuggest').querySelectorAll('[data-action="cc-suggest"]')[1].click();
           const modal = doc().querySelector('.modal').getBoundingClientRect();
           const add = doc().querySelector('[data-action="cc-add"]').getBoundingClientRect();
-          assert(add.bottom <= modal.bottom && add.top >= modal.top,
+          assert(add.bottom <= modal.bottom + PX_SLACK && add.top >= modal.top - PX_SLACK,
             `${cards} cards: 加入 at ${Math.round(add.top)}–${Math.round(add.bottom)}, modal ends ${Math.round(modal.bottom)}`);
           const list = doc().querySelector('.cc-list-wrap');
           if (list) assert(list.getBoundingClientRect().height >= 79, 'the list keeps its minimum height');
@@ -4978,7 +5000,7 @@ async function runTests() {
         const modal = doc().querySelector('.modal').getBoundingClientRect();
         for (const sel of ['[data-action="cc-add"]', '[data-action="cc-cancel-edit"]']) {
           const b = doc().querySelector(sel).getBoundingClientRect();
-          assert(b.bottom <= modal.bottom && b.height >= 40, `${sel}: ${Math.round(b.top)}–${Math.round(b.bottom)} vs ${Math.round(modal.bottom)}`);
+          assert(b.bottom <= modal.bottom + PX_SLACK && b.height >= 40 - PX_SLACK, `${sel}: ${Math.round(b.top)}–${Math.round(b.bottom)} vs ${Math.round(modal.bottom)}`);
         }
         const editBtn = row('\u79e6').querySelector('[data-action="cc-edit"]');
         assert(editBtn.getAttribute('aria-label').includes('\u79e6'), 'edit button names its card for screen readers');
