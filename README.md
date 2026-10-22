@@ -11,12 +11,18 @@
 
 | 模式 | 做什么 |
 |---|---|
-| 📚 学习 | 3D 翻卡 —— 正面是字，翻过来是拼音、组词、例句，点字会朗读 |
-| 🎯 挑战 | 看汉字选拼音 —— 计分、连对加成、拿徽章 |
+| 📚 学习 | 3D 翻卡 —— 正面是字，翻过来是拼音、组词、例句，点字会朗读，还能看笔顺、自己描写 |
+| 🎯 挑战 | 字→音、音→字、字→词、填空、混合五种题型 —— 计分、连对加成、拿徽章 |
 | 📅 每日任务 | 四步流程：认字 → 测验 → 错题 → 收尾，做完算一天 |
 
-答错的字自动进**错题本**，连对两次才移出去。喜欢的字可以❤️收藏，单独复习。
-徽章三个：初次挑战、百发百中、识字达人。
+答错的字自动进**错题本**，连对两次才移出去（`config.json` 可调）。喜欢的字可以❤️收藏，单独复习。
+**智能复习**按间隔重复安排该复习的字。
+
+**自定义字卡**：家长可以加课本以外的字词。在「正面」输入字后，会自动从课本
+数据里填好拼音、词语和例句（多音字先选读音），都可以改，按「加入」才保存；
+加好的卡也能随时修改。
+
+进度存在本机，可以导出成文件备份，再导入到别的设备。
 
 ## 本地打开
 
@@ -51,14 +57,14 @@ hanzi-go/
 ├── js/
 │   ├── state.js       状态，唯一源头
 │   ├── data.js        加载、筛选、出题
-│   ├── services.js    副作用（朗读、徽章、收藏、错题、统计）
+│   ├── services.js    副作用（朗读、徽章、收藏、错题、统计、自定义字卡及其自动填写）
 │   ├── ui.js          只改 DOM，不含逻辑
 │   ├── controllers.js 事件，把 state↔data↔UI 接起来
 │   ├── daily-task.js  每日任务四步流程
-│   ├── constants.js   常量
+│   ├── constants.js   常量和共用小工具
 │   └── mobile.js      移动端适配
-├── data/              18 个学期文件，grade{N}-semester{M}.json
-├── scripts/           从课本 PDF 生成数据的脚本
+├── data/              18 个学期文件 grade{N}-semester{M}.json，加多音字表 heteronyms.json
+├── scripts/           生成和清理数据的脚本，见「加数据」
 └── docs/              数据生成规范
 ```
 
@@ -86,6 +92,16 @@ hanzi-go/
 不在仓库里；脚本默认去 `~/smilings/learning-buddy/keben/` 找，可用
 `KEBEN_DIR` 环境变量覆盖。
 
+数据要守的规矩（`pre-push.sh` 会检查）：例句必须是课文原句、包含这个字、
+引号成对，尽量不超过 20 字。改了拼音或词语之后重新生成多音字表。
+
+| 脚本 | 做什么 |
+|---|---|
+| `scripts/gen_heteronyms.py` | 生成 `data/heteronyms.json`：多音字朗读时用哪个词定读音 |
+| `scripts/shorten_sentences.py` | 把超过 20 字的例句截到含该字的完整分句（不改写）；`--review-dir` 导出要人工处理的清单 |
+| `scripts/fix_quotes.py` | 补齐被 PDF 断行截掉一半的引号 |
+| `scripts/fix_polluted_sentences.py`、`tidy_sentences.py` | 去掉混进例句的生字表、练习题、标题和作者 |
+
 ## 调参数
 
 改 `config.json`，不用动代码：
@@ -110,24 +126,30 @@ localStorage 存进度，service worker 做离线。IIFE 模块模式以兼容�
 两层：
 
 ```bash
-bash pre-push.sh        # 15 项静态检查，推送前自动跑
+bash pre-push.sh        # 静态检查 + 数据检查 + 例句截短脚本的单元测试，推送前自动跑
 ```
 
 ```bash
-# 浏览器测试：153 项，用隐藏 iframe 加载真实 app
+# 浏览器测试：451 项，用隐藏 iframe 加载真实 app
 python3 -m http.server 8080     # 然后开 http://localhost:8080/test.html 点 Run
 
-# 或者无头跑（需要 websocket-client）
-python3 -m venv .venv && .venv/bin/pip install websocket-client
+# 或者无头跑（需要 websocket-client；pre-push 的拼音检查还要 pypinyin）
+python3 -m venv .venv && .venv/bin/pip install websocket-client pypinyin
 .venv/bin/python scripts/run_tests_headless.py
 ```
 
 无头脚本自己起 http server、用 CDP 驱动 Chrome、全过返回 0。
 `test.html?autorun=1` 可以免点按钮。
 
-规矩：改了行为就改测试的预期值，不是放宽断言。
+规矩：改了行为就改测试的预期值，不是放宽断言。新测试要先在改动前的代码上
+跑一次，确认它会失败。
 
-`pre-push.sh` 在推送前跑 15 项检查（service worker 合法性、可点元素可达性等）。
+`pre-push.sh` 检查 service worker、可点元素、字号和颜色都用 token、样式表结构、
+离线缓存清单，以及数据：例句可用、引号成对、多音字表与数据一致、词语兜底
+句和超过 20 字的例句不超过预算。
+
+改了 `js/`、`css/` 或 `data/` 之后要把 `sw.js` 第一行的 `CACHE_VERSION` 加一，
+否则已安装的 PWA 拿不到新版本。
 
 ## 版权
 
