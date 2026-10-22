@@ -325,6 +325,13 @@ async function runTests() {
   try {
     heteronymCount = await app.Speech.loadHeteronyms();
   } catch (e) { /* asserted below; a failure must not abort the suite */ }
+  // Same for the recorded-syllable index, and the generator's own copy of
+  // the reading → file-name rule, which the tests compare with the app's.
+  let syllableCount = 0, syllableIndex = null;
+  try {
+    syllableCount = await app.Speech.loadSyllables();
+    syllableIndex = await (await fetch('audio/syllables/index.json', { cache: 'reload' })).json();
+  } catch (e) { /* asserted below */ }
 
   // === 1. Data Files ===
   describe('📂 Data Files', () => {
@@ -1405,6 +1412,98 @@ async function runTests() {
       assert(typeof maxPlayMs === 'number' && maxPlayMs > 0, `speech.maxPlayMs missing or invalid: ${maxPlayMs}`);
       assertGreater(maxPlayMs, startTimeoutMs,
         'maxPlayMs (ceiling once audio has started) should be at least as generous as startTimeoutMs (ceiling to even start)');
+    });
+  });
+
+  // Recorded syllables (audio/syllables/, scripts/gen_syllable_audio.py).
+  // 多音字 cards play the recording of their own toned syllable, so the
+  // reading is right regardless of what TTS would guess (家长 reported 掷
+  // and 爪 read wrongly). Missing syllables (ü, neutral tone, a few others)
+  // keep TTS.
+  describe('\u{1F3A7} Recorded syllables for \u591a\u97f3\u5b57', () => {
+    const S = () => app.Speech;
+    const card = (ch, py) => app.State.get('allChars').find(c => c.char === ch && (!py || c.pinyin === py));
+
+    it('the index loads and lists files that exist', () => {
+      assertGreater(syllableCount, 700, `only ${syllableCount} syllables loaded`);
+      assert(syllableIndex && /Unlicense/.test(syllableIndex.source), 'source and licence recorded');
+      // Every listed file must exist: a missing one would make a card try a
+      // 404 first. Spot-check a spread with synchronous HEAD requests (it()
+      // is synchronous, see its note).
+      const list = syllableIndex.syllables;
+      for (const k of [list[0], list[Math.floor(list.length / 2)], list[list.length - 1], 'zhi4', 'zhua3']) {
+        const x = new XMLHttpRequest();
+        x.open('HEAD', `audio/syllables/${k}.mp3`, false);
+        x.send();
+        assertEqual(x.status, 200, `${k}.mp3`);
+      }
+    });
+
+    it('掷 zhì and 爪 zhuǎ — the reported cards — use their recordings', () => {
+      assertEqual(S()._recordingFor(card('\u63b7')), 'audio/syllables/zhi4.mp3');
+      assertEqual(S()._recordingFor(card('\u722a', 'zhu\u01ce')), 'audio/syllables/zhua3.mp3');
+      assertEqual(S()._recordingFor(card('\u722a', 'zh\u01ceo')), 'audio/syllables/zhao3.mp3',
+        'the grade-3 card with the other reading gets its own syllable');
+    });
+
+    it('ü is never played as u (lu4 is 路, not 绿)', () => {
+      assertEqual(S()._syllableKey('l\u01dc'), 'lv4');
+      assertEqual(S()._syllableKey('l\u00fc\u00e8'), 'lve4');
+      assertEqual(S()._syllableKey('n\u01da'), 'nv3');
+      const green = card('\u7eff');
+      assert(green && S()._syllableKey(green.pinyin) === 'lv4', 'fixture: 绿 is lǜ');
+      assertEqual(S()._recordingFor(green), null, 'no lv4 recording, so 绿 must use TTS');
+    });
+
+    it('the reading → file rule matches the generator on every card', () => {
+      // gen_syllable_audio.py named the files with syllable_key(); if the
+      // app computed a different name a card would silently fall to TTS
+      // (or worse, play a different syllable). Every 多音字 card whose
+      // syllable is recorded must resolve to a listed file.
+      const recorded = new Set(syllableIndex.syllables);
+      const chars = new Set([...syllableIndex.chars]);
+      let checked = 0;
+      for (const c of app.State.get('allChars')) {
+        if (!chars.has(c.char)) continue;
+        const key = S()._syllableKey(c.pinyin);
+        const url = S()._recordingFor(c);
+        assertEqual(url, key && recorded.has(key) ? `audio/syllables/${key}.mp3` : null, `${c.char} ${c.pinyin}`);
+        checked++;
+      }
+      assertGreater(checked, 1600, `only ${checked} cards checked`);
+    });
+
+    it('neutral tone and cards outside the list keep TTS', () => {
+      assertEqual(S()._syllableKey('de'), 'de5');
+      const de = card('\u7684', 'de');
+      if (de) assertEqual(S()._recordingFor(de), null, '的 de has no recording');
+      // 天 has one reading, so it is not in the list even though tian1 is recorded
+      const sky = card('\u5929');
+      assert(!syllableIndex.chars.includes('\u5929'), 'fixture: 天 is not a 多音字');
+      assertEqual(S()._recordingFor(sky), null, 'non-多音字 cards are unchanged');
+      assertEqual(S()._recordingFor({ char: '\u79e6', pinyin: 'q\u00edn', isCustom: true }), null,
+        'custom cards are not in the list');
+    });
+
+    it('speakChar plays the recording; plain speak() never does', () => {
+      const seen = [];
+      S()._setPlaybackForTest((text, done, setCancel, recording) => { seen.push({ text, recording }); done(); });
+      try {
+        S().speakChar(card('\u63b7'));
+        S().speak('\u63b7');
+      } finally {
+        S()._setPlaybackForTest(null);
+      }
+      assertEqual(seen[0].recording, 'audio/syllables/zhi4.mp3', 'speakChar uses the recording');
+      assertEqual(seen[1].recording, null, 'speak() of arbitrary text has no recording');
+    });
+
+    it('the service worker pre-caches the index, not the 4 MB of audio', () => {
+      const x = new XMLHttpRequest();
+      x.open('GET', 'sw.js', false);
+      x.send();
+      assert(x.responseText.includes("'./audio/syllables/index.json'"), 'index pre-cached');
+      assert(!/audio\/syllables\/[a-z]+\d\.mp3/.test(x.responseText), 'recordings must not be pre-cached');
     });
   });
 

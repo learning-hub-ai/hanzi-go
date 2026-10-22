@@ -182,6 +182,73 @@ const Speech = (() => {
   }
 
   /**
+   * Recorded syllables (audio/syllables/, built by
+   * scripts/gen_syllable_audio.py). A 多音字 card whose pinyin is listed
+   * here plays the recording of exactly that toned syllable — zhì for 掷,
+   * zhuǎ for 爪 — instead of asking TTS, which only sees the character and
+   * guesses the reading. Cards whose syllable has no recording (ü, neutral
+   * tone, a few others) keep the TTS path below unchanged.
+   *
+   * Empty until loadSyllables() succeeds, so a failed or slow load only
+   * means TTS is used, as before.
+   */
+  let SYLLABLES = new Set();
+  let RECORDED_CHARS = new Set();
+  const SYLLABLE_DIR = 'audio/syllables/';
+
+  /** @returns {Promise<number>} how many syllables are available */
+  async function loadSyllables() {
+    try {
+      const res = await fetch(SYLLABLE_DIR + 'index.json');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const index = await res.json();
+      SYLLABLES = new Set(Array.isArray(index.syllables) ? index.syllables : []);
+      RECORDED_CHARS = new Set(typeof index.chars === 'string' ? [...index.chars] : []);
+      _debugLog(`syllables: ${SYLLABLES.size} recordings for ${RECORDED_CHARS.size} characters`);
+    } catch (e) {
+      _debugLog(`syllables: load failed (${e.message}) — TTS for every card`);
+      SYLLABLES = new Set();
+      RECORDED_CHARS = new Set();
+    }
+    return SYLLABLES.size;
+  }
+
+  const _TONE_OF = { '\u0304': '1', '\u0301': '2', '\u030c': '3', '\u0300': '4' };
+
+  /**
+   * File name for one toned syllable: 'zhuǎ' → 'zhua3', 'lǜ' → 'lv4',
+   * 'de' → 'de5'. null for anything that is not a single syllable.
+   *
+   * Mirrors syllable_key() in scripts/gen_syllable_audio.py, which named
+   * the files; the suite checks the two agree. ü must stay distinct from u:
+   * the source has no ü recordings, and lu4 is 路, not 绿.
+   */
+  function _syllableKey(reading) {
+    const r = String(reading || '').trim().toLowerCase();
+    if (!r || /\s/.test(r)) return null;
+    let tone = '5';
+    let base = '';
+    for (const ch of r.normalize('NFD')) {
+      if (_TONE_OF[ch]) tone = _TONE_OF[ch];
+      else if (ch === '\u0308') base = base.endsWith('u') ? base.slice(0, -1) + 'v' : base + 'v';
+      else if (ch >= 'a' && ch <= 'z') base += ch;
+      else return null;
+    }
+    return base ? base + tone : null;
+  }
+
+  /**
+   * The recording for a card, or null when it should use TTS. Which cards
+   * qualify (the 多音字 for now) is decided by the generator and shipped
+   * as index.chars, so widening it later is a data change, not a code one.
+   */
+  function _recordingFor(charData) {
+    if (!charData || !SYLLABLES.size || !RECORDED_CHARS.has(charData.char)) return null;
+    const key = _syllableKey(charData.pinyin);
+    return key && SYLLABLES.has(key) ? SYLLABLE_DIR + key + '.mp3' : null;
+  }
+
+  /**
    * Speak a character or text aloud.
    * MUST be called from a user gesture (click/tap) for iOS.
    * @param {string} text - Text to speak
@@ -193,8 +260,11 @@ const Speech = (() => {
    *   so a caller can safely chain more delay after onDone without risking
    *   a hang (see js/controllers.js ChallengeController._advanceAfterSpeech,
    *   which adds quizFeedbackDelayMs on top of onDone before advancing).
+   * @param {Object} [opts]
+   * @param {string} [opts.recording] - URL of a recorded syllable to try
+   *   before TTS (speakChar() supplies it; see _recordingFor)
    */
-  function speak(text, onDone) {
+  function speak(text, onDone, opts = {}) {
     if (!text) { if (onDone) onDone(); return; }
 
     // Overlap rule. A real-device log (iPhone 16, iOS Safari) showed two
@@ -237,8 +307,22 @@ const Speech = (() => {
     if (_testPlayback) {
       // Test seam: the overlap rule above is what is under test; real audio
       // cannot be driven from the suite. The stub receives the cancel hook
-      // so it can behave like a real attempt.
-      _testPlayback(text, done, (cancel) => { _cancelActive = cancel; });
+      // so it can behave like a real attempt, and the recording (if any) so
+      // a test can assert which audio would have played.
+      _testPlayback(text, done, (cancel) => { _cancelActive = cancel; }, opts.recording || null);
+      return;
+    }
+
+    // A recorded syllable is local and starts at once, so it goes first on
+    // every platform, iOS included: _ensureAudio() runs right here in the
+    // tap, which is all iOS needs to let an <audio> play. If the file fails
+    // to start, _playSources falls through to the TTS sources and finally
+    // to the Web Speech API — the iOS rule below still applies to those.
+    if (opts.recording) {
+      _ensureAudio();
+      _debugLog(`recording: ${opts.recording}`);
+      const tts = _isIOS() ? [] : _ttsSources(text);
+      _playSources([opts.recording, ...tts], 0, text, done);
       return;
     }
 
@@ -261,7 +345,11 @@ const Speech = (() => {
     }
 
     _ensureAudio();
+    _playSources(_ttsSources(text), 0, text, done);
+  }
 
+  /** The online TTS URLs for text, in the order they are tried. */
+  function _ttsSources(text) {
     const sources = [];
     const encoded = encodeURIComponent(text);
 
@@ -275,8 +363,7 @@ const Speech = (() => {
       ? `&ttsspeed=${rate}` : '';
     sources.push(GOOGLE_URL + encoded + gRate);
     sources.push(BAIDU_URL + encoded);
-
-    _playSources(sources, 0, text, done);
+    return sources;
   }
 
   /**
@@ -307,7 +394,9 @@ const Speech = (() => {
    */
   function speakChar(charData, onDone) {
     if (!charData || !charData.char) { if (onDone) onDone(); return; }
-    speak(_readingContext(charData), onDone);
+    // A recording of the card's own syllable, when there is one, is tried
+    // first; TTS still speaks the reading-pinning word if it fails.
+    speak(_readingContext(charData), onDone, { recording: _recordingFor(charData) });
   }
 
   /**
@@ -419,7 +508,8 @@ const Speech = (() => {
     }
 
     const sourceLabel = sources[index].includes('baidu') ? 'baidu'
-      : sources[index].includes('googleapis') ? 'google' : 'localTTS';
+      : sources[index].includes('googleapis') ? 'google'
+      : sources[index].startsWith(SYLLABLE_DIR) ? 'recording' : 'localTTS';
     _debugLog(`[${index}] trying source: ${sourceLabel}`);
 
     let settled = false;
@@ -611,9 +701,9 @@ const Speech = (() => {
   }
 
   return {
-    speak, init, speakChar, loadHeteronyms,
+    speak, init, speakChar, loadHeteronyms, loadSyllables,
     // Exposed so tests can assert the reading choice without playing audio
-    _readingContext,
+    _readingContext, _recordingFor, _syllableKey,
     // Exposed so tests can drive the speak() overlap rule without real
     // audio. Each attempt is the function that would play one URL source
     // or utterance; null restores the real one. Test-only.

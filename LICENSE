@@ -41,3 +41,10 @@ data/ 目录里的生字、拼音、组词、例句、课文标题全部来自�
 练习数据，供学习使用，不主张对这部分内容的权利。
 
 教材 PDF 不在本仓库内。
+
+
+关于音节录音
+
+audio/syllables/ 里的录音来自 github.com/davinfifield/mp3-chinese-pinyin-sound，
+以 Unlicense 发布，属于公共领域，不在本项目「保留所有权利」之列。本项目只做了
+统一音量、去掉首尾静音和压缩，不主张对录音本身的权利。

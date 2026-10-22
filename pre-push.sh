@@ -528,3 +528,10 @@ print('✅ Example sentences: usable prose, no 生字表 rows or exercise text')
 python3 scripts/test_shorten_sentences.py 2>/dev/null \
   && echo "✅ Sentence trimmer: unit tests pass" \
   || { echo "❌ Sentence trimmer tests failed: python3 scripts/test_shorten_sentences.py"; exit 1; }
+
+# Recorded syllables: every syllable in the index has its file, there are no
+# stray files, and the list of characters that use them matches the data.
+# A listed-but-missing file makes a card try a 404 before falling back to
+# TTS; a stale character list silently gives a changed card the wrong audio.
+python3 scripts/gen_syllable_audio.py --check < /dev/null \
+  || { echo "  Fix: python3 scripts/gen_syllable_audio.py"; exit 1; }

@@ -1732,6 +1732,9 @@ const AppController = (() => {
       // failed fetch must not delay first paint, and speakChar() falls back
       // to the bare character while the table is empty.
       Speech.loadHeteronyms();
+      // Recorded syllables for 多音字 cards. Same reasoning: not awaited,
+      // and until it lands every card simply uses TTS.
+      Speech.loadSyllables();
 
       // Load character data
       const { allChars } = await DataService.loadAll();

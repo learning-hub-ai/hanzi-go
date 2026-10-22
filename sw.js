@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'hanzigo-v101';
+const CACHE_VERSION = 'hanzigo-v102';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -18,7 +18,12 @@ const STATIC_ASSETS = [
   './assets/icon-512.png',
   // 多音字 readings — without this the offline app speaks 爪 as zhǎo
   // instead of the textbook's zhuǎ.
-  './data/heteronyms.json'
+  './data/heteronyms.json',
+  // Which recorded syllables exist (a few KB). The 761 recordings
+  // themselves (~4 MB) are not pre-cached: the same-origin rule below
+  // caches each one the first time it plays, so a first visit stays small
+  // and a card heard once works offline afterwards.
+  './audio/syllables/index.json'
 ];
 
 // Data files to cache (all grade/semester JSON)
