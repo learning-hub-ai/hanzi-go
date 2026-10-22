@@ -1376,6 +1376,31 @@ async function runTests() {
       assert(bad.length === 0, `${bad.length} card backs cannot be scrolled to the end: ${bad.slice(0, 5).join(' ')}`);
       app.AppController.selectSemester('1', '1');
     });
+    it('on a computer the card is large too, not just on a phone', () => {
+      // First two rounds only changed the phone layout; on a 1366x768 laptop
+      // the character stayed 128-160px in a fixed 600x500 card.
+      frame.setAttribute('style', 'width:1366px;height:768px');
+      app.AppController.switchMode('learn');
+      app.AppController.selectSemester('1', '1');
+      app.LearnController.showCurrent();
+      const ch = px('#cardChar');
+      if (frame.contentDocument.getElementById('flashcard').classList.contains('flipped')) app.CardUI.flip();
+      app.CardUI.flip();
+      const s = px('#cardSentence'), w = px('#cardWords');
+      app.CardUI.flip();
+      assert(ch >= 200, `desktop character is ${ch}px, should be >= 200px`);
+      assert(s >= 32, `desktop sentence is ${s}px, should be >= 32px`);
+      assert(w >= 40, `desktop words are ${w}px, should be >= 40px`);
+      const c = app.State.get('allChars')[0];
+      app.AppController.switchMode('dailyTask');
+      app.DailyTaskController._startCardSessionForTest([c], 'review');
+      const dch = px('.dt-card-char');
+      frame.contentDocument.getElementById('dtCard').click();
+      const ds = px('.dt-card-sentence');
+      assert(dch >= 200, `desktop review character is ${dch}px, should be >= 200px`);
+      assert(ds >= 32, `desktop review sentence is ${ds}px, should be >= 32px`);
+      app.AppController.switchMode('learn');
+    });
     it('(restores the shared iframe size)', () => {
       frame.setAttribute('style', _frameStyle);
       assert(true);

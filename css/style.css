@@ -803,14 +803,30 @@ main{
 }
 
 @media(min-width:768px){
-  .card{max-height:500px}
-  .card-pinyin-back{font-size:var(--text-3xl)}
+  /* Desktop/tablet: fill the height between the lesson dropdown and the
+     controls + progress row (~287px together with the header), the same
+     idea as the phone rule. It was 55vh capped at 500px in a 600px column,
+     so on a 1920x1080 screen 317px sat empty under the progress bar and
+     the character stayed at 128-160px however big the screen. */
+  .card{height:calc(100vh - 290px);height:calc(100svh - 290px);min-height:360px;max-height:760px}
+  .card-face{container-type:size}
+  .card-char{font-size:clamp(140px, min(60cqw, 50cqh), 340px)}
+  .card-char.card-char--len2{font-size:clamp(90px, min(38cqw, 40cqh), 220px)}
+  .card-char.card-char--len4{font-size:clamp(56px, min(20cqw, 30cqh), 130px)}
+  .card-char.card-char--long{font-size:clamp(36px, min(12cqw, 22cqh), 80px)}
+  .card-pinyin-small{font-size:var(--text-3xl)}
+  .card-pinyin-back{font-size:56px}
+  .card-words{font-size:40px}
+  .card-sentence{font-size:var(--text-3xl);max-width:none;line-height:1.6}
   .quiz-options{max-width:480px;margin-left:auto;margin-right:auto}
   .card-controls button{padding:var(--s3) var(--s5)}
 }
 @media(min-width:1024px){
   main{padding:var(--s5) var(--s7)}
-  .card{max-width:600px}
+  /* Wider column on large screens so the card is not a tall narrow strip
+     once it fills the height. 600px stays the floor (1280-wide laptops). */
+  #learnMode{max-width:clamp(600px, 52vw, 820px)}
+  .card{max-width:none}
   .quiz-container{max-width:600px}
 }
 
@@ -921,6 +937,25 @@ main{
 .dt-btn-primary:active{transform:scale(.97)}
 .dt-btn-secondary{padding:var(--s2) var(--s4);border-radius:var(--radius-sm);border:1px solid var(--border);background:#fff;color:var(--text-secondary);font-size:var(--text-md);font-weight:var(--weight-medium);cursor:pointer;transition:all var(--duration-fast) ease}
 .dt-btn-secondary:hover{background:var(--border-light)}
+
+/* Desktop/tablet daily task. Placed after the base .dt-* rules above —
+   inside the earlier 768/1024 blocks these lost to them on source order
+   (same specificity), so the review card stayed at 140px. */
+@media(min-width:768px){
+  /* 复习/回顾 card: same proportions; it has no controls row, only the
+     1/N header above and the answer buttons below (~76px together). */
+  .dt-card{height:calc(100vh - 230px);height:calc(100svh - 230px);min-height:360px;max-height:760px;container-type:size;overflow:hidden}
+  .dt-card-char{font-size:clamp(140px, min(60cqw, 50cqh), 340px)}
+  .dt-card-pinyin-small{font-size:var(--text-3xl)}
+  .dt-card-pinyin{font-size:56px}
+  .dt-card-words{font-size:40px}
+  .dt-card-sentence{font-size:var(--text-3xl);line-height:1.6}
+  .dt-card-back{max-height:100%;overflow-y:auto;scrollbar-width:none;overscroll-behavior:contain}
+  .dt-card-back::-webkit-scrollbar{display:none}
+}
+@media(min-width:1024px){
+  #dailyTaskMode{max-width:clamp(500px, 48vw, 760px)}
+}
 
 @media(max-width:768px){
   #dailyTaskMode{padding:var(--s2) 0}
