@@ -1292,6 +1292,66 @@ async function runTests() {
     });
   });
 
+  // === 挑战模式: every question type looks like 字→音 ===
+  // Parents found 字→音's question size, answer size and gap right. The
+  // other types set inline sizes (音→字/字→词 36px, 填空 20px) and gave
+  // character answers a 28px style of their own, so each looked different.
+  describe('🎯 Challenge question types match 字→音', () => {
+    const _frameStyle = frame.getAttribute('style') || '';
+    function measure(type) {
+      app.AppController.switchMode('learn');
+      app.AppController.selectSemester('1', '1');
+      app.ChallengeController.setType(type);
+      app.AppController.switchMode('challenge');
+      const doc = frame.contentDocument, win = frame.contentWindow;
+      const q = doc.getElementById('quizChar'), o = doc.querySelector('.quiz-option');
+      const qr = q.getBoundingClientRect(), opts = doc.getElementById('quizOptions').getBoundingClientRect();
+      return { q: parseFloat(win.getComputedStyle(q).fontSize), inline: q.style.fontSize,
+               a: parseFloat(win.getComputedStyle(o).fontSize), aH: Math.round(o.getBoundingClientRect().height),
+               gap: Math.round(opts.top - qr.bottom) };
+    }
+    it('音→字 and 字→词 use 字→音\'s question size, answer size, button height and gap', () => {
+      frame.setAttribute('style', 'width:390px;height:844px');
+      const ref = measure('pickPinyin');
+      for (const [type, name] of [['pickChar', '音→字'], ['pickWord', '字→词']]) {
+        const m = measure(type);
+        assertEqual(m.inline, '', `${name} must not set an inline font size`);
+        assertEqual(m.q, ref.q, `${name} question ${m.q}px, 字→音 ${ref.q}px`);
+        assertEqual(m.a, ref.a, `${name} answers ${m.a}px, 字→音 ${ref.a}px`);
+        assertEqual(m.aH, ref.aH, `${name} answer buttons ${m.aH}px tall, 字→音 ${ref.aH}px`);
+        assertEqual(m.gap, ref.gap, `${name} question→answers gap ${m.gap}px, 字→音 ${ref.gap}px`);
+      }
+    });
+    it('填空 matches 字→音\'s answers and gap; its sentence is as large as still fits', () => {
+      frame.setAttribute('style', 'width:390px;height:844px');
+      const ref = measure('pickPinyin'), m = measure('fillBlank');
+      assertEqual(m.inline, '', '填空 must not set an inline font size');
+      assertEqual(m.a, ref.a, `填空 answers ${m.a}px, 字→音 ${ref.a}px`);
+      assertEqual(m.aH, ref.aH, `填空 answer buttons ${m.aH}px tall, 字→音 ${ref.aH}px`);
+      assertEqual(m.gap, ref.gap, `填空 gap ${m.gap}px, 字→音 ${ref.gap}px`);
+      assert(m.q >= 32, `填空 sentence ${m.q}px, should be >= 32px (was 20px)`);
+    });
+    it('the longest fill-in sentence keeps every answer on a 360x640 phone', () => {
+      // 宴's sentence (39 characters with the blank) is the longest that can
+      // be asked; at 字→音's 48px it pushed the last answer off screen.
+      frame.setAttribute('style', 'width:360px;height:640px');
+      const doc = frame.contentDocument, win = frame.contentWindow;
+      app.AppController.switchMode('challenge');
+      const a = app.State.get('allChars'), t = a.find(c => c.char === '宴');
+      const d = a.filter(c => c.grade === 5 && c.char !== '宴').slice(0, 3);
+      app.QuizUI.renderQuestion({ target: t, options: [t, ...d], type: 'fillBlank',
+        sentence: t.sentence.replace('宴', '___') }, 0, 0, 1, 10);
+      const q = doc.getElementById('quizChar');
+      assert(q.scrollWidth <= q.clientWidth + 1, 'the sentence overflows sideways');
+      const last = [...doc.querySelectorAll('.quiz-option')].pop().getBoundingClientRect().bottom;
+      assert(last <= win.innerHeight, `last answer ends at ${Math.round(last)}px, screen is ${win.innerHeight}px`);
+    });
+    it('(restores the shared iframe size)', () => {
+      frame.setAttribute('style', _frameStyle);
+      assert(true);
+    });
+  });
+
   // === Flashcard text is large enough for children ===
   // Parents reported the card was hard for children to read. On a 360px
   // phone the character was 52px (under a fifth of the card) and the

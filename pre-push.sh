@@ -168,7 +168,7 @@ EXEMPT_SIZE = {
     # rather than to sit in the text hierarchy.
     '.streak-fire.streak-warm', '.streak-fire.streak-mid', '.streak-fire.streak-hot',
     '.avatar-picker button', '.mobile-bottom-bar button',
-    '.quiz-option-char', '.dt-step-icon', '.dt-setup-grade-icon',
+    '.dt-step-icon', '.dt-setup-grade-icon',
     '.dt-setup-lesson-icon', '.mobile-sheet-item-icon', '.profile-avatar',
     '.profile-item .avatar', '.sidebar-grade-icon', '.sidebar-item-icon',
     '.sidebar-group-arrow', '.sidebar-grade-arrow', '.mobile-grade-arrow',

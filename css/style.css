@@ -493,7 +493,21 @@ main{
    (stop and look). Both were a flat .4s before, which made them read as
    the same kind of event. */
 .quiz-option.correct{background:#dcfce7;border-color:var(--success);color:#166534;box-shadow:0 0 0 2px var(--success-glow);animation:correctPulse .25s var(--ease-bounce);position:relative}
-.quiz-option-char{font-family:var(--font-char);font-size:28px}
+/* 填空 shows a whole sentence, not one character, so it cannot use the
+   48-72px of .quiz-char: the longest (39 characters with the blank) ran to
+   7 lines and pushed the answers 260px off a 360x640 phone. 32px on a
+   phone is the largest size at which every one of the 3972 fill-in
+   sentences stays within 4 lines; 98% fit in 3. It still wraps instead of
+   overflowing. Font, colour and the gap to the answers match 字→音. */
+/* Character answers: 字→音's size and box, in 楷体. A fixed line-height
+   (the pinyin answer's computed one) keeps the button the same height;
+   with KaiTi's own line box they were 5px taller than pinyin's. */
+.quiz-option{line-height:1.3}
+.quiz-option.quiz-option--char{font-family:var(--font-char)}
+.quiz-char.quiz-char--text{font-size:var(--text-3xl);max-width:100%;padding:0 var(--s2);line-height:1.35;text-align:center;overflow-wrap:anywhere}
+@media(min-width:768px){
+  .quiz-char.quiz-char--text{font-size:40px}
+}
 .quiz-option.wrong{background:#fef2f2;border-color:var(--error);color:#991b1b;box-shadow:0 0 0 2px var(--error-glow);animation:shake .45s ease}
 .quiz-option.disabled{pointer-events:none;opacity:.8}
 /* 1.03 was close to invisible on a phone. The streak tiers escalate the
@@ -808,6 +822,11 @@ main{
   /* No smaller .card-char here: the 768px rule's 96px floor already fits a
      shorter card, and shrinking it on the smallest phones was backwards. */
   .quiz-options{grid-template-columns:1fr}
+  /* 填空 answers are single characters, so two columns fit even here, and
+     they halve the answer block's height: the longest sentences take 4
+     lines on this width, and with one column they pushed the last answer
+     below the screen (2.2% of the 3972 sentences). */
+  .quiz-char--text + .quiz-options{grid-template-columns:1fr 1fr}
   .quiz-char{font-size:48px}
   .mobile-bottom-bar{height:50px}
   .mobile-bottom-bar button{font-size:20px}

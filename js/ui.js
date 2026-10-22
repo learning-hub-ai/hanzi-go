@@ -337,21 +337,25 @@ const QuizUI = (() => {
     document.getElementById('quizProgress').textContent = `${progress}/${total}`;
     document.getElementById('streakFire').classList.toggle('hidden', streak < State.config('streakThresholdForFire', 3));
 
-    // Render prompt based on question type
+    // Render prompt based on question type. Every type uses the same
+    // .quiz-char size and the same answer buttons as 字→音, which parents
+    // found the right balance; only the text differs. These used to set
+    // inline sizes (音→字 / 字→词 36px, 填空 20px) and give the answers a
+    // larger .quiz-option-char style, so each type looked different.
     const type = question.type || 'pickPinyin';
+    quizCharEl.style.fontSize = '';
     if (type === 'pickPinyin') {
       quizCharEl.textContent = question.target.char;
-      quizCharEl.style.fontSize = '';
     } else if (type === 'pickChar') {
       quizCharEl.textContent = question.target.pinyin;
-      quizCharEl.style.fontSize = '36px';
     } else if (type === 'fillBlank') {
       quizCharEl.textContent = question.sentence;
-      quizCharEl.style.fontSize = '20px';
     } else if (type === 'pickWord') {
       quizCharEl.textContent = question.blankedWord;
-      quizCharEl.style.fontSize = '36px';
     }
+    // A sentence is far longer than one character, so at the same size it
+    // has to wrap rather than run off the screen.
+    quizCharEl.classList.toggle('quiz-char--text', type === 'fillBlank');
 
     // Render dots
     const dotsEl = document.getElementById('quizDots');
@@ -377,7 +381,9 @@ const QuizUI = (() => {
         btn.textContent = opt.pinyin;
       } else if (type === 'pickChar' || type === 'fillBlank' || type === 'pickWord') {
         btn.textContent = opt.char;
-        btn.classList.add('quiz-option-char');
+        // Same size and box as 字→音's pinyin answers; only the typeface
+        // follows the content (楷体 for characters, as on the cards).
+        btn.classList.add('quiz-option--char');
       }
       btn.dataset.index = i;
       container.appendChild(btn);
