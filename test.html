@@ -150,6 +150,30 @@ function assertGreater(a, min, msg) { if (a <= min) throw new Error(msg || `Expe
 const PX_SLACK = 0.5;
 
 /**
+ * Run fn with win's localStorage.setItem throwing QuotaExceededError, the
+ * way iOS Safari does in Private Browsing. Returns fn's result.
+ *
+ * The override goes on Storage.prototype, not on the localStorage object.
+ * Assigning `localStorage.setItem = fn` is not a method override in every
+ * browser: Firefox treats it as storing a key named "setItem" (the real
+ * method keeps working, nothing throws), so five storage tests passed in
+ * Chrome and failed in Firefox. A prototype override behaves the same in
+ * both, and the real method is restored even if fn throws.
+ */
+function withThrowingSetItem(win, fn) {
+  const proto = win.Storage.prototype;
+  const real = proto.setItem;
+  proto.setItem = function () {
+    const e = new Error('QuotaExceededError');
+    e.name = 'QuotaExceededError';
+    throw e;
+  };
+  try { return fn(); } finally {
+    proto.setItem = real;
+  }
+}
+
+/**
  * Make the test iframe load the app from the server, not from a cache.
  *
  * Unregisters the app's service worker and deletes its caches, then points
@@ -1845,17 +1869,9 @@ async function runTests() {
 
     /** Run fn with localStorage.setItem throwing, as iOS private mode does. */
     function withBrokenStorage(fn) {
-      const real = frame.contentWindow.localStorage.setItem;
       // Private Browsing on iOS Safari throws QuotaExceededError from
       // setItem rather than silently dropping the write.
-      frame.contentWindow.localStorage.setItem = function () {
-        const e = new Error('QuotaExceededError');
-        e.name = 'QuotaExceededError';
-        throw e;
-      };
-      try { return fn(); } finally {
-        frame.contentWindow.localStorage.setItem = real;
-      }
+      return withThrowingSetItem(frame.contentWindow, fn);
     }
 
     it('A failed write does not throw', () => {
@@ -2049,20 +2065,10 @@ async function runTests() {
       // stop. It has to say practising still works and only the saving is
       // affected, or the warning costs more than it gains.
       app.ErrorLog.clear();
-      const real = frame.contentWindow.localStorage.setItem;
-      frame.contentWindow.localStorage.setItem = function () {
-        const e = new Error('QuotaExceededError');
-        e.name = 'QuotaExceededError';
-        throw e;
-      };
-      try {
-        // Call the banner directly: the once-per-session latch in State has
-        // already fired in earlier tests, so driving it via a failed write
-        // would not re-show it.
-        app.AppController.showStorageWarning();
-      } finally {
-        frame.contentWindow.localStorage.setItem = real;
-      }
+      // Call the banner directly: the once-per-session latch in State has
+      // already fired in earlier tests, so driving it via a failed write
+      // would not re-show it.
+      withThrowingSetItem(frame.contentWindow, () => app.AppController.showStorageWarning());
       const el = doc.getElementById('storageWarning');
       assert(el, 'a storage warning should be shown');
       const text = el.textContent;

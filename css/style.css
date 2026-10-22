@@ -630,7 +630,7 @@ main{
    负 margin + padding：滚动容器会裁掉输入框 :focus-visible 的 4px 描边，
    跟 #modalContent 的 4px 是同一个问题（见下方 .modal--cc 的注释）。 */
 .cc-footer{flex-shrink:1;min-height:0;display:flex;flex-direction:column;padding-top:12px;border-top:1px solid var(--border-light)}
-.cc-form-body{flex-shrink:1;min-height:0;overflow-y:auto;margin:0 -4px 8px;padding:0 4px 4px}
+.cc-form-body{flex-shrink:1;min-height:0;overflow-y:auto;margin:0 -4px;padding:0 4px}
 /* 加入 / 保存修改 + 取消：取消只在修改时出现，平时「加入」占满一行。 */
 .cc-actions{flex-shrink:0;display:flex;gap:8px}
 .cc-actions > [data-action="cc-add"]{flex:1}
