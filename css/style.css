@@ -727,20 +727,32 @@ main{
   main{padding:var(--s3);padding-bottom:72px;overflow-x:hidden;width:100%}
   #learnMode,#challengeMode{max-width:100%;width:100%}
 
-  /* Card — large and centered */
+  /* Card — large and centered.
+     The card is sized to the room between the lesson dropdown and the
+     progress row: 100svh minus the header (--header-height), the dropdown
+     and card margins (~74px), the progress row (~40px) and the bottom bar
+     plus main's bottom padding (~72px). It was 45vh capped at 360px, which
+     left 286-417px of empty screen under the progress bar on 360-414px
+     phones while the character inside was smaller than the stroke-order
+     panel's. svh (with a vh fallback) is the height with the browser's
+     toolbars showing, so the card never slides under them. */
   .card-container{width:100%;max-width:100%;box-sizing:border-box}
-  .card{min-height:220px;height:45vh;max-height:360px;width:100%;box-sizing:border-box}
-  .card-face{padding:var(--s5);word-break:break-word}
-  /* The character is the whole point of the card face, so on a phone it is
-     sized from the viewport: 30vw lands at ~108-124px on 360-414px phones,
-     about a third of the card's height. It was 16vw (52-66px, under a fifth
-     of the card), and the 380px breakpoint below shrank it further, so the
-     smallest phones got the smallest character. */
-  .card-char{font-size:clamp(96px, 30vw, 140px)}
-  .card-pinyin-small{font-size:var(--text-lg)}
-  .card-pinyin-back{font-size:36px;margin-bottom:var(--s3)}
-  .card-words{font-size:var(--text-2xl);margin-bottom:var(--s3)}
-  .card-sentence{font-size:var(--text-xl);max-width:100%;line-height:1.6}
+  .card{min-height:300px;height:calc(100vh - var(--header-height) - 186px);height:calc(100svh - var(--header-height) - 186px);max-height:620px;width:100%;box-sizing:border-box}
+  .card-face{padding:var(--s5);word-break:break-word;container-type:size}
+  /* The character fills the card: whichever of width or height runs out
+     first, using container units so it tracks the card, not the screen.
+     At these sizes the glyph is at least as large as the stroke-order
+     panel's (which parents compared it with), and larger on most phones. */
+  .card-char{font-size:clamp(120px, min(70cqw, 48cqh), 280px)}
+  /* Custom cards can hold 2-4+ characters on the front. Same idea, divided
+     by roughly how many characters must fit across the card. */
+  .card-char.card-char--len2{font-size:clamp(72px, min(42cqw, 40cqh), 180px)}
+  .card-char.card-char--len4{font-size:clamp(48px, min(22cqw, 30cqh), 110px)}
+  .card-char.card-char--long{font-size:clamp(32px, min(13cqw, 22cqh), 64px)}
+  .card-pinyin-small{font-size:var(--text-2xl)}
+  .card-pinyin-back{font-size:48px;margin-bottom:var(--s4)}
+  .card-words{font-size:var(--text-3xl);margin-bottom:var(--s4)}
+  .card-sentence{font-size:var(--text-2xl);max-width:100%;line-height:1.6}
   .card-hint{font-size:var(--text-xs)}
 
   /* Hide desktop card controls (replaced by bottom bar) */
@@ -775,7 +787,10 @@ main{
   .header-right button{min-width:28px;min-height:28px;padding:3px 5px;font-size:var(--text-base)}
   .header-right{gap:3px}
   main{padding:var(--s2);padding-bottom:68px}
-  .card{min-height:180px;height:38vh;max-height:280px}
+  /* No separate .card height here: the 768px rule already sizes the card
+     from the screen height, so a short phone gets a shorter card. This rule
+     used to cap it at 38vh/280px, which made the smallest phones' card —
+     and the character in it — the smallest. */
   .card-face{padding:var(--s3)}
   /* No smaller .card-char here: the 768px rule's 96px floor already fits a
      shorter card, and shrinking it on the smallest phones was backwards. */
@@ -869,7 +884,7 @@ main{
 .dt-card-hint{font-size:var(--text-sm);color:var(--text-muted);margin-top:var(--s3)}
 .dt-card-pinyin{font-size:var(--text-3xl);color:var(--accent-pinyin-text);font-weight:var(--weight-bold);margin-bottom:var(--s3)}
 .dt-card-words{font-size:var(--text-2xl);color:var(--accent-words-text);font-weight:var(--weight-semibold);margin-bottom:var(--s3)}
-.dt-card-sentence{font-size:var(--text-xl);color:var(--accent-sentence-text);line-height:1.7;max-width:100%}
+.dt-card-sentence{font-size:var(--text-xl);color:var(--accent-sentence-text);line-height:1.7;max-width:100%;font-weight:var(--weight-medium)}
 .dt-card-actions{display:flex;gap:var(--s3);justify-content:center;width:100%}
 
 /* Quiz screen */
@@ -909,7 +924,19 @@ main{
 
 @media(max-width:768px){
   #dailyTaskMode{padding:var(--s2) 0}
-  .dt-card{min-height:200px;max-height:none}
+  /* Same proportions as the 学习 card: the card takes the room above its
+     row of answer buttons (~60px) and the 1/N header (~36px), and the
+     character is sized from the card itself (container units). */
+  .dt-card{min-height:300px;height:calc(100vh - var(--header-height) - 200px);height:calc(100svh - var(--header-height) - 200px);max-height:620px;container-type:size;overflow:hidden}
+  .dt-card-char{font-size:clamp(120px, min(70cqw, 48cqh), 280px)}
+  .dt-card-pinyin-small{font-size:var(--text-2xl)}
+  .dt-card-pinyin{font-size:48px}
+  .dt-card-words{font-size:var(--text-3xl)}
+  .dt-card-sentence{font-size:var(--text-2xl);line-height:1.6}
+  /* Long sentences scroll inside the card (as on the 学习 card) rather
+     than spill past the buttons. */
+  .dt-card-back{max-height:100%;overflow-y:auto;scrollbar-width:none;overscroll-behavior:contain}
+  .dt-card-back::-webkit-scrollbar{display:none}
   .dt-quiz-char{font-size:56px}
   .dt-quiz-options{grid-template-columns:1fr 1fr}
   .dt-complete-emoji{font-size:48px}

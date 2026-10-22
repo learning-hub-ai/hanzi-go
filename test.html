@@ -1297,10 +1297,28 @@ async function runTests() {
   // phone the character was 52px (under a fifth of the card) and the
   // sentence 16px. These pin the floors, measured on the rendered card.
   describe('🔠 Flashcard Readability', () => {
+    // The shared iframe is 900px wide and 0px tall, so it never takes the
+    // phone layout these sizes are about, and a card sized from the screen
+    // height would measure as empty. Size it to a 360x640 phone for this
+    // group only; every assertion below runs at that size.
+    const _frameStyle = frame.getAttribute('style') || '';
+    frame.setAttribute('style', 'width:360px;height:640px');
     function px(sel) {
       const el = frame.contentDocument.querySelector(sel);
       return el ? parseFloat(frame.contentWindow.getComputedStyle(el).fontSize) : NaN;
     }
+    it('on a phone the character is at least as large as the stroke-order panel\'s', () => {
+      // Parents compared the two: the stroke panel's glyph was bigger than
+      // the card's own character. The panel box is 34vw (130-190px); on the
+      // card the character must not be smaller than that on a phone.
+      const w = frame.contentWindow.innerWidth;
+      if (w > 768) return;   // desktop layout is not what parents compared
+      app.AppController.switchMode('learn');
+      app.AppController.selectSemester('1', '1');
+      app.LearnController.showCurrent();
+      const n = px('#cardChar'), panel = Math.min(190, Math.max(130, w * 0.34));
+      assert(n >= panel, `card character ${n}px is smaller than the stroke panel's ${panel}px box`);
+    });
     it('the character on the card front is at least 96px', () => {
       app.AppController.switchMode('learn');
       app.AppController.selectSemester('1', '1');
@@ -1312,6 +1330,12 @@ async function runTests() {
       const s = px('#cardSentence'), w = px('#cardWords');
       assert(s >= 18, `sentence is ${s}px, should be >= 18px`);
       assert(w >= 24, `words are ${w}px, should be >= 24px`);
+      // On a phone the back is larger still (second round of feedback:
+      // the sentence was still hard to read at 18px).
+      if (frame.contentWindow.innerWidth <= 768) {
+        assert(s >= 24, `phone sentence is ${s}px, should be >= 24px`);
+        assert(w >= 32, `phone words are ${w}px, should be >= 32px`);
+      }
     });
     it('the 复习/回顾 card uses the same floors', () => {
       // That card had its own smaller set (sentence 14px, character 64px).
@@ -1332,6 +1356,29 @@ async function runTests() {
       const back = frame.contentDocument.getElementById('cardBackContent');
       assertEqual(frame.contentWindow.getComputedStyle(back).overflowY, 'auto',
         'card back must scroll rather than clip');
+    });
+    it('every card back fits, or scrolls to its end, on a 360x640 phone', () => {
+      // All 4014 cards: with the larger text a back that does not fit must
+      // still be readable to the last line, not clipped.
+      app.AppController.switchMode('learn');
+      const all = app.State.get('allChars'), bad = [];
+      const back = frame.contentDocument.getElementById('cardBackContent');
+      for (const c of all) {
+        app.State.set('filteredChars', [c]); app.State.set('currentIndex', 0);
+        app.LearnController.showCurrent();
+        if (!frame.contentDocument.getElementById('flashcard').classList.contains('flipped')) app.CardUI.flip();
+        if (back.scrollHeight > back.clientHeight + 1) {
+          back.scrollTop = 1e6;
+          if (back.scrollTop + back.clientHeight < back.scrollHeight - 1) bad.push(c.char);
+          back.scrollTop = 0;
+        }
+      }
+      assert(bad.length === 0, `${bad.length} card backs cannot be scrolled to the end: ${bad.slice(0, 5).join(' ')}`);
+      app.AppController.selectSemester('1', '1');
+    });
+    it('(restores the shared iframe size)', () => {
+      frame.setAttribute('style', _frameStyle);
+      assert(true);
     });
   });
 
