@@ -1,0 +1,63 @@
+# Trims a reviewer read and rejected (scripts/shorten_sentences.py).
+#
+# One trimmed text per line, exactly as the script produces it. The original
+# sentence is kept for each, and it appears in the --review-dir lists for a
+# person to replace from the PDF. Use this file only for cuts no rule in
+# REJECT_RULES can describe: the source text is already garbled, a lesson
+# title is glued on, or the clause is grammatical but means nothing alone.
+# The script warns when an entry here no longer matches any trim.
+#
+# First review, 2026-10: all 433 distinct trims were read.
+
+# Dangling or incomplete clause
+板凳做得很粗糙，但是看得出。
+鼹鼠先生路过刺猬太太家，正巧。
+踏着路上的荆棘。
+他们躺在铅笔盒里聊天，一打开。
+我懂得，她问话的意思是。
+只有它，这个可怜的小毛虫，既不会唱。
+航天员要想喝到水。
+游客不仅能大饱口福。
+第二天我检查蜂窝时。
+若用扇子在下面轻轻地扇送。
+任凭人世间忙忙碌碌。
+难道它的眼睛特别敏锐。
+20世纪的成就。
+更不愿自己的陀螺像金兵见到岳家军。
+到了河神娶媳妇那天。
+他们的屋后倘若有一条小河。
+这些食料并不奢侈，但它的吃法，三眼一板。
+哈尔威巍然屹立在他的船长岗位上，指挥着。
+这如果不是一条鲸鱼从她上面游过。
+圆明园不但建筑宏伟。
+炊事员端来一个盘子，将军一看。
+这花园里蜜蜂、蝴蝶、蜻蜓、蚂蚱。
+金星是一颗缺氧、缺水。
+所有这些因素都说明。
+比如，“赚、赔、购、贫、货”。
+
+# Garbled source text: lines merged across a page or a lesson boundary
+您就不用挑水去浇田了，您高妈妈。
+啊，终于找到了—哪里需要献出爱心。
+半晌，他又问道：杨桃画成了五角星。
+马上就冒出了那么一条—冲着他摇尾巴。
+然后细嚼慢咽……你是勇敢的蟋蟀。
+得知她要去参加读下面的故事。
+纸的发明浆捞出来晒干。
+陶罐和铁罐时间在流逝。
+有的甚至说，只要签 订演出合同。
+空手回来，笑道：雯姑娘昨儿放走了。
+一个冬天下来，破草鞋堆得超过了而坚韧。
+唯独书房里那一幅老干虬枝的墨梅图。
+
+# Lesson title, poem title or year fragment glued on
+己亥杂诗：九州生气恃风雷。
+和平宣言（节选）冯亦同巍巍金陵。
+两小儿辩日孔子东游，见两小儿辩斗。
+年10月6日，英法联军侵入北京。
+年秋，日寇集中兵力。
+
+# Annotation text, not the lesson
+（秉）（并）（册）（北）天地玄黄。
+〔锲（è）而不舍〕不停地雕刻。
+他脸上笼罩〔滞（ì）留〕停留不动。

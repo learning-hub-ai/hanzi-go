@@ -485,7 +485,34 @@ if len(fallbacks) > FALLBACK_BUDGET:
     print('       the character genuinely has no prose example.')
     sys.exit(1)
 
+# Sentences longer than shorten_sentences.MAX_LEN are hard for a child to
+# take in at a glance (parent feedback). The script trims them to whole
+# clauses; the ones it cannot trim safely stay and need a person to pick a
+# different sentence from the PDF. The count may only go down: lower
+# LONG_BUDGET whenever some are fixed.
+sys.path.insert(0, 'scripts')
+from shorten_sentences import MAX_LEN as LONG_LIMIT
+LONG_BUDGET = 387
+long_ones = []
+for path in sorted(glob.glob('data/grade*.json')):
+    data = json.load(open(path))
+    for lesson in data['lessons']:
+        for entry in lesson['chars']:
+            s = entry.get('sentence') or ''
+            if ' · ' not in s and len(s) > LONG_LIMIT:
+                long_ones.append(lesson['id'] + ' ' + entry['char'] + ' ' + str(len(s)))
+if len(long_ones) > LONG_BUDGET:
+    print(f'❌ {len(long_ones)} sentences over {LONG_LIMIT} characters, budget is {LONG_BUDGET}:')
+    for b in long_ones[:10]:
+        print(f'  {b}')
+    print('  Fix: python3 scripts/shorten_sentences.py --apply,')
+    print(f'       or pick a sentence of at most {LONG_LIMIT} characters from the PDF.')
+    sys.exit(1)
 
+# Restored: b3ec230 dropped this header, which left the report below inside
+# the fallback-budget branch, so unusable sentences were never reported.
+if bad:
+    print(f'❌ {len(bad)} example sentence(s) are not usable prose:')
     for b in bad[:12]:
         print(f'  {b}')
     if len(bad) > 12:
@@ -495,3 +522,9 @@ if len(fallbacks) > FALLBACK_BUDGET:
     sys.exit(1)
 print('✅ Example sentences: usable prose, no 生字表 rows or exercise text')
 " || exit 1
+
+# Unit tests for the sentence trimmer. They include a check that the data is
+# already in the state the script produces.
+python3 scripts/test_shorten_sentences.py 2>/dev/null \
+  && echo "✅ Sentence trimmer: unit tests pass" \
+  || { echo "❌ Sentence trimmer tests failed: python3 scripts/test_shorten_sentences.py"; exit 1; }
