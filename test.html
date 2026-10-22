@@ -1401,6 +1401,28 @@ async function runTests() {
       assert(ds >= 32, `desktop review sentence is ${ds}px, should be >= 32px`);
       app.AppController.switchMode('learn');
     });
+    it('「点击翻转」 and 「收起」 are black and readable, and 笔顺 sits clear of the sentence', () => {
+      // Parent feedback: these were light grey (--text-muted at 50-60%
+      // opacity, ~1.6:1) and 12-13px, and 笔顺 sat right under the sentence.
+      frame.setAttribute('style', 'width:360px;height:640px');
+      const win = frame.contentWindow, doc = frame.contentDocument;
+      app.AppController.switchMode('learn');
+      app.AppController.selectSemester('1', '1');
+      app.LearnController.showCurrent();
+      if (doc.getElementById('flashcard').classList.contains('flipped')) app.CardUI.flip();
+      for (const [sel, name] of [['.card-hint', '点击翻转'], ['#btnStrokeClose', '收起']]) {
+        const st = win.getComputedStyle(doc.querySelector(sel));
+        assert(parseFloat(st.fontSize) >= 16, `${name} is ${st.fontSize}, should be >= 16px`);
+        assertEqual(st.opacity, '1', `${name} must not be faded`);
+        const [r, g, b] = st.color.match(/\d+/g).map(Number);
+        assert(r + g + b < 200, `${name} should be near-black, got ${st.color}`);
+      }
+      app.CardUI.flip();
+      const gap = doc.getElementById('btnStrokePractice').getBoundingClientRect().top
+        - doc.getElementById('cardSentence').getBoundingClientRect().bottom;
+      assert(gap >= 24, `笔顺 is ${Math.round(gap)}px below the sentence, should be >= 24px`);
+      app.CardUI.flip();
+    });
     it('(restores the shared iframe size)', () => {
       frame.setAttribute('style', _frameStyle);
       assert(true);
