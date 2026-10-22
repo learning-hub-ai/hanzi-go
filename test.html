@@ -1401,26 +1401,33 @@ async function runTests() {
       assert(ds >= 32, `desktop review sentence is ${ds}px, should be >= 32px`);
       app.AppController.switchMode('learn');
     });
-    it('「点击翻转」 and 「收起」 are black and readable, and 笔顺 sits clear of the sentence', () => {
-      // Parent feedback: these were light grey (--text-muted at 50-60%
-      // opacity, ~1.6:1) and 12-13px, and 笔顺 sat right under the sentence.
+    it('「点击翻转」 and 「收起」 are readable but quieter than 我来写; 笔顺 sits clear of the sentence', () => {
+      // Two rounds of parent feedback. First: light grey at 50-60% opacity,
+      // 12-13px — children could not see them. Then black, bold, 16-24px —
+      // now louder than the 再看一遍/我来写 buttons. They are hints: readable
+      // (>= 4.5:1, >= 14px), but smaller or lighter than 我来写.
       frame.setAttribute('style', 'width:360px;height:640px');
       const win = frame.contentWindow, doc = frame.contentDocument;
+      const lum = c => { const v = c.match(/\d+/g).slice(0, 3).map(Number).map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); });
+        return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+      const contrast = c => (1.05) / (lum(c) + 0.05);
       app.AppController.switchMode('learn');
       app.AppController.selectSemester('1', '1');
       app.LearnController.showCurrent();
       if (doc.getElementById('flashcard').classList.contains('flipped')) app.CardUI.flip();
+      const write = win.getComputedStyle(doc.getElementById('btnStrokeQuiz'));
       for (const [sel, name] of [['.card-hint', '点击翻转'], ['#btnStrokeClose', '收起']]) {
         const st = win.getComputedStyle(doc.querySelector(sel));
-        assert(parseFloat(st.fontSize) >= 16, `${name} is ${st.fontSize}, should be >= 16px`);
+        assert(parseFloat(st.fontSize) >= 14, `${name} is ${st.fontSize}, should be >= 14px`);
         assertEqual(st.opacity, '1', `${name} must not be faded`);
-        const [r, g, b] = st.color.match(/\d+/g).map(Number);
-        assert(r + g + b < 200, `${name} should be near-black, got ${st.color}`);
+        assert(contrast(st.color) >= 4.5, `${name} contrast ${contrast(st.color).toFixed(2)}:1, should be >= 4.5`);
+        const quieter = parseFloat(st.fontSize) < parseFloat(write.fontSize) || +st.fontWeight < +write.fontWeight;
+        assert(quieter, `${name} (${st.fontSize} ${st.fontWeight}) should be quieter than 我来写 (${write.fontSize} ${write.fontWeight})`);
       }
       app.CardUI.flip();
       const gap = doc.getElementById('btnStrokePractice').getBoundingClientRect().top
         - doc.getElementById('cardSentence').getBoundingClientRect().bottom;
-      assert(gap >= 24, `笔顺 is ${Math.round(gap)}px below the sentence, should be >= 24px`);
+      assert(gap >= 40, `笔顺 is ${Math.round(gap)}px below the sentence, should be >= 40px`);
       app.CardUI.flip();
     });
     it('(restores the shared iframe size)', () => {
