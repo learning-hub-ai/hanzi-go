@@ -354,49 +354,67 @@ const Speech = (() => {
       return;
     }
 
-    // Order of sources for a card that has a recording, by the parent's
-    // choice (使用说明 → 朗读声音, device-wide; see getVoicePreference):
-    //   录音   recording → online TTS → Web Speech
-    //   在线   online TTS → recording → Web Speech
-    // "Fails" means a source did not start (error, 404, start timeout), the
-    // only signal every browser gives reliably. Web Speech stays last in
-    // both: it cannot report that it made no sound (it ends on a timer when
-    // a voice is missing), so nothing could fall back after it.
-    //
-    // iOS normally speaks through Web Speech first (see below). With a
-    // recording available iOS uses the URL order above instead: an <audio>
-    // started inside the tap is allowed to play, and Web Speech only as the
-    // last resort. Not yet verified on a real iPhone. The recording has its
-    // own, shorter start timeout (speech.recordingStartTimeoutMs): a local
-    // file starts in a few ms, so a long wait only delays the next source.
-    if (opts.recording) {
-      _ensureAudio();
-      const order = _sourceOrder(opts.recording, _isIOS() ? [] : _ttsSources(text));
-      _debugLog(`recording: ${opts.recording} (voice: ${_voicePreference})`);
-      _playSources(order, 0, text, done);
-      return;
-    }
-
-    // iOS Safari fix: speechSynthesis.speak() only works when called
-    // directly inside a user gesture's call stack (or a very short window
-    // after it) — see the on-device debug logs that led here: Google and
-    // Baidu both reliably fail/timeout on this network (2.5s each per
-    // speech.startTimeoutMs), so by the time _speakWebAPI was reached as
-    // the LAST resort, ~5s had passed since the tap and iOS had already
-    // invalidated the gesture — speak() was called, voices loaded fine,
-    // but the utterance was silently dropped (no onstart, no onend, no
-    // onerror — exactly what the logs showed). On iOS, try Web Speech API
-    // FIRST, synchronously in this call, before any URL source has a
-    // chance to eat the gesture window. Desktop keeps the original order
-    // (Google/Baidu tend to sound better and have no such constraint).
-    if (_isIOS()) {
-      _debugLog('iOS detected — trying Web Speech API first (gesture window)');
+    // Which sources, in which order: decided in _plan (one place, testable
+    // without audio). The recording has its own, shorter start timeout
+    // (speech.recordingStartTimeoutMs): a local file starts in a few ms, so
+    // a long wait would only delay the next source. iOS paths are not yet
+    // verified on a real iPhone.
+    const plan = _plan(text, opts.recording || null);
+    _debugLog(`plan: ${plan.kind}${plan.kind === 'urls' ? ' [' + plan.sources.map(_sourceLabel).join(', ') + ']' : ''} (voice: ${_voicePreference})`);
+    if (plan.kind === 'webspeech') {
       _speakWebAPI(text, done);
       return;
     }
-
     _ensureAudio();
-    _playSources(_ttsSources(text), 0, text, done);
+    _playSources(plan.sources, 0, text, done);
+  }
+
+  /**
+   * Decide how to speak `text`: the single place that orders the sources.
+   *
+   * Returns { kind: 'webspeech' } to speak with the Web Speech API right
+   * away, or { kind: 'urls', sources } to try URL sources in order (Web
+   * Speech is still the last resort after them, inside _playSources).
+   *
+   * Rules, by priority:
+   *   1. iOS without a recording → Web Speech first. speechSynthesis.speak()
+   *      only works inside a tap's call stack (or a short window after it).
+   *      On-device logs (iPhone 16): Google and Baidu both timed out on that
+   *      network (2.5 s each), so Web Speech, as the last resort, ran ~5 s
+   *      after the tap — voices loaded, speak() was called, and the
+   *      utterance was silently dropped (no onstart/onend/onerror). Desktop
+   *      keeps URL sources first: Google/Baidu sound better there.
+   *   2. iOS with a recording, 在线语音 chosen → Web Speech first too, for
+   *      the same reason; it is iOS's online voice. Falls back to the
+   *      recording only when the browser has no speech engine.
+   *   3. A recording otherwise → the parent's order (使用说明 → 朗读声音):
+   *        录音  recording, then online TTS (none on iOS)
+   *        在线  online TTS, then the recording
+   *   4. No recording → online TTS.
+   * "Fails" in the fallbacks means a source did not start (error, 404,
+   * start timeout) — the only signal every browser gives reliably. Web
+   * Speech stays last: it cannot report that it made no sound.
+   *
+   * @param {string} text - what TTS would read
+   * @param {string|null} recording - the card's syllable file, if any
+   * @returns {{kind: 'webspeech'}|{kind: 'urls', sources: string[]}}
+   */
+  function _plan(text, recording) {
+    const ios = _isIOS();
+    if (!recording) {
+      return ios ? { kind: 'webspeech' } : { kind: 'urls', sources: _ttsSources(text) };
+    }
+    if (ios && _voicePreference === VOICE_ONLINE && _hasWebSpeech()) {
+      return { kind: 'webspeech' };
+    }
+    return { kind: 'urls', sources: _sourceOrder(recording, ios ? [] : _ttsSources(text)) };
+  }
+
+  /** Short name of a source URL for the debug log. */
+  function _sourceLabel(url) {
+    return url.includes('baidu') ? 'baidu'
+      : url.includes('googleapis') ? 'google'
+      : url.startsWith(SYLLABLE_DIR) ? 'recording' : 'localTTS';
   }
 
   /**
@@ -539,10 +557,18 @@ const Speech = (() => {
    * desktop windows and still have this constraint, while a narrow desktop
    * browser window does not.
    */
+  let _iosForTest = null;   // test-only override; see _setIOSForTest
+
   function _isIOS() {
+    if (_iosForTest !== null) return _iosForTest;
     const ua = navigator.userAgent || '';
     return /iPad|iPhone|iPod/.test(ua) ||
       (ua.includes('Macintosh') && navigator.maxTouchPoints > 1);
+  }
+
+  /** Whether this browser has a speech engine at all (Web Speech API). */
+  function _hasWebSpeech() {
+    return 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
   }
 
   /**
@@ -572,9 +598,7 @@ const Speech = (() => {
       return;
     }
 
-    const sourceLabel = sources[index].includes('baidu') ? 'baidu'
-      : sources[index].includes('googleapis') ? 'google'
-      : sources[index].startsWith(SYLLABLE_DIR) ? 'recording' : 'localTTS';
+    const sourceLabel = _sourceLabel(sources[index]);
     _debugLog(`[${index}] trying source: ${sourceLabel}`);
 
     let settled = false;
@@ -683,7 +707,7 @@ const Speech = (() => {
    */
   function _speakWebAPI(text, onDone) {
     if (!text) { if (onDone) onDone(); return; }
-    if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+    if (!_hasWebSpeech()) {
       // Was a silent return: the log just stopped after "falling back to
       // Web Speech API", which is all the Huawei/Xiaomi reports showed.
       _debugLog('WebAPI: speechSynthesis not available in this browser — no sound');
@@ -772,11 +796,14 @@ const Speech = (() => {
     speak, init, speakChar, loadHeteronyms, loadSyllables,
     getVoicePreference, setVoicePreference, VOICE_RECORDING, VOICE_ONLINE,
     // Exposed so tests can assert the reading choice without playing audio
-    _readingContext, _recordingFor, _syllableKey, _sourceOrder,
+    _readingContext, _recordingFor, _syllableKey, _sourceOrder, _plan,
     // Exposed so tests can drive the speak() overlap rule without real
     // audio. Each attempt is the function that would play one URL source
     // or utterance; null restores the real one. Test-only.
     _setPlaybackForTest: (fn) => { _testPlayback = fn; },
+    // Treat the browser as iOS (true), not iOS (false), or detect (null).
+    // Test-only: lets the suite exercise the iOS ordering on desktop.
+    _setIOSForTest: (v) => { _iosForTest = v; },
     _isSpeakingForTest: () => _current !== null
   };
 })();

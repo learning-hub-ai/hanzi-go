@@ -1629,6 +1629,37 @@ async function runTests() {
       });
     });
 
+    // _plan is the whole decision, including iOS (rule numbers as in its
+    // docstring). iOS is forced through the test hook; nothing plays.
+    function plan(ios, pref, recording) {
+      S()._setIOSForTest(ios);
+      try {
+        let p;
+        withPreference(pref, () => { p = S()._plan('\u63b7', recording); });
+        return p.kind === 'webspeech' ? 'webspeech'
+          : p.sources.map(u => u.startsWith('audio/') ? 'rec' : u.includes('googleapis') ? 'google'
+            : u.includes('baidu') ? 'baidu' : 'local').join(',');
+      } finally {
+        S()._setIOSForTest(null);
+      }
+    }
+    const REC = 'audio/syllables/zhi4.mp3';
+
+    it('desktop: 录音 → recording then online; 在线 → online then recording; no recording → online', () => {
+      assert(/^rec,(local,)?google,baidu$/.test(plan(false, 'recording', REC)), plan(false, 'recording', REC));
+      assert(/^(local,)?google,baidu,rec$/.test(plan(false, 'online', REC)), plan(false, 'online', REC));
+      assert(/^(local,)?google,baidu$/.test(plan(false, 'recording', null)), plan(false, 'recording', null));
+    });
+
+    it('iOS: 录音 plays the recording; 在线 speaks right away (the online voice there)', () => {
+      // 在线 on iOS used to queue only the recording — the setting was
+      // silently ignored. Web Speech must start inside the tap, so it goes
+      // first rather than behind any URL source.
+      assertEqual(plan(true, 'recording', REC), 'rec', '录音');
+      assertEqual(plan(true, 'online', REC), 'webspeech', '在线');
+      assertEqual(plan(true, 'recording', null), 'webspeech', 'no recording: unchanged iOS rule');
+    });
+
     it('stored per device (shared), not per child, and not exported', () => {
       withPreference('online', () => {
         assertEqual(frame.contentWindow.localStorage.getItem(KEY), JSON.stringify('online'),
