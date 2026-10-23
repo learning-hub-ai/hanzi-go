@@ -1466,7 +1466,7 @@ async function runTests() {
   // reading is right regardless of what TTS would guess (家长 reported 掷
   // and 爪 read wrongly). Missing syllables (ü, neutral tone, a few others)
   // keep TTS.
-  describe('\u{1F3A7} Recorded syllables for \u591a\u97f3\u5b57', () => {
+  describe('\u{1F3A7} Recorded syllables', () => {
     const S = () => app.Speech;
     const card = (ch, py) => app.State.get('allChars').find(c => c.char === ch && (!py || c.pinyin === py));
 
@@ -1519,16 +1519,29 @@ async function runTests() {
       assertGreater(checked, 1600, `only ${checked} cards checked`);
     });
 
-    it('neutral tone and cards outside the list keep TTS', () => {
+    it('neutral tone, ü and custom cards keep TTS', () => {
       assertEqual(S()._syllableKey('de'), 'de5');
       const de = card('\u7684', 'de');
       if (de) assertEqual(S()._recordingFor(de), null, '的 de has no recording');
-      // 天 has one reading, so it is not in the list even though tian1 is recorded
-      const sky = card('\u5929');
-      assert(!syllableIndex.chars.includes('\u5929'), 'fixture: 天 is not a 多音字');
-      assertEqual(S()._recordingFor(sky), null, 'non-多音字 cards are unchanged');
       assertEqual(S()._recordingFor({ char: '\u79e6', pinyin: 'q\u00edn', isCustom: true }), null,
-        'custom cards are not in the list');
+        'custom cards keep TTS: their pinyin is typed by a parent, a typo would play the wrong syllable');
+      assertEqual(S()._recordingFor({ char: '\u{20000}', pinyin: 'q\u00edn' }), null,
+        'a character outside the list keeps TTS');
+    });
+
+    it('the scope in the index decides which cards use recordings', () => {
+      // scripts/gen_syllable_audio.py --all-cards / --poly-only; the scope is
+      // stored so that pre-push and later runs keep it.
+      assert(['all', 'poly'].includes(syllableIndex.scope), `scope is ${syllableIndex.scope}`);
+      const sky = card('\u5929');   // 天: one reading, so only in "all"
+      const expected = syllableIndex.scope === 'all' ? 'audio/syllables/tian1.mp3' : null;
+      assertEqual(S()._recordingFor(sky), expected, `天 under scope "${syllableIndex.scope}"`);
+      if (syllableIndex.scope === 'all') {
+        const cards = app.State.get('allChars').filter(c => !c.isCustom && c.grade);
+        const withRecording = cards.filter(c => S()._recordingFor(c)).length;
+        assertGreater(withRecording / cards.length, 0.97,
+          `only ${withRecording}/${cards.length} cards have a recording`);
+      }
     });
 
     it('the index accounts for every syllable the cards need', () => {
@@ -1566,7 +1579,7 @@ async function runTests() {
       assertEqual(seen[1].recording, null, 'speak() of arbitrary text has no recording');
     });
 
-    it('the service worker pre-caches the index, not the 4 MB of audio', () => {
+    it('the service worker pre-caches the index, not the audio itself', () => {
       const x = new XMLHttpRequest();
       x.open('GET', 'sw.js', false);
       x.send();

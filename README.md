@@ -45,11 +45,11 @@ python3 server.py        # http://localhost:8000
 Web Speech API。线上版本没有代理，用后三种；如果网络拦了前两个，
 就要靠浏览器里装的中文语音。
 
-**多音字卡先播录音**：在线朗读只拿到汉字，读音靠引擎猜，「掷」「爪」
-都读错过。1246 个多音字的卡片改为播放卡片拼音对应的音节录音（如 zhì、
-zhuǎ），读音由数据决定。录音放在 `audio/syllables/`，用
+**课本字卡先播录音**：在线朗读只拿到汉字，读音靠引擎猜，「掷」「爪」
+都读错过。课本里的字卡改为播放卡片拼音对应的音节录音（如 zhì、zhuǎ），
+读音由数据决定，约 98% 的卡片有录音。录音放在 `audio/syllables/`，用
 `scripts/gen_syllable_audio.py` 生成；没有录音的音节（ü、轻声和少数几个）
-仍走上面的在线朗读。录音播过一次就会离线缓存。
+和自定义字卡仍走上面的在线朗读。录音播过一次就会离线缓存。
 
 ## 结构
 
@@ -70,7 +70,7 @@ hanzi-go/
 │   ├── constants.js   常量和共用小工具
 │   └── mobile.js      移动端适配
 ├── data/              18 个学期文件 grade{N}-semester{M}.json，加多音字表 heteronyms.json
-├── audio/syllables/   多音字卡用的音节录音（公共领域，见「版权」）
+├── audio/syllables/   字卡的音节录音（公共领域，见「版权」）
 ├── scripts/           生成和清理数据的脚本，见「加数据」
 └── docs/              数据生成规范
 ```
@@ -105,7 +105,7 @@ hanzi-go/
 | 脚本 | 做什么 |
 |---|---|
 | `scripts/gen_heteronyms.py` | 生成 `data/heteronyms.json`：多音字朗读时用哪个词定读音 |
-| `scripts/gen_syllable_audio.py` | 生成 `audio/syllables/`：多音字卡用的音节录音（下载、统一音量、压缩）；`--check` 只检查 |
+| `scripts/gen_syllable_audio.py` | 生成 `audio/syllables/`：字卡的音节录音（下载、统一音量、压缩）；`--all-cards` / `--poly-only` 切换范围，`--check` 只检查 |
 | `scripts/shorten_sentences.py` | 把超过 20 字的例句截到含该字的完整分句（不改写）；`--review-dir` 导出要人工处理的清单 |
 | `scripts/fix_quotes.py` | 补齐被 PDF 断行截掉一半的引号 |
 | `scripts/fix_polluted_sentences.py`、`tidy_sentences.py` | 去掉混进例句的生字表、练习题、标题和作者 |

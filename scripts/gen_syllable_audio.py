@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build audio/syllables/ — a recorded, toned syllable for every 多音字 card.
+Build audio/syllables/ — a recorded, toned syllable for each card's reading.
 
 Why
 ---
@@ -20,22 +20,27 @@ pffy, github.com/davinfifield/mp3-chinese-pinyin-sound — public domain
 (ma5), and lacks a few others. Those cards keep using online TTS: a missing
 syllable is never approximated (lu4 is 路, not 绿).
 
-Processing: normalised to -16 LUFS in two passes (the source peaks at only
-0.07–0.39 of full scale, far quieter than TTS), trimmed of leading/trailing silence, mono
-32 kbps MP3 — about 4 KB a syllable.
+Processing: trimmed of leading/trailing silence, normalised to -16 LUFS in
+two passes (the source peaks at only 0.07–0.39 of full scale, far quieter
+than TTS), peak-limited, faded at both ends (no click), mono 44.1 kHz
+48 kbps MP3 — about 7 KB a syllable.
 
 Output
 ------
 audio/syllables/<syllable>.mp3   e.g. zhi4.mp3, zhua3.mp3
-audio/syllables/index.json       {"chars": "…", "syllables": ["a1", …], "source": …}
+audio/syllables/index.json       {"scope", "chars", "syllables", "unavailable", "source"}
 The index lists exactly the files present; the app plays a recording only
 for a syllable in it, so a missing file cannot mean a silent card.
 
 Usage
 -----
-    python3 scripts/gen_syllable_audio.py            # build what is missing
-    python3 scripts/gen_syllable_audio.py --check    # verify, write nothing
-    python3 scripts/gen_syllable_audio.py --all-cards  # every card, not only 多音字
+    python3 scripts/gen_syllable_audio.py              # build what is missing
+    python3 scripts/gen_syllable_audio.py --check      # verify, write nothing
+    python3 scripts/gen_syllable_audio.py --all-cards  # switch to every card
+    python3 scripts/gen_syllable_audio.py --poly-only  # switch back to 多音字 only
+
+The scope (all cards or 多音字 only) is saved in the index, so a plain run
+or --check afterwards keeps it; pass a flag only to change it.
 
 Requires pypinyin; building also needs imageio-ffmpeg (dev only; the app
 ships the output).
@@ -68,6 +73,10 @@ def _ffmpeg():
     return imageio_ffmpeg.get_ffmpeg_exe()
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Which cards get a recording. Stored in the index as "scope".
+SCOPE_POLY = 'poly'   # only 多音字 (the first rollout)
+SCOPE_ALL = 'all'     # every card
 OUT_DIR = os.path.join(REPO_ROOT, 'audio', 'syllables')
 INDEX_PATH = os.path.join(OUT_DIR, 'index.json')
 SOURCE_URL = 'https://raw.githubusercontent.com/davinfifield/mp3-chinese-pinyin-sound/master/mp3/{}.mp3'
@@ -85,6 +94,16 @@ LIMIT = 'alimiter=limit=0.708:level=false'
 # Trim silence at both ends (reverse, trim leading, reverse back).
 TRIM = ('silenceremove=start_periods=1:start_threshold=-45dB,'
         'areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse')
+# Fade both ends after trimming. Trimming stops at the first sample above
+# the threshold, so 905 of 1050 clips ended mid-waveform (last 2 ms up to
+# 46% of peak), which plays as a click. 5 ms in keeps the consonant attack;
+# 30 ms out is shorter than any vowel's natural decay.
+FADE = 'afade=t=in:d=0.005,areverse,afade=t=in:d=0.03,areverse'
+# Output format. 44.1 kHz / 48 kbps keeps fricatives (s, x, c, q, z) up to
+# ~10 kHz, close to the source; 24 kHz / 32 kbps cut them at ~7.8 kHz and
+# made 四, 洗, 词 dull. Costs about 2 KB a syllable.
+SAMPLE_RATE = '44100'
+BITRATE = '48k'
 
 
 def syllable_key(reading):
@@ -179,8 +198,8 @@ def process(raw, dest):
         # on the first file). timeout guards any other stall.
         subprocess.run(
             [ffmpeg, '-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-i', src.name,
-             '-af', f'{TRIM},volume={gain:.2f}dB,{LIMIT}', '-ac', '1', '-ar', '24000',
-             '-c:a', 'libmp3lame', '-b:a', '32k', '-map_metadata', '-1', dest],
+             '-af', f'{TRIM},volume={gain:.2f}dB,{LIMIT},{FADE}', '-ac', '1', '-ar', SAMPLE_RATE,
+             '-c:a', 'libmp3lame', '-b:a', BITRATE, '-map_metadata', '-1', dest],
             check=True, stdin=subprocess.DEVNULL, timeout=60)
     finally:
         os.unlink(src.name)
@@ -189,15 +208,27 @@ def process(raw, dest):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     ap.add_argument('--check', action='store_true', help='verify only')
-    ap.add_argument('--all-cards', action='store_true', help='every card, not only 多音字')
+    scope = ap.add_mutually_exclusive_group()
+    scope.add_argument('--all-cards', action='store_const', dest='scope', const=SCOPE_ALL,
+                       help='every card')
+    scope.add_argument('--poly-only', action='store_const', dest='scope', const=SCOPE_POLY,
+                       help='only 多音字 cards')
     args = ap.parse_args()
 
-    need, chars = needed_syllables(args.all_cards)
+    # The scope is stored in the index, so a later plain run or --check
+    # (pre-push) uses the same one; a flag only changes it on purpose.
+    previous = _read_index().get('scope', SCOPE_POLY)
+    current = args.scope or previous
+    if args.check and args.scope and args.scope != previous:
+        print(f'❌ index was built for scope "{previous}", not "{args.scope}"')
+        return 1
+
+    need, chars = needed_syllables(current == SCOPE_ALL)
     os.makedirs(OUT_DIR, exist_ok=True)
     have = {f[:-4] for f in os.listdir(OUT_DIR) if f.endswith('.mp3')}
 
     if args.check:
-        return check(need, chars, have)
+        return check(need, chars, have, current)
 
     # Files no card needs any more (a pinyin was corrected, say) are
     # removed, so the directory always equals the index.
@@ -224,6 +255,7 @@ def main():
     with open(INDEX_PATH, 'w', encoding='utf-8') as f:
         json.dump({
             'source': SOURCE_NAME,
+            'scope': current,
             'note': ('chars: the characters that use these recordings; every other card keeps '
                      'online TTS. unavailable: syllables those cards need that the source lacks.'),
             'chars': chars,
@@ -238,17 +270,114 @@ def main():
     return 0
 
 
-def check(need, chars, have):
+def _mp3_format(path):
+    """
+    (sample_rate, bitrate_kbps) of an MP3, read with no dependencies so
+    --check runs anywhere. Skips an ID3 tag and LAME's Xing/Info frame (a
+    silent first frame whose header bitrate is not the stream's). None if
+    no audio frame is found.
+    """
+    with open(path, 'rb') as f:
+        data = f.read(8192)
+    i = 0
+    if data[:3] == b'ID3' and len(data) >= 10:
+        size = (data[6] << 21) | (data[7] << 14) | (data[8] << 7) | data[9]
+        i = 10 + size
+    rates = {0: 44100, 1: 48000, 2: 32000}
+    kbps = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0]
+    while i + 4 <= len(data):
+        b1, b2 = data[i + 1], data[i + 2]
+        # sync word, MPEG-1, Layer III
+        if data[i] == 0xFF and (b1 & 0xFE) == 0xFA:
+            rate, rate_kbps = rates.get((b2 >> 2) & 3), kbps[b2 >> 4]
+            if not rate or not rate_kbps:
+                i += 1
+                continue
+            frame_len = 144000 * rate_kbps // rate + ((b2 >> 1) & 1)
+            if b'Xing' in data[i:i + 64] or b'Info' in data[i:i + 64]:
+                i += frame_len
+                continue
+            return rate, rate_kbps
+        i += 1
+    return None
+
+
+def _quality_problems(files):
+    """
+    Audible-quality checks on the built files. Format is always checked;
+    loudness, peak and end clicks need ffmpeg and are skipped without it
+    (pre-push on a machine with only pypinyin still gets the format check).
+    """
+    problems = []
+    want_rate, want_kbps = int(SAMPLE_RATE), int(BITRATE.rstrip('k'))
+    wrong = [os.path.basename(p) for p in files if _mp3_format(p) != (want_rate, want_kbps)]
+    if wrong:
+        problems.append(f'{len(wrong)} file(s) not {want_rate} Hz / {want_kbps} kbps: {wrong[:5]}')
+    try:
+        ffmpeg = _ffmpeg_if_available()
+    except Exception:
+        ffmpeg = None
+    if not ffmpeg:
+        return problems
+    loud, peaky, clicky = [], [], []
+    for p in files:
+        name = os.path.basename(p)
+        # Whole-file loudness and peak.
+        r = subprocess.run([ffmpeg, '-hide_banner', '-nostdin', '-i', p, '-af', 'ebur128,volumedetect',
+                            '-f', 'null', '-'], capture_output=True, text=True,
+                           stdin=subprocess.DEVNULL, timeout=60).stderr
+        lufs = re.findall(r'I:\s+(-?[\d.]+) LUFS', r)
+        peak = re.findall(r'max_volume: (-?[\d.]+) dB', r)
+        # Peak of the last 2 ms (reverse, keep the first 2 ms), in a separate
+        # run: two volumedetect filters in one chain report unreliably.
+        t = subprocess.run([ffmpeg, '-hide_banner', '-nostdin', '-i', p, '-af',
+                            'areverse,atrim=end=0.002,volumedetect', '-f', 'null', '-'],
+                           capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60).stderr
+        tail = re.findall(r'max_volume: (-?[\d.]+) dB', t)
+        if lufs and abs(float(lufs[-1]) - TARGET_LUFS) > 3:
+            loud.append(f'{name} {float(lufs[-1]):.1f} LUFS')
+        if peak and float(peak[0]) > -1.0:
+            peaky.append(f'{name} {float(peak[0]):.1f} dBFS')
+        # last 2 ms within 26 dB (5 %) of the clip's peak = audible click
+        if peak and tail and float(tail[0]) - float(peak[0]) > -26:
+            clicky.append(name)
+    if loud:
+        problems.append(f'{len(loud)} file(s) more than 3 LU from {TARGET_LUFS} LUFS: {loud[:5]}')
+    if peaky:
+        problems.append(f'{len(peaky)} file(s) peak above -1 dBFS: {peaky[:5]}')
+    if clicky:
+        problems.append(f'{len(clicky)} file(s) end abruptly (click): {clicky[:5]}')
+    return problems
+
+
+def _ffmpeg_if_available():
+    """ffmpeg path, or None when imageio-ffmpeg is not installed."""
+    try:
+        import imageio_ffmpeg
+    except ImportError:
+        return None
+    return imageio_ffmpeg.get_ffmpeg_exe()
+
+
+def _read_index():
+    """The current index, or {} before the first build."""
+    try:
+        with open(INDEX_PATH, encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+
+def check(need, chars, have, scope):
     """
     Verify the shipped audio against the data without downloading anything.
 
     Every syllable the cards need must be either recorded or listed as
-    unavailable. Without that, a corrected pinyin (to a syllable the source
+    unavailable, and every file must pass _quality_problems(). Without that, a corrected pinyin (to a syllable the source
     does have) would silently leave the card on TTS until someone happened
     to rerun the build. Exit status 1 on any mismatch.
     """
-    with open(INDEX_PATH, encoding='utf-8') as f:
-        index = json.load(f)
+    index = _read_index()
     listed = set(index.get('syllables', []))
     unavailable = set(index.get('unavailable', []))
     problems = []
@@ -264,11 +393,12 @@ def check(need, chars, have):
     stale = sorted((listed | unavailable) - set(need))
     if stale:
         problems.append(f'index has syllables no card needs: {stale[:10]}')
+    problems += _quality_problems(sorted(os.path.join(OUT_DIR, s + '.mp3') for s in listed & have))
     if problems:
         for p in problems:
             print(f'❌ {p}')
         return 1
-    print(f'✅ {len(listed)} recorded syllables, {len(unavailable)} unavailable (TTS), index matches data')
+    print(f'✅ scope "{scope}": {len(listed)} recorded syllables, {len(unavailable)} unavailable (TTS), index matches data')
     return 0
 
 

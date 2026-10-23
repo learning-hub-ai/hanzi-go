@@ -183,7 +183,7 @@ const Speech = (() => {
 
   /**
    * Recorded syllables (audio/syllables/, built by
-   * scripts/gen_syllable_audio.py). A 多音字 card whose pinyin is listed
+   * scripts/gen_syllable_audio.py). A textbook card whose pinyin is listed
    * here plays the recording of exactly that toned syllable — zhì for 掷,
    * zhuǎ for 爪 — instead of asking TTS, which only sees the character and
    * guesses the reading. Cards whose syllable has no recording (ü, neutral
@@ -239,11 +239,16 @@ const Speech = (() => {
 
   /**
    * The recording for a card, or null when it should use TTS. Which cards
-   * qualify (the 多音字 for now) is decided by the generator and shipped
+   * qualify (all, or only 多音字) is decided by the generator and shipped
    * as index.chars, so widening it later is a data change, not a code one.
+   *
+   * Custom cards always use TTS. Their pinyin is typed by a parent, and a
+   * slip (qín typed as qin3) would play a confidently wrong syllable; TTS
+   * at least reads the character itself. They also do not need it for the
+   * reason the textbook cards do — their reading was not checked here.
    */
   function _recordingFor(charData) {
-    if (!charData || !SYLLABLES.size || !RECORDED_CHARS.has(charData.char)) return null;
+    if (!charData || charData.isCustom || !SYLLABLES.size || !RECORDED_CHARS.has(charData.char)) return null;
     const key = _syllableKey(charData.pinyin);
     return key && SYLLABLES.has(key) ? SYLLABLE_DIR + key + '.mp3' : null;
   }
@@ -313,7 +318,7 @@ const Speech = (() => {
       return;
     }
 
-    // A recorded syllable (speakChar passes one for 多音字 cards) goes
+    // A recorded syllable (speakChar passes one for textbook cards) goes
     // first on every platform: it is a small local file that starts at
     // once, and it is the only source that knows the card's reading. If it
     // fails to start, _playSources moves on to the next source.
