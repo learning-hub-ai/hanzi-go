@@ -197,21 +197,13 @@ def main():
     have = {f[:-4] for f in os.listdir(OUT_DIR) if f.endswith('.mp3')}
 
     if args.check:
-        index = json.load(open(INDEX_PATH, encoding='utf-8'))
-        listed = set(index['syllables'])
-        if index.get('chars') != chars:
-            print('❌ index.chars is out of date with the data: rerun the script')
-            return 1
-        problems = sorted(listed - have)
-        if problems:
-            print(f'❌ index lists {len(problems)} syllable(s) with no file: {problems[:10]}')
-            return 1
-        extra = sorted(have - listed)
-        if extra:
-            print(f'❌ {len(extra)} file(s) not in the index: {extra[:10]}')
-            return 1
-        print(f'✅ {len(listed)} recorded syllables, index matches files')
-        return 0
+        return check(need, chars, have)
+
+    # Files no card needs any more (a pinyin was corrected, say) are
+    # removed, so the directory always equals the index.
+    for syl in sorted(have - set(need)):
+        os.unlink(os.path.join(OUT_DIR, syl + '.mp3'))
+        have.discard(syl)
 
     made, missing = 0, []
     for syl in sorted(need):
@@ -220,7 +212,7 @@ def main():
             continue
         raw = fetch(syl)
         if raw is None:
-            missing.append(f'{syl}({need[syl]})')
+            missing.append(syl)
             continue
         process(raw, dest)
         have.add(syl)
@@ -232,15 +224,51 @@ def main():
     with open(INDEX_PATH, 'w', encoding='utf-8') as f:
         json.dump({
             'source': SOURCE_NAME,
-            'note': 'chars: the characters that use these recordings; every other card keeps online TTS.',
+            'note': ('chars: the characters that use these recordings; every other card keeps '
+                     'online TTS. unavailable: syllables those cards need that the source lacks.'),
             'chars': chars,
             'syllables': recorded,
+            'unavailable': sorted(missing),
         }, f, ensure_ascii=False, indent=1)
         f.write('\n')
     size = sum(os.path.getsize(os.path.join(OUT_DIR, s + '.mp3')) for s in recorded)
     print(f'{len(recorded)}/{len(need)} syllables recorded ({made} new), {size / 1e6:.2f} MB')
     print(f'{len(missing)} without a recording — these cards keep online TTS:')
-    print('  ' + ' '.join(missing))
+    print('  ' + ' '.join(f'{s}({need[s]})' for s in missing))
+    return 0
+
+
+def check(need, chars, have):
+    """
+    Verify the shipped audio against the data without downloading anything.
+
+    Every syllable the cards need must be either recorded or listed as
+    unavailable. Without that, a corrected pinyin (to a syllable the source
+    does have) would silently leave the card on TTS until someone happened
+    to rerun the build. Exit status 1 on any mismatch.
+    """
+    with open(INDEX_PATH, encoding='utf-8') as f:
+        index = json.load(f)
+    listed = set(index.get('syllables', []))
+    unavailable = set(index.get('unavailable', []))
+    problems = []
+    if index.get('chars') != chars:
+        problems.append('index.chars is out of date with the data')
+    if listed - have:
+        problems.append(f'index lists syllables with no file: {sorted(listed - have)[:10]}')
+    if have - listed:
+        problems.append(f'files not in the index: {sorted(have - listed)[:10]}')
+    unaccounted = sorted(set(need) - listed - unavailable)
+    if unaccounted:
+        problems.append(f'cards need syllables the build has not seen: {unaccounted[:10]}')
+    stale = sorted((listed | unavailable) - set(need))
+    if stale:
+        problems.append(f'index has syllables no card needs: {stale[:10]}')
+    if problems:
+        for p in problems:
+            print(f'❌ {p}')
+        return 1
+    print(f'✅ {len(listed)} recorded syllables, {len(unavailable)} unavailable (TTS), index matches data')
     return 0
 
 

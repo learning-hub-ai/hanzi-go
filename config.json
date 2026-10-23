@@ -14,6 +14,7 @@
     "lang": "zh-CN",
     "rate": 0.8,
     "startTimeoutMs": 2500,
+    "recordingStartTimeoutMs": 1200,
     "maxPlayMs": 4000
   },
   "badges": [

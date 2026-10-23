@@ -1485,6 +1485,28 @@ async function runTests() {
         'custom cards are not in the list');
     });
 
+    it('the index accounts for every syllable the cards need', () => {
+      // Recorded, or listed as unavailable (those cards use TTS). Anything
+      // else means the data changed after the audio was built.
+      const known = new Set([...syllableIndex.syllables, ...(syllableIndex.unavailable || [])]);
+      const chars = new Set([...syllableIndex.chars]);
+      const unseen = new Set();
+      for (const c of app.State.get('allChars')) {
+        if (!chars.has(c.char)) continue;
+        const k = S()._syllableKey(c.pinyin);
+        if (k && !known.has(k)) unseen.add(`${c.char}:${k}`);
+      }
+      assertEqual(unseen.size, 0, `rerun scripts/gen_syllable_audio.py: ${[...unseen].slice(0, 8).join(' ')}`);
+      assert((syllableIndex.unavailable || []).includes('lv4'), 'ü syllables are listed as unavailable');
+    });
+
+    it('a recording gives up quickly so the fallback is not delayed', () => {
+      const rec = app.State.config('speech.recordingStartTimeoutMs', null);
+      const tts = app.State.config('speech.startTimeoutMs', null);
+      assert(typeof rec === 'number' && rec > 0, 'speech.recordingStartTimeoutMs set');
+      assert(rec < tts, `recording timeout ${rec}ms should be shorter than TTS's ${tts}ms`);
+    });
+
     it('speakChar plays the recording; plain speak() never does', () => {
       const seen = [];
       S()._setPlaybackForTest((text, done, setCancel, recording) => { seen.push({ text, recording }); done(); });

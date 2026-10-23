@@ -313,16 +313,22 @@ const Speech = (() => {
       return;
     }
 
-    // A recorded syllable is local and starts at once, so it goes first on
-    // every platform, iOS included: _ensureAudio() runs right here in the
-    // tap, which is all iOS needs to let an <audio> play. If the file fails
-    // to start, _playSources falls through to the TTS sources and finally
-    // to the Web Speech API — the iOS rule below still applies to those.
+    // A recorded syllable (speakChar passes one for 多音字 cards) goes
+    // first on every platform: it is a small local file that starts at
+    // once, and it is the only source that knows the card's reading. If it
+    // fails to start, _playSources moves on to the next source.
+    //
+    // iOS keeps its Web-Speech-first rule for everything else, so there the
+    // only fallback after a recording is Web Speech — which iOS drops if it
+    // starts too long after the tap (see below). The recording therefore
+    // gets a shorter start timeout (speech.recordingStartTimeoutMs): a
+    // local file starts in a few ms, so a long wait only delays the
+    // fallback. Not yet verified on a real iPhone.
     if (opts.recording) {
       _ensureAudio();
       _debugLog(`recording: ${opts.recording}`);
-      const tts = _isIOS() ? [] : _ttsSources(text);
-      _playSources([opts.recording, ...tts], 0, text, done);
+      const rest = _isIOS() ? [] : _ttsSources(text);
+      _playSources([opts.recording, ...rest], 0, text, done);
       return;
     }
 
@@ -514,7 +520,9 @@ const Speech = (() => {
 
     let settled = false;
     let started = false;
-    const startTimeoutMs = State.config('speech.startTimeoutMs', 2500);
+    const startTimeoutMs = sourceLabel === 'recording'
+      ? State.config('speech.recordingStartTimeoutMs', 1200)
+      : State.config('speech.startTimeoutMs', 2500);
     let startTimer = null;
     let maxPlayTimer = null;
 
