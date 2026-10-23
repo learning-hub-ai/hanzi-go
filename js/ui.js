@@ -956,8 +956,8 @@ const ModalUI = (() => {
       // Option text is kept to one line on a computer (parent request): the
       // two-column help page gives each option ~415px, about 30 characters
       // at 13px. The details live in the line above instead of the options.
-      return '课本字卡点「朗读」时先用哪种声音；先用的放不出来，会自动换另一种。'
-        + '录音按卡片上的拼音读；在线语音在部分手机（如华为、小米）上可能放不出来。'
+      return '先用哪种声音朗读课本字卡；放不出来会自动换另一种。'
+        + '部分手机（如华为、小米）放不出在线语音。'
         + '<div class="voice-choice" role="radiogroup" aria-label="朗读声音">'
         + opt('recording', '录音（推荐）', '读音准，没网也能读')
         + opt('online', '在线语音', '声音更自然，但多音字可能读错，要联网')
@@ -974,7 +974,7 @@ const ModalUI = (() => {
     const steps = `<div class="help-steps">${STEPS.map(([n, t, d]) => `<div class="help-step">
       <div class="help-step-n">${n}</div><div class="help-step-t">${t}</div><div>${d}</div></div>`).join('')}</div>
       <p class="help-row-v" style="margin:6px 0 0">漏一天不要紧，第二天补上照样连着算；隔两天才从头数。</p>
-      <p class="help-row-v" style="margin:6px 0 0">🔄 <strong>切换课文</strong>：任务页顶部按钮，能跳到本学期任意一课重新开始，或「从头开始」。已学完的课会先记进历史，不会丢。</p>`;
+      <p class="help-row-v" style="margin:6px 0 0">🔄 <strong>切换课文</strong>：任务页顶部，跳到任意一课或从头开始，学过的不会丢。</p>`;
 
     return `
     <p class="help-lead">每天先做 <strong>📖 任务</strong> —— 该学的新字、该复习的旧字都排好了，做完算一天。
@@ -995,7 +995,7 @@ const ModalUI = (() => {
       row('📈 智能复习', '<strong>自动算出来的</strong> —— 哪个字该复习了，它说了算。刚学会的隔一天再问，记牢了拉长到一周、两周、一个月。每天内容都不一样，照着练就行。') +
       row('❤️ 练生字', '你自己收藏的字。看卡片时点卡片上的 ❤️ 收进来，再点一下取消。') +
       row('📖 练错题', `答错过的字。<strong>连续答对 ${toRemove} 次才自动移出去</strong> —— 不能手动删。这正是它的用处：错过的字得真学会才算过关。`) +
-      row('✏️ 自定义', '课本没有、但你想记的词都行。四项跟课本的字一样：<strong>正面、拼音、词语、例句</strong> —— 只有正面必填，一张接一张按 Enter。填得越全，能出的题型越多：<strong>拼音</strong>才能用在挑战里，<strong>词语</strong>解锁「字→词」，<strong>例句</strong>解锁「填空」。🗑 要点两次才删。'))}
+      row('✏️ 自定义', '加课本外的字词。输入正面会自动填好拼音、词语、例句，可以改；列表里点 ✏️ 修改。填了<strong>拼音</strong>才能用在挑战里。'))}
 
     ${block('本子和设置', '看看自己已经学了多少 —— 攒徽章、换用户都在这',
       row('❤️ 生字本', '收藏过的字，不想要了点 ✕ 取消。想拿来练，点「📚 复习卡片」「🎮 生字挑战」，或复习区的 练生字。') +
