@@ -1661,6 +1661,27 @@ async function runTests() {
       });
     });
 
+    it('on a computer each option fits on one line', () => {
+      // Parent request. At 1366×768 the help page is two columns and each
+      // option gets ~415px; a longer description wraps.
+      const prev = frame.getAttribute('style');
+      frame.setAttribute('style', 'width:1366px;height:768px');
+      flushFrameStyle();
+      try {
+        app.AppController.showHelp();
+        for (const l of doc().querySelectorAll('.voice-opt')) {
+          const s = l.querySelector('span');
+          const lh = parseFloat(frame.contentWindow.getComputedStyle(s).lineHeight);
+          const lines = Math.round(s.getBoundingClientRect().height / lh);
+          assertEqual(lines, 1, `"${s.textContent.trim()}" takes ${lines} lines`);
+        }
+        app.ModalUI.close();
+      } finally {
+        if (prev === null) frame.removeAttribute('style'); else frame.setAttribute('style', prev);
+        flushFrameStyle();
+      }
+    });
+
     it('each option is a full-row tap target on a phone', () => {
       const prev = frame.getAttribute('style');
       frame.setAttribute('style', 'width:360px;height:640px');

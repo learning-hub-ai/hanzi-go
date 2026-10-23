@@ -953,10 +953,14 @@ const ModalUI = (() => {
       const opt = (value, title, desc) =>
         `<label class="voice-opt"><input type="radio" name="voicePreference" value="${value}"${now === value ? ' checked' : ''}>
           <span><strong>${title}</strong> —— ${desc}</span></label>`;
-      return '课本字卡点「朗读」时先用哪种声音。先用的那种放不出来，会自动换另一种，所以都有声音。'
+      // Option text is kept to one line on a computer (parent request): the
+      // two-column help page gives each option ~415px, about 30 characters
+      // at 13px. The details live in the line above instead of the options.
+      return '课本字卡点「朗读」时先用哪种声音；先用的放不出来，会自动换另一种。'
+        + '录音按卡片上的拼音读；在线语音在部分手机（如华为、小米）上可能放不出来。'
         + '<div class="voice-choice" role="radiogroup" aria-label="朗读声音">'
-        + opt('recording', '录音（推荐）', '每个字按卡片上的拼音读，读音准；没网也能读。')
-        + opt('online', '在线语音', '声音更自然，但多音字可能读错；需要联网，部分手机（如华为、小米）可能放不出来。')
+        + opt('recording', '录音（推荐）', '读音准，没网也能读')
+        + opt('online', '在线语音', '声音更自然，但多音字可能读错，要联网')
         + '</div><span class="voice-hint">只对这台设备生效。自定义字卡总是用在线语音。</span>';
     };
 
