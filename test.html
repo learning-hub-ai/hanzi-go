@@ -1825,6 +1825,46 @@ async function runTests() {
         assert(o.scrollWidth <= o.clientWidth + 1, `"${text}" overflows its ${o.clientWidth}px button`);
       }
     });
+    it('a new round starts with blank progress dots, even at the same length', () => {
+      // Parent report: answer some 字→音, switch to 音→字 — the green/red
+      // dots of the old round stayed. Rounds of equal length reused the dots.
+      const doc = frame.contentDocument;
+      const dots = () => [...doc.querySelectorAll('#quizDots .quiz-dot')];
+      const marked = () => dots().filter(d => d.classList.contains('correct') || d.classList.contains('wrong')).length;
+      const realSetTimeout = app.setTimeout;
+      app.setTimeout = (fn) => { fn(); return 0; };     // advance at once
+      const realSpeak = app.Speech.speakChar;
+      app.Speech.speakChar = (c, done) => { if (done) done(); };
+      try {
+        app.AppController.switchMode('learn');
+        app.AppController.selectSemester('1', '1');
+        app.AppController.switchMode('challenge');
+        app.ChallengeController.setType('pickPinyin');
+        app.ChallengeController.start();
+        for (let i = 0; i < 3; i++) {
+          const q = app.State.get('quiz').questions[app.State.get('quiz').current];
+          const right = q.options.indexOf(q.target);
+          app.ChallengeController.answer(i === 1 ? (right + 1) % q.options.length : right);
+        }
+        assertEqual(marked(), 3, 'precondition: three answered dots are marked');
+        assert(dots()[1].classList.contains('wrong') && dots()[0].classList.contains('correct'), 'right/wrong marks match the answers');
+
+        for (const restart of [
+          () => { app.ChallengeController.setType('pickChar'); app.ChallengeController.start(); },   // switch type
+          () => app.ChallengeController.start(),                                                    // 再来一轮
+        ]) {
+          const q = app.State.get('quiz').questions[app.State.get('quiz').current];
+          app.ChallengeController.answer(q.options.indexOf(q.target));
+          restart();
+          assertEqual(marked(), 0, `a new round must start blank, ${marked()} dots still marked`);
+          assert(dots()[0].classList.contains('current'), 'first dot is the current one');
+        }
+      } finally {
+        app.setTimeout = realSetTimeout;
+        app.Speech.speakChar = realSpeak;
+        app.ChallengeController.stop();
+      }
+    });
     it('(restores the shared iframe size)', () => {
       frame.setAttribute('style', _frameStyle);
       assert(true);

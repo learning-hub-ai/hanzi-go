@@ -586,7 +586,8 @@ const ChallengeController = (() => {
   function showQuestion() {
     const quiz = State.get('quiz');
     const q = quiz.questions[quiz.current];
-    QuizUI.renderQuestion(q, quiz.score, quiz.streak, quiz.current + 1, quiz.questions.length);
+    QuizUI.renderQuestion(q, quiz.score, quiz.streak, quiz.current + 1, quiz.questions.length,
+      quiz.questions.map(x => (x.answered ? x.correct : null)));
     _startTimer();
   }
 
@@ -599,6 +600,9 @@ const ChallengeController = (() => {
 
     const correctIdx = q.options.indexOf(q.target);
     const isCorrect = selectedIdx >= 0 && selectedIdx === correctIdx;
+    // Kept on the question so the progress dots can be drawn from this
+    // round's own data (QuizUI.renderQuestion), never from leftover DOM.
+    q.correct = isCorrect;
 
     // Record for spaced repetition (every quiz answer)
     SpacedRepService.recordAnswer(q.target.char, isCorrect);

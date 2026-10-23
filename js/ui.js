@@ -329,8 +329,17 @@ const QuizUI = (() => {
   const GAIN_LIFETIME_MS = 1200;
   const BANNER_LIFETIME_MS = 2000;
 
-  /** Render a quiz question with options and progress dots */
-  function renderQuestion(question, score, streak, progress, total) {
+  /**
+   * Render a quiz question with options and progress dots.
+   * @param {Object} question
+   * @param {number} score
+   * @param {number} streak
+   * @param {number} progress - 1-based number of this question
+   * @param {number} total - questions in the round
+   * @param {Array<boolean|null>} [results] - per question of this round:
+   *   true right, false wrong, null not answered yet. Drives the dots.
+   */
+  function renderQuestion(question, score, streak, progress, total, results = []) {
     const quizCharEl = document.getElementById('quizChar');
     document.getElementById('quizScore').textContent = score;
     document.getElementById('quizStreak').textContent = streak;
@@ -357,7 +366,10 @@ const QuizUI = (() => {
     // has to wrap rather than run off the screen.
     quizCharEl.classList.toggle('quiz-char--text', type === 'fillBlank');
 
-    // Render dots
+    // Render dots from `results`, every time. They used to be rebuilt only
+    // when the round's length changed, so a new round of the same length
+    // (switch 字→音 to 音→字, 再来一轮, change the timer or lesson) kept the
+    // previous round's green/red marks.
     const dotsEl = document.getElementById('quizDots');
     if (dotsEl.children.length !== total) {
       dotsEl.innerHTML = '';
@@ -369,6 +381,8 @@ const QuizUI = (() => {
     }
     dotsEl.querySelectorAll('.quiz-dot').forEach((d, i) => {
       d.classList.toggle('current', i === progress - 1);
+      d.classList.toggle('correct', results[i] === true);
+      d.classList.toggle('wrong', results[i] === false);
     });
 
     // Render options based on type
