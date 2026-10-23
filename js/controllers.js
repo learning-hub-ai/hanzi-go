@@ -1469,6 +1469,10 @@ const AppController = (() => {
 
   function showHelp() {
     ModalUI.show('❓ 使用说明', ModalUI.renderHelp(), { wide: true });
+    // 朗读声音: applies the moment it is chosen; no save button to miss.
+    document.querySelectorAll('input[name="voicePreference"]').forEach(r => {
+      r.addEventListener('change', () => { if (r.checked) Speech.setVoicePreference(r.value); });
+    });
     // Wire the diagnostics button after the modal exists. Built on demand
     // rather than at render time so the report reflects the state at the
     // moment the parent asks for it, and so opening the help page normally

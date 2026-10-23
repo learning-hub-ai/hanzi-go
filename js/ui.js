@@ -941,6 +941,25 @@ const ModalUI = (() => {
         <div class="help-body">${body}</div>
       </div>`;
 
+    /**
+     * 朗读声音: two radio buttons, recording (default) or online. Lives
+     * here rather than behind its own button because few parents need it;
+     * the help page is where they already look for "how does this work".
+     * Each option states its trade-off, so choosing online is an informed
+     * choice. The current value is checked; AppController wires the change.
+     */
+    const voiceChoice = () => {
+      const now = (typeof Speech !== 'undefined') ? Speech.getVoicePreference() : 'recording';
+      const opt = (value, title, desc) =>
+        `<label class="voice-opt"><input type="radio" name="voicePreference" value="${value}"${now === value ? ' checked' : ''}>
+          <span><strong>${title}</strong> —— ${desc}</span></label>`;
+      return '课本字卡点「朗读」时先用哪种声音。先用的那种放不出来，会自动换另一种，所以都有声音。'
+        + '<div class="voice-choice" role="radiogroup" aria-label="朗读声音">'
+        + opt('recording', '录音（推荐）', '每个字按卡片上的拼音读，读音准；没网也能读。')
+        + opt('online', '在线语音', '声音更自然，但多音字可能读错；需要联网，部分手机（如华为、小米）可能放不出来。')
+        + '</div><span class="voice-hint">只对这台设备生效。自定义字卡总是用在线语音。</span>';
+    };
+
     const STEPS = [
       ['①', '复习', '该复习的字'],
       ['②', '回顾上课', '上一课的字'],
@@ -965,7 +984,8 @@ const ModalUI = (() => {
       row('🔁 加强记忆', '学习模式里的按钮。把当前这批字复制成三份、打乱顺序——同一个字会反复出现，不是看一遍就过。再点一下恢复成原来的顺序。') +
       row('✍️ 笔顺', '卡片背面的按钮，单个字才有。演示笔顺，也能自己写一遍，写错会提示。第一次用需要联网。') +
       row('🎮 挑战', `做题，每轮 ${perRound} 道。四种题型：字→音、音→字、字→词、填空，也能混着来。答错的字自动进错题本。`) +
-      row('⏱️ 挑战限时', '挑战模式顶部可以选 5/10/15 秒，关掉就是不限时。选了之后每题有个倒计时条，<strong>时间到了没答就自动算错</strong>——练反应速度、逼着不纠结。'))}
+      row('⏱️ 挑战限时', '挑战模式顶部可以选 5/10/15 秒，关掉就是不限时。选了之后每题有个倒计时条，<strong>时间到了没答就自动算错</strong>——练反应速度、逼着不纠结。') +
+      row('🔊 朗读声音', voiceChoice()))}
 
     ${block('🎯 复习区', '四批字，来路不同 —— 两批自动挑，两批你自己挑',
       row('📈 智能复习', '<strong>自动算出来的</strong> —— 哪个字该复习了，它说了算。刚学会的隔一天再问，记牢了拉长到一周、两周、一个月。每天内容都不一样，照着练就行。') +

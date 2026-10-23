@@ -196,6 +196,42 @@ const Speech = (() => {
   let RECORDED_CHARS = new Set();
   const SYLLABLE_DIR = 'audio/syllables/';
 
+  /**
+   * Which voice a card with a recording tries first (使用说明 → 朗读声音).
+   * The other is the fallback, so either choice still makes a sound.
+   *
+   * Stored per device (State.saveShared), not per child: whether online
+   * TTS works at all depends on the browser and network (Huawei/Xiaomi
+   * browsers, offline use), and the parent sets it once for the device.
+   * Not exported with a profile, for the same reason as lastVolume.
+   * Anything unrecognised — a hand-edited value, a future option this
+   * version does not know — reads as the default.
+   */
+  const VOICE_RECORDING = 'recording';
+  const VOICE_ONLINE = 'online';
+  const VOICE_KEY = 'voicePreference';
+  let _voicePreference = VOICE_RECORDING;
+
+  function _readVoicePreference() {
+    const v = State.loadShared(VOICE_KEY, VOICE_RECORDING);
+    return v === VOICE_ONLINE ? VOICE_ONLINE : VOICE_RECORDING;
+  }
+
+  /** @returns {string} 'recording' (default) or 'online' */
+  function getVoicePreference() { return _voicePreference; }
+
+  /**
+   * @param {string} v - 'recording' or 'online'; anything else is ignored
+   * @returns {boolean} whether it was accepted
+   */
+  function setVoicePreference(v) {
+    if (v !== VOICE_RECORDING && v !== VOICE_ONLINE) return false;
+    _voicePreference = v;
+    State.saveShared(VOICE_KEY, v);
+    _debugLog(`voice preference: ${v}`);
+    return true;
+  }
+
   /** @returns {Promise<number>} how many syllables are available */
   async function loadSyllables() {
     try {
@@ -318,22 +354,26 @@ const Speech = (() => {
       return;
     }
 
-    // A recorded syllable (speakChar passes one for textbook cards) goes
-    // first on every platform: it is a small local file that starts at
-    // once, and it is the only source that knows the card's reading. If it
-    // fails to start, _playSources moves on to the next source.
+    // Order of sources for a card that has a recording, by the parent's
+    // choice (使用说明 → 朗读声音, device-wide; see getVoicePreference):
+    //   录音   recording → online TTS → Web Speech
+    //   在线   online TTS → recording → Web Speech
+    // "Fails" means a source did not start (error, 404, start timeout), the
+    // only signal every browser gives reliably. Web Speech stays last in
+    // both: it cannot report that it made no sound (it ends on a timer when
+    // a voice is missing), so nothing could fall back after it.
     //
-    // iOS keeps its Web-Speech-first rule for everything else, so there the
-    // only fallback after a recording is Web Speech — which iOS drops if it
-    // starts too long after the tap (see below). The recording therefore
-    // gets a shorter start timeout (speech.recordingStartTimeoutMs): a
-    // local file starts in a few ms, so a long wait only delays the
-    // fallback. Not yet verified on a real iPhone.
+    // iOS normally speaks through Web Speech first (see below). With a
+    // recording available iOS uses the URL order above instead: an <audio>
+    // started inside the tap is allowed to play, and Web Speech only as the
+    // last resort. Not yet verified on a real iPhone. The recording has its
+    // own, shorter start timeout (speech.recordingStartTimeoutMs): a local
+    // file starts in a few ms, so a long wait only delays the next source.
     if (opts.recording) {
       _ensureAudio();
-      _debugLog(`recording: ${opts.recording}`);
-      const rest = _isIOS() ? [] : _ttsSources(text);
-      _playSources([opts.recording, ...rest], 0, text, done);
+      const order = _sourceOrder(opts.recording, _isIOS() ? [] : _ttsSources(text));
+      _debugLog(`recording: ${opts.recording} (voice: ${_voicePreference})`);
+      _playSources(order, 0, text, done);
       return;
     }
 
@@ -357,6 +397,20 @@ const Speech = (() => {
 
     _ensureAudio();
     _playSources(_ttsSources(text), 0, text, done);
+  }
+
+  /**
+   * Sources for a card that has a recording, in the order to try them.
+   * One function so the order is defined once and can be tested without
+   * playing audio.
+   * @param {string} recording - the card's syllable file
+   * @param {string[]} online - TTS URLs (empty on iOS, see speak())
+   * @returns {string[]}
+   */
+  function _sourceOrder(recording, online) {
+    return _voicePreference === VOICE_ONLINE
+      ? [...online, recording]
+      : [recording, ...online];
   }
 
   /** The online TTS URLs for text, in the order they are tried. */
@@ -699,6 +753,7 @@ const Speech = (() => {
 
   /** Initialize: detect local TTS server, preload Web Speech voices */
   function init() {
+    _voicePreference = _readVoicePreference();
     fetch('/tts?text=好').then(res => {
       if (res.ok && res.headers.get('content-type')?.includes('audio')) {
         _useLocalTTS = true;
@@ -715,8 +770,9 @@ const Speech = (() => {
 
   return {
     speak, init, speakChar, loadHeteronyms, loadSyllables,
+    getVoicePreference, setVoicePreference, VOICE_RECORDING, VOICE_ONLINE,
     // Exposed so tests can assert the reading choice without playing audio
-    _readingContext, _recordingFor, _syllableKey,
+    _readingContext, _recordingFor, _syllableKey, _sourceOrder,
     // Exposed so tests can drive the speak() overlap rule without real
     // audio. Each attempt is the function that would play one URL source
     // or utterance; null restores the real one. Test-only.

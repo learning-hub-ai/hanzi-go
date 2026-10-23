@@ -1588,6 +1588,96 @@ async function runTests() {
     });
   });
 
+  // 朗读声音 (使用说明): which voice a card with a recording tries first.
+  // Parent's spec: 录音 → recording, then online if it does not play;
+  // 在线 → online, then the recording if online fails. Default 录音;
+  // stored per device; custom cards always use online TTS.
+  describe('\u{1F50A} \u6717\u8bfb\u58f0\u97f3 (voice preference)', () => {
+    const S = () => app.Speech;
+    const doc = () => frame.contentDocument;
+    const KEY = 'szb_voicePreference';   // State's STORAGE_PREFIX + key, not per profile
+    function withPreference(v, fn) {
+      const before = S().getVoicePreference();
+      try { if (v) S().setVoicePreference(v); fn(); } finally { S().setVoicePreference(before); }
+    }
+
+    it('defaults to 录音 when nothing is stored, or something unknown is', () => {
+      const ls = frame.contentWindow.localStorage;
+      const saved = ls.getItem(KEY);
+      try {
+        ls.removeItem(KEY);
+        S().init();
+        assertEqual(S().getVoicePreference(), 'recording', 'no value → 录音');
+        ls.setItem(KEY, JSON.stringify('something-else'));
+        S().init();
+        assertEqual(S().getVoicePreference(), 'recording', 'unknown value → 录音');
+      } finally {
+        if (saved === null) ls.removeItem(KEY); else ls.setItem(KEY, saved);
+        S().init();
+      }
+    });
+
+    it('录音: recording first, then online', () => {
+      withPreference('recording', () => {
+        assertEqual(S()._sourceOrder('R', ['G', 'B']).join(','), 'R,G,B');
+      });
+    });
+
+    it('在线语音: online first, recording as the fallback', () => {
+      withPreference('online', () => {
+        assertEqual(S()._sourceOrder('R', ['G', 'B']).join(','), 'G,B,R');
+      });
+    });
+
+    it('stored per device (shared), not per child, and not exported', () => {
+      withPreference('online', () => {
+        assertEqual(frame.contentWindow.localStorage.getItem(KEY), JSON.stringify('online'),
+          'saved under the device-wide key');
+        const exported = JSON.stringify(app.State.exportProfileData ? app.State.exportProfileData() : {});
+        assert(!exported.includes('voicePreference'), 'not in a profile export');
+      });
+    });
+
+    it('custom cards ignore the setting and use online TTS', () => {
+      withPreference('recording', () => {
+        assertEqual(S()._recordingFor({ char: '\u79e6', pinyin: 'q\u00edn', isCustom: true }), null);
+      });
+    });
+
+    it('使用说明 shows both options with the current one checked, and a change applies at once', () => {
+      withPreference('recording', () => {
+        app.AppController.showHelp();
+        const radios = [...doc().querySelectorAll('input[name="voicePreference"]')];
+        assertEqual(radios.map(r => r.value).join(','), 'recording,online');
+        assert(radios[0].checked && !radios[1].checked, '录音 checked by default');
+        assert(radios[0].closest('label').textContent.includes('\u63a8\u8350'), '录音 is marked 推荐');
+        radios[1].checked = true;
+        radios[1].dispatchEvent(new frame.contentWindow.Event('change', { bubbles: true }));
+        assertEqual(S().getVoicePreference(), 'online', 'choosing 在线语音 takes effect without saving');
+        app.ModalUI.close();
+        app.AppController.showHelp();
+        assert(doc().querySelector('input[value="online"]').checked, 'reopening shows the saved choice');
+        app.ModalUI.close();
+      });
+    });
+
+    it('each option is a full-row tap target on a phone', () => {
+      const prev = frame.getAttribute('style');
+      frame.setAttribute('style', 'width:360px;height:640px');
+      flushFrameStyle();
+      try {
+        app.AppController.showHelp();
+        for (const l of doc().querySelectorAll('.voice-opt')) {
+          assert(l.getBoundingClientRect().height >= 44 - PX_SLACK, `option is ${l.getBoundingClientRect().height}px tall`);
+        }
+        app.ModalUI.close();
+      } finally {
+        if (prev === null) frame.removeAttribute('style'); else frame.setAttribute('style', prev);
+        flushFrameStyle();
+      }
+    });
+  });
+
   // === 挑战模式: every question type looks like 字→音 ===
   // Parents found 字→音's question size, answer size and gap right. The
   // other types set inline sizes (音→字/字→词 36px, 填空 20px) and gave
