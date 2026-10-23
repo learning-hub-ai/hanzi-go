@@ -1297,17 +1297,63 @@ async function runTests() {
       assertEqual(app.State.get('quiz').current, 1, 'should advance once the feedback delay elapses');
     });
 
-    it('on a wrong answer, does not call Speech.speak at all', () => {
-      let speakCalled = false;
-      withMockedSpeech(() => { speakCalled = true; }, () => {
+    it('on a wrong answer, speaks the correct answer (the green one), not the one picked', () => {
+      // Parent request: after a wrong answer, read the correct answer aloud,
+      // as already happens after a right one.
+      const spoken = [];
+      withMockedSpeech((text, onDone) => { spoken.push(text); }, () => {
         app.AppController.switchMode('challenge');
         app.ChallengeController.start();
-        const quiz = app.State.get('quiz');
-        const correctIdx = quiz.questions[0].options.indexOf(quiz.questions[0].target);
-        const wrongIdx = (correctIdx + 1) % quiz.questions[0].options.length;
+        const q = app.State.get('quiz').questions[0];
+        const correctIdx = q.options.indexOf(q.target);
+        const wrongIdx = (correctIdx + 1) % q.options.length;
 
         app.ChallengeController.answer(wrongIdx);
-        assert(!speakCalled, 'a wrong answer should not trigger pronunciation');
+        assertEqual(spoken.length, 1, 'one pronunciation');
+        assertEqual(spoken[0], q.target.char, 'the correct character, not the chosen one');
+        assert(frame.contentDocument.querySelectorAll('.quiz-option')[correctIdx].classList.contains('correct'),
+          'the spoken answer is the one highlighted green');
+      });
+    });
+
+    it('on a wrong answer, waits for the sound, then the feedback delay, before advancing', () => {
+      let capturedOnDone = null, capturedDelay = null, capturedCallback = null;
+      const realSetTimeout = app.setTimeout;
+      withMockedSpeech((text, onDone) => { capturedOnDone = onDone; }, () => {
+        app.AppController.switchMode('challenge');
+        app.ChallengeController.start();
+        const q = app.State.get('quiz').questions[0];
+        const wrongIdx = (q.options.indexOf(q.target) + 1) % q.options.length;
+        app.ChallengeController.answer(wrongIdx);
+        assertEqual(app.State.get('quiz').current, 0, 'must not advance while the answer is being read');
+        app.setTimeout = (fn, delay) => { capturedCallback = fn; capturedDelay = delay; return 0; };
+        capturedOnDone();
+      });
+      app.setTimeout = realSetTimeout;
+      assertEqual(capturedDelay, app.State.config('quizFeedbackDelayMs', 1200), 'same pause as after a right answer');
+      capturedCallback();
+      assertEqual(app.State.get('quiz').current, 1, 'advances after the pause');
+    });
+
+    it('when time runs out, also speaks the correct answer', () => {
+      const spoken = [];
+      withMockedSpeech((text) => { spoken.push(text); }, () => {
+        app.AppController.switchMode('challenge');
+        app.ChallengeController.start();
+        const q = app.State.get('quiz').questions[0];
+        app.ChallengeController.answer(-1);   // what the timer calls on expiry
+        assertEqual(spoken[0], q.target.char, 'timeout reads the correct answer');
+      });
+    });
+
+    it('a wrong answer still goes to the error book and resets the streak', () => {
+      withMockedSpeech(() => {}, () => {
+        app.AppController.switchMode('challenge');
+        app.ChallengeController.start();
+        const q = app.State.get('quiz').questions[0];
+        app.ChallengeController.answer((q.options.indexOf(q.target) + 1) % q.options.length);
+        assertEqual(app.State.get('quiz').streak, 0, 'streak reset');
+        assert(app.ErrorBookService.getAll().some(e => e.char === q.target.char), 'added to the error book');
       });
     });
   });

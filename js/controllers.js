@@ -629,22 +629,18 @@ const ChallengeController = (() => {
 
     const feedbackDelayMs = State.config('quizFeedbackDelayMs', 1200);
 
-    if (isCorrect) {
-      // Speak the pronunciation, then hold the usual feedback delay on top
-      // of it before advancing — total wait = actual sound length +
-      // feedbackDelayMs, so the sound always finishes while ITS question is
-      // still on screen, and the child still gets a feedbackDelayMs pause
-      // to look at the highlighted answer afterwards. Speech.speak's onDone
-      // is guaranteed to fire eventually even if every audio source fails
-      // (bounded by speech.startTimeoutMs internally), so this never hangs.
-      Speech.speakChar(q.target, () => {
-        setTimeout(() => _advanceToNext(quiz), feedbackDelayMs);
-      });
-    } else {
-      // No pronunciation on a wrong answer — the original fixed delay is
-      // fine, there's nothing async to wait for.
+    // Speak the correct answer's character either way. After a right answer
+    // it confirms what the child chose; after a wrong one (or a timeout) it
+    // teaches what the green answer is, which is when hearing it matters
+    // most. Then hold the usual feedback delay on top of the sound before
+    // advancing — total wait = actual sound length + feedbackDelayMs — so
+    // the sound always finishes while ITS question is still on screen, and
+    // the child still gets a pause to look at the highlighted answer.
+    // speakChar's onDone is guaranteed to fire even if every audio source
+    // fails (bounded by the start timeouts), so this never hangs.
+    Speech.speakChar(q.target, () => {
       setTimeout(() => _advanceToNext(quiz), feedbackDelayMs);
-    }
+    });
   }
 
   /** Move to the next question, or end the round if this was the last one. */
