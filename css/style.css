@@ -1302,7 +1302,6 @@ main{
 .voice-opt{display:flex;align-items:flex-start;gap:var(--s2);min-height:44px;padding:var(--s2);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer}
 .voice-opt input{margin-top:4px;flex-shrink:0;accent-color:var(--primary)}
 .voice-opt:has(input:checked){border-color:var(--primary);background:var(--primary-50)}
-.voice-hint{font-size:var(--text-sm);color:var(--text-secondary)}
 @media (max-width:560px){.help-row{flex-direction:column;gap:2px}.help-row-k{flex:none}}
 
 /* Tighten the reading panel on wide screens so the whole thing fits one view.

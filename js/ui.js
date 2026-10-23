@@ -956,12 +956,11 @@ const ModalUI = (() => {
       // Option text is kept to one line on a computer (parent request): the
       // two-column help page gives each option ~415px, about 30 characters
       // at 13px. The details live in the line above instead of the options.
-      return '先用哪种声音朗读课本字卡；放不出来会自动换另一种。'
-        + '部分手机（如华为、小米）放不出在线语音。'
+      return '课本字卡先用哪种声音，放不出来自动换另一种。只对本机生效；自定义字卡总用在线语音。'
         + '<div class="voice-choice" role="radiogroup" aria-label="朗读声音">'
         + opt('recording', '录音（推荐）', '读音准，没网也能读')
         + opt('online', '在线语音', '声音更自然，但多音字可能读错，要联网')
-        + '</div><span class="voice-hint">只对这台设备生效。自定义字卡总是用在线语音。</span>';
+        + '</div>';
     };
 
     const STEPS = [
@@ -994,11 +993,11 @@ const ModalUI = (() => {
     ${block('🎯 复习区', '四批字，来路不同 —— 两批自动挑，两批你自己挑',
       row('📈 智能复习', '<strong>自动算出来的</strong> —— 哪个字该复习了，它说了算。刚学会的隔一天再问，记牢了拉长到一周、两周、一个月。每天内容都不一样，照着练就行。') +
       row('❤️ 练生字', '你自己收藏的字。看卡片时点卡片上的 ❤️ 收进来，再点一下取消。') +
-      row('📖 练错题', `答错过的字。<strong>连续答对 ${toRemove} 次才自动移出去</strong> —— 不能手动删。这正是它的用处：错过的字得真学会才算过关。`) +
+      row('📖 练错题', `答错过的字，<strong>连续答对 ${toRemove} 次才移出</strong>，不能手动删。`) +
       row('✏️ 自定义', '加课本外的字词。输入正面会自动填好拼音、词语、例句，可以改；列表里点 ✏️ 修改。填了<strong>拼音</strong>才能用在挑战里。'))}
 
     ${block('本子和设置', '看看自己已经学了多少 —— 攒徽章、换用户都在这',
-      row('❤️ 生字本', '收藏过的字，不想要了点 ✕ 取消。想拿来练，点「📚 复习卡片」「🎮 生字挑战」，或复习区的 练生字。') +
+      row('❤️ 生字本', '收藏的字，点 ✕ 取消；在复习区「练生字」里练。') +
       row('🏆 成就墙', '学到的字越多，徽章越多 —— 识字量 50、100、200、500、1000、2000 各有一个，还有连续天数和满分的徽章。累计数据也在这里。') +
       row('👧 切换用户', '当前设备上几个人分开用，进度、收藏、错题互不影响。'))}
 
