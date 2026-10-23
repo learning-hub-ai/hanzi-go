@@ -9,6 +9,15 @@ cd "$(dirname "$0")"
 echo "🧪 Running HanziGo pre-push checks..."
 echo "=================================================="
 
+# Use the project's .venv when there is one. `git push` runs this hook with
+# the shell git inherited, so plain `python3` can be the system interpreter
+# (3.6 here) without pypinyin: the 多音字 check then skipped itself silently
+# and the recorded-syllable check failed the push outright, while the same
+# script passed when run by hand from an activated venv.
+if [ -x .venv/bin/python3 ]; then
+  python3() { .venv/bin/python3 "$@"; }
+fi
+
 # Run Python test suite
 python3 -c "
 import json, re, os
