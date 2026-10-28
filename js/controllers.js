@@ -48,15 +48,23 @@ const ProfileManager = (() => {
           </div>
           <button class="btn-confirm" id="btnConfirmAdd">确定</button>
         </div>
+        ${StoryInvite.panelHtml()}
       </div>
     `;
 
     document.body.appendChild(picker);
+    StoryInvite.bind(picker);
 
-    // Event: close picker
-    document.getElementById('btnPickerClose').addEventListener('click', () => {
+    // Event: close picker (✕ or Esc)
+    const opener = document.activeElement;
+    const close = () => {
       picker.remove();
-    });
+      document.removeEventListener('keydown', onKey);
+      if (opener && opener.isConnected && typeof opener.focus === 'function') opener.focus();
+    };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey);
+    document.getElementById('btnPickerClose').addEventListener('click', close);
 
     // Event: select existing profile
     picker.querySelectorAll('.profile-item:not(.profile-add)').forEach(item => {
@@ -65,7 +73,7 @@ const ProfileManager = (() => {
         const id = item.dataset.id;
         State.setProfile(id);
         updateHeaderAvatar();
-        picker.remove();
+        close();
         if (onSelect) onSelect();
       });
     });
@@ -99,7 +107,7 @@ const ProfileManager = (() => {
           profile.avatar = selectedAvatar;
           saveProfiles(profiles);
           updateHeaderAvatar();
-          picker.remove();
+          close();
           showPicker(onSelect); // Re-render
         };
       });
@@ -153,7 +161,7 @@ const ProfileManager = (() => {
       saveProfiles(profiles);
       State.setProfile(name);
       updateHeaderAvatar();
-      picker.remove();
+      close();
       if (onSelect) onSelect();
     });
   }
@@ -803,6 +811,7 @@ const AppController = (() => {
       // volume used to be 一上 too, so the stale card happened to match.
       LearnController.showCurrent();
     }
+    if (typeof StoryView !== 'undefined') StoryView.refresh();
   }
 
   /**
@@ -1048,6 +1057,7 @@ const AppController = (() => {
       LearnController.showCurrent();
     }
     // If in dailyTask mode, do nothing — sidebar selection only preloads data for learn/challenge
+    if (typeof StoryView !== 'undefined') StoryView.refresh();
   }
 
   function selectLesson(lessonId) {
@@ -1148,6 +1158,7 @@ const AppController = (() => {
     } else {
       LearnController.showCurrent();
     }
+    if (typeof StoryView !== 'undefined') StoryView.refresh();
   }
 
   function showFavorites() {
@@ -1791,6 +1802,11 @@ const AppController = (() => {
         console.info('[App] Binding events...');
         bindEvents();
         console.info('[App] ✅ Ready!');        setupSwipe();
+        // 🃏 字卡 | 📖 故事 under the lesson dropdown (js/story.js). A link with
+        // #invite=… opens the stories first (js/story-invite.js); its code is
+        // removed from the address bar before anything else.
+        if (typeof StoryInvite !== 'undefined') StoryInvite.fromUrl();
+        if (typeof StoryView !== 'undefined') StoryView.init();
 
         // Render daily task (default mode)
         if (typeof DailyTaskController !== 'undefined') {
@@ -2127,6 +2143,12 @@ const AppController = (() => {
     // --- Keyboard shortcuts ---
     document.addEventListener('keydown', (e) => {
       if (State.get('mode') !== 'learn') return;
+      // While a story is showing, ← → turn its pages instead of the cards.
+      if (typeof StoryView !== 'undefined' && StoryView.isActive()) {
+        if (e.key === 'ArrowRight') StoryView.next();
+        else if (e.key === 'ArrowLeft') StoryView.prev();
+        return;
+      }
       if (e.key === 'ArrowRight') LearnController.next();
       else if (e.key === 'ArrowLeft') LearnController.prev();
       else if (e.key === ' ') { e.preventDefault(); LearnController.flip(); }

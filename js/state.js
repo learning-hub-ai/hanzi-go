@@ -7,7 +7,8 @@
  */
 const State = (() => {
   const STORAGE_PREFIX = 'szb_';
-  const SHARED_KEYS = ['profiles', 'activeProfile', 'welcomed'];
+  // storyInvite: the 小故事 invite code, one per device (js/story-unlock.js).
+  const SHARED_KEYS = ['profiles', 'activeProfile', 'welcomed', 'storyInvite'];
   let _config = {};
   let _profileId = '';
 
@@ -215,7 +216,9 @@ const State = (() => {
   //     is mid-flight); meaningless to restore on a different device/session.
   const EXPORT_KEYS = [
     'favorites', 'errorBook', 'stats', 'badges', 'spacedRep', 'customCards', 'favContext',
-    'lessonProgress', 'dailyTask', 'growthPoints', 'completedLessonsHistory'
+    'lessonProgress', 'dailyTask', 'growthPoints', 'completedLessonsHistory',
+    // 小故事: whether this child reads with pinyin shown (js/story.js)
+    'storyPinyin'
   ];
 
   /**

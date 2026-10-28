@@ -43,14 +43,8 @@ const MobileUI = (() => {
     const bar = document.getElementById('mobileBottomBar');
     if (!bar) return;
 
-    document.getElementById('mbtnPrev').addEventListener('click', () => {
-      const btnPrev = document.getElementById('btnPrev');
-      if (btnPrev) btnPrev.click();
-    });
-    document.getElementById('mbtnNext').addEventListener('click', () => {
-      const btnNext = document.getElementById('btnNext');
-      if (btnNext) btnNext.click();
-    });
+    document.getElementById('mbtnPrev').addEventListener('click', () => step(-1));
+    document.getElementById('mbtnNext').addEventListener('click', () => step(1));
     document.getElementById('mbtnFlip').addEventListener('click', () => {
       const btnFlip = document.getElementById('btnFlip');
       if (btnFlip) btnFlip.click();
@@ -63,6 +57,21 @@ const MobileUI = (() => {
       const btnReinforce = document.getElementById('btnReinforce');
       if (btnReinforce) btnReinforce.click();
     });
+  }
+
+  /**
+   * ◀️ (-1) or ▶️ (+1) on the bottom bar. While 学习 shows a story
+   * (js/story.js) they turn its pages; otherwise they move the cards. The
+   * card-only buttons are hidden by CSS while reading (body.story-reading).
+   * @param {number} dir
+   */
+  function step(dir) {
+    if (typeof StoryView !== 'undefined' && StoryView.isActive()) {
+      if (dir > 0) StoryView.next(); else StoryView.prev();
+      return;
+    }
+    const btn = document.getElementById(dir > 0 ? 'btnNext' : 'btnPrev');
+    if (btn) btn.click();
   }
 
   /** Bind grade picker button → opens bottom sheet */
@@ -374,7 +383,7 @@ const MobileUI = (() => {
     if (bar) bar.classList.toggle('hidden', !visible);
   }
 
-  return { init, onGradeChange, isMobile, setBottomBarVisible,
+  return { init, onGradeChange, isMobile, setBottomBarVisible, step,
            // Exported for tests: the sheet's sidebar-less fallback path is
            // otherwise only reachable when a sidebar row is missing.
            _openGradeSheet };

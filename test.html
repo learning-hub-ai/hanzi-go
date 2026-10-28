@@ -321,6 +321,52 @@ async function runTests() {
   // synchronous. `it` is deliberately not async (see its note), so a test
   // that awaited this itself would be recorded as passing before its
   // assertions ran.
+  // Render the cast page once with a real picture and a missing one, and
+  // let both finish loading, so the picture test below can be synchronous.
+  let castIcons = null;
+  try {
+    const ST = { lesson: '1-1-31', title: '图', cast: ['飞飞', '小天'], pages: [{ text: '影子。' }], readings: {}, reviewed: { by: 't' } };
+    app.StoryService._setForTest([ST], { allow: [], characters: {
+      '飞飞': { icon: 'assets/characters/feifei.svg', emoji: '👦', text: '男孩。', readings: {} },
+      '小天': { icon: 'assets/characters/no-such-file.svg', emoji: '🦢', text: '天。', readings: {} } } });
+    app.AppController.switchMode('learn');
+    app.AppController.selectSemester('1', '1');
+    const sel = frame.contentDocument.getElementById('lessonFilter');
+    sel.value = '1-1-31'; sel.dispatchEvent(new app.Event('change', { bubbles: true }));
+    app.StoryView.show(true);
+    app.StoryView.flipCover(true);
+    const imgs = [...frame.contentDocument.querySelectorAll('.story-cast-icon')];
+    const srcs = imgs.map(i => i.getAttribute('src')), alts = imgs.map(i => i.getAttribute('alt'));
+    await Promise.all(imgs.map(i => i.complete ? null : new Promise(r => { i.addEventListener('load', r); i.addEventListener('error', r); })));
+    await new Promise(r => setTimeout(r, 50));
+    const rows = [...frame.contentDocument.querySelectorAll('.story-cast-row')];
+    castIcons = {
+      srcs, alts,
+      loaded: rows[0] && rows[0].querySelector('.story-cast-icon') ? rows[0].querySelector('.story-cast-icon').naturalWidth : 0,
+      fallback: rows[1] ? rows[1].querySelector('.story-cast-emoji').textContent.trim() : null,
+      missingImgGone: rows[1] ? !rows[1].querySelector('.story-cast-icon') : false
+    };
+    app.StoryView.show(false);
+    app.StoryService._resetForTest(); app.StoryService.load();
+    app.AppController.switchMode('dailyTask');
+  } catch (e) { castIcons = { error: String(e) }; }
+
+  // The eight characters' pictures are public (assets/characters/); the
+  // intros that point at them are private, so the list is spelled out here.
+  let characterIcons = null;
+  try {
+    const ICONS = { '飞飞': 'feifei', '乐乐': 'lele', '小天': 'xiaotian', '小白': 'xiaobai', '小呱': 'xiaogua',
+                    '慢爷爷': 'manyeye', '爸爸': 'baba', '妈妈': 'mama' };
+    const data = { characters: Object.fromEntries(Object.entries(ICONS).map(([n, f]) => [n, { icon: `assets/characters/${f}.svg` }])) };
+    characterIcons = await Promise.all(Object.entries(data.characters).map(([name, c]) => new Promise(r => {
+      if (!c.icon) return r({ name, icon: '(none)', ok: false });
+      const img = new Image();
+      img.onload = () => r({ name, icon: c.icon, ok: img.naturalWidth > 0 });
+      img.onerror = () => r({ name, icon: c.icon, ok: false });
+      img.src = c.icon;
+    })));
+  } catch (e) { characterIcons = { error: String(e) }; }
+
   let heteronymCount = 0;
   try {
     heteronymCount = await app.Speech.loadHeteronyms();
@@ -332,6 +378,73 @@ async function runTests() {
     syllableCount = await app.Speech.loadSyllables();
     syllableIndex = await (await fetch('audio/syllables/index.json', { cache: 'reload' })).json();
   } catch (e) { /* asserted below */ }
+
+  // 小故事邀请码 (design §7.5): drive the real unlock path once here, against
+  // the fixture that scripts/build_stories.py --fixture seals with Python, so
+  // the story tests can assert synchronously (see the note on it()). The real
+  // stories are private and never fetched by the tests.
+  const FIXTURE = 'test/fixtures/stories.enc.json', FIXTURE_CODE = 'TEST-2026-0000';
+  const unlock = { error: null };
+  const savedInvite = app.State.loadShared('storyInvite', '');
+  try {
+    const U = app.StoryUnlock, SS = app.StoryService;
+    unlock.supported = U.supported();
+    unlock.norm = [U.normalize(' test 2026-oooo '), U.normalize('TEST-2026-000'), U.normalize('TEST-2026-000U'),
+                   U.format('test20260000')];
+    const enc = await (await fetch(FIXTURE, { cache: 'no-store' })).json();
+    unlock.direct = await U.open(enc, FIXTURE_CODE.toLowerCase());
+    unlock.wrong = await U.open(enc, 'ZZZZ-ZZZZ-ZZZZ').then(() => 'opened', e => e.name + '|' + e.message);
+    const bad = JSON.parse(JSON.stringify(enc));
+    bad.data.ct = (bad.data.ct[0] === 'A' ? 'B' : 'A') + bad.data.ct.slice(1);
+    unlock.tampered = await U.open(bad, FIXTURE_CODE).then(() => 'opened', e => e.name);
+    unlock.otherVersion = await U.open(Object.assign({}, enc, { v: 2 }), FIXTURE_CODE).then(() => 'opened', e => e.name);
+    SS._setFileForTest(FIXTURE);
+    // No code: no stories, and status says why.
+    U.clear(); SS._resetForTest(); SS._setFileForTest(FIXTURE);
+    unlock.noneCount = await SS.load(); unlock.noneStatus = SS.status();
+    // A wrong code typed in: nothing saved, nothing opened.
+    unlock.wrongCount = await SS.reload('ZZZZ-ZZZZ-ZZZZ'); unlock.wrongStatus = SS.status();
+    unlock.wrongSaved = U.code();
+    // The right code: opened and saved, shared by the whole device.
+    unlock.count = await SS.reload(FIXTURE_CODE); unlock.status = SS.status();
+    unlock.saved = U.code(); unlock.sharedRaw = app.localStorage.getItem('szb_storyInvite');
+    unlock.lessons = ['1-1-31', '1-2-26', '1-2-27'].map(l => !!SS.forLesson(l));
+    unlock.intro = (SS.character('飞飞') || {}).text;
+    // A saved code that stops opening (revoked): forgotten on the next load.
+    app.State.saveShared('storyInvite', 'ZZZZZZZZZZZZ');
+    unlock.revokedCount = await SS.reload(); unlock.revokedStatus = SS.status(); unlock.revokedSaved = U.code();
+    // A link: the code leaves the address bar, then opens the stories.
+    app.location.hash = 'invite=' + FIXTURE_CODE;
+    unlock.linkResult = await app.StoryInvite.fromUrl();
+    unlock.linkHash = app.location.hash; unlock.linkStatus = SS.status();
+    unlock.noLink = await app.StoryInvite.fromUrl();
+    // Nothing above may have put the code into the error log.
+    unlock.logged = JSON.stringify(app.ErrorLog.entries());
+    // Leave the trial.
+    await app.StoryInvite.leave();
+    unlock.leftSaved = U.code(); unlock.leftCount = !!SS.forLesson('1-1-31');
+    // Two loads at once: the first (no stories: a wrong code) answers late,
+    // the second (right code) at once. The late one must not undo the newer
+    // one (load tickets in StoryService). The first fetch is held back so the
+    // order does not depend on timing.
+    const realFetch = app.fetch;
+    let releaseFirst;
+    const held = new Promise(r => { releaseFirst = r; });
+    let calls = 0;
+    app.fetch = (...args) => (calls++ === 0 ? held.then(() => realFetch(...args)) : realFetch(...args));
+    try {
+      const first = SS.reload('ZZZZ-ZZZZ-ZZZZ');
+      const second = SS.reload(FIXTURE_CODE);
+      await second;
+      releaseFirst();
+      await first;
+    } finally { app.fetch = realFetch; }
+    unlock.raceCount = ['1-1-31', '1-2-26'].filter(l => SS.forLesson(l)).length;
+    unlock.raceStatus = SS.status();
+    // Back on, for the story tests below.
+    await SS.reload(FIXTURE_CODE);
+  } catch (e) { unlock.error = String(e && e.stack || e); }
+  const shippedStories = unlock.direct ? unlock.direct.volumes : null;
 
   // === 1. Data Files ===
   describe('📂 Data Files', () => {
@@ -7191,7 +7304,799 @@ async function runTests() {
     });
   });
 
+
+  // === 小故事邀请码 (js/story-unlock.js, js/story-invite.js; design §7.5) ===
+  describe('🔑 小故事邀请码', () => {
+    const U = () => app.StoryUnlock;
+    it('setup ran without errors', () => {
+      assert(!unlock.error, unlock.error);
+      assert(unlock.supported, 'WebCrypto available on localhost');
+    });
+
+    it('codes: forgiving spelling, same rule as Python', () => {
+      assertEqual(unlock.norm[0], 'TEST20260000', 'spaces, dashes, lower case, O→0');
+      assertEqual(unlock.norm[1], '', 'too short');
+      assertEqual(unlock.norm[2], '', 'U is not in the alphabet');
+      assertEqual(unlock.norm[3], 'TEST-2026-0000');
+      assertEqual(U().normalize('il11-IL11-1111'), '111111111111', 'I and L read as 1');
+    });
+
+    it('the browser opens what Python sealed (fixture), with any spelling of the code', () => {
+      assert(unlock.direct && unlock.direct.volumes, 'opened');
+      const titles = unlock.direct.volumes.flatMap(v => v.stories.map(s => s.title));
+      assertEqual(titles.join(','), '测试一,测试二,没审过');
+      assertEqual(unlock.direct.characters.characters['飞飞'].text, '测试用的男孩。');
+    });
+
+    it('a wrong code, a changed byte or another version does not open', () => {
+      assertEqual(unlock.wrong, 'BadCode|BadCode: no key for this code');
+      assertEqual(unlock.tampered, 'BadCode');
+      assertEqual(unlock.otherVersion, 'BadCode');
+    });
+
+    it('no code: no stories, and status says so', () => {
+      assertEqual(unlock.noneCount, 0);
+      assertEqual(unlock.noneStatus, 'none');
+    });
+
+    it('a wrong code typed in is not saved', () => {
+      assertEqual(unlock.wrongCount, 0);
+      assertEqual(unlock.wrongStatus, 'bad');
+      assertEqual(unlock.wrongSaved, '', 'nothing saved');
+    });
+
+    it('the right code opens the reviewed stories only, and is saved for the whole device', () => {
+      assertEqual(unlock.count, 2, 'two reviewed stories');
+      assertEqual(unlock.status, '');
+      assertEqual(unlock.lessons.join(','), 'true,true,false', 'the unreviewed one is dropped');
+      assertEqual(unlock.intro, '测试用的男孩。', 'intros come from the file too');
+      assertEqual(unlock.saved, 'TEST20260000');
+      assertEqual(unlock.sharedRaw, JSON.stringify('TEST20260000'), 'one shared key, not per child');
+    });
+
+    it('a saved code that stops opening (revoked) is forgotten', () => {
+      assertEqual(unlock.revokedCount, 0);
+      assertEqual(unlock.revokedStatus, 'bad');
+      assertEqual(unlock.revokedSaved, '');
+    });
+
+    it('a link #invite=… opens the stories and leaves the address bar clean', () => {
+      assertEqual(unlock.linkResult, '', 'opened');
+      assertEqual(unlock.linkStatus, '');
+      assertEqual(unlock.linkHash, '', 'code removed from the address bar');
+      assertEqual(unlock.noLink, null, 'no #invite: nothing happens');
+    });
+
+    it('the code never reaches the error log', () => {
+      assert(!/TEST.?2026.?0000|ZZZZ/i.test(unlock.logged), unlock.logged);
+    });
+
+    it('leaving the trial forgets the code and hides the stories', () => {
+      assertEqual(unlock.leftSaved, '');
+      assertEqual(unlock.leftCount, false);
+    });
+
+    it('an older, slower load does not overwrite a newer one', () => {
+      assertEqual(unlock.raceCount, 2, 'the newer load (right code) wins');
+      assertEqual(unlock.raceStatus, '');
+    });
+
+    it('the code is not part of a child profile export', () => {
+      const exported = JSON.stringify(app.State.exportProfileData());
+      assert(!/TEST.?2026.?0000/.test(exported), 'exported data has no invite code');
+    });
+
+    it('picker: 🔑 entry when off, 退出试读 when on; Esc closes it', () => {
+      const d = frame.contentDocument;
+      app.ProfileManager.showPicker(() => {});
+      try {
+        assert(d.getElementById('btnStoryLeave'), 'stories are open: offer to leave');
+        assert(!d.getElementById('btnStoryInvite'));
+      } finally {
+        d.dispatchEvent(new app.KeyboardEvent('keydown', { key: 'Escape' }));
+      }
+      assert(!d.getElementById('profilePicker'), 'Esc closed the picker');
+    });
+
+    it('picker without a code: the entry, a labelled field, hidden until opened', () => {
+      const saved = app.State.loadShared('storyInvite', '');
+      app.State.saveShared('storyInvite', '');
+      const d = frame.contentDocument;
+      app.ProfileManager.showPicker(() => {});
+      try {
+        const btn = d.getElementById('btnStoryInvite');
+        const form = d.getElementById('storyInviteForm');
+        assert(btn && form, 'entry and form');
+        assert(form.classList.contains('hidden'), 'form starts hidden');
+        assertEqual(btn.getAttribute('aria-expanded'), 'false');
+        btn.click();
+        assert(!form.classList.contains('hidden'), 'opened');
+        assertEqual(btn.getAttribute('aria-expanded'), 'true');
+        assertEqual(d.activeElement && d.activeElement.id, 'storyInviteCode', 'focus moves to the field');
+        assert(d.querySelector('label[for="storyInviteCode"]'), 'the field has a label');
+      } finally {
+        const p = d.getElementById('profilePicker'); if (p) p.remove();
+        app.State.saveShared('storyInvite', saved);
+      }
+    });
+  });
+
+  // === 小故事阅读 (js/story.js) ===
+  describeWith('📖 小故事阅读', resetProfileData, () => {
+    const S = () => app.StoryService;
+    const V = () => app.StoryView;
+    const doc = () => app.document;
+    const $ = id => doc().getElementById(id);
+    // A tiny story on 1-1-31《影子》: 影 and 子 are textbook characters,
+    // 呱 is not (allowed by name). p1 = 影子呀，小呱。
+    const STORY = {
+      lesson: '1-1-31', title: '测试故事', allow: [{ char: '呱', pinyin: 'guā', why: '角色' }],
+      pages: [{ text: '影子呀，小呱。' }, { text: '“它是黑的。”' }],
+      readings: { 'p1:2': 'zi' }, reviewed: { by: 'test', date: '2026-10-25' }
+    };
+    // Pick a lesson the way a child does: set the dropdown, fire change.
+    function pick(id) {
+      const sel = $('lessonFilter');
+      sel.value = id;
+      sel.dispatchEvent(new app.Event('change', { bubbles: true }));
+    }
+    function inLearn(lessonId) {
+      app.AppController.switchMode('learn');
+      app.AppController.selectSemester('1', '1');
+      pick(lessonId);
+    }
+    function withStory(fn, story = STORY) {
+      const plays = [];
+      app.Speech._setPlaybackForTest((text, done, setCancel, recording) => { plays.push({ text, recording }); done(); });
+      S()._setForTest([story]);
+      try {
+        inLearn('1-1-31');
+        V().show(true);
+        V().next();          // past the cover, onto the story's first page
+        fn(plays);
+      } finally {
+        V().show(false);
+        app.Speech._setPlaybackForTest(null);
+        S()._resetForTest();
+        S().load();
+        app.AppController.switchMode('dailyTask');
+      }
+    }
+    const chars = () => [...doc().querySelectorAll('#storyBody .story-ch')];
+    // The layout bugs only showed on small phones; the suite's iframe is
+    // desktop-sized. Resize it, let the app re-lay out, run, restore.
+    function atSize(w, h, fn) {
+      const fr = document.getElementById('appFrame');
+      const prev = [fr.style.width, fr.style.height];
+      fr.style.width = w + 'px'; fr.style.height = h + 'px';
+      try {
+        flushFrameStyle();
+        assertEqual(app.innerWidth, w, `test setup: iframe is ${app.innerWidth}px wide, wanted ${w}`);
+        fn();
+      } finally {
+        fr.style.width = prev[0]; fr.style.height = prev[1];
+        flushFrameStyle();
+      }
+    }
+    // Where the character's glyph is drawn, from its text node — not the
+    // button's box, which can stay one character wide while the glyph
+    // inside drifts (Firefox did this with <ruby>).
+    function glyphRect(btn) {
+      const node = [...btn.childNodes].concat([...btn.querySelectorAll('*')].flatMap(e => [...e.childNodes]))
+        .find(n => n.nodeType === 3 && n.textContent.trim() && !n.parentElement.classList.contains('story-py') &&
+          n.parentElement.tagName !== 'RT');
+      const range = doc().createRange();
+      range.selectNodeContents(node);
+      return range.getBoundingClientRect();
+    }
+    // A long page (38 characters, made up for the test, the length of the
+    // longest real page): long enough that it must wrap.
+    const LONG_TEXT = '小天打开书包：你看，我都带来了。本子有两本，小刀有一把，水也有一大杯。所以，我们现在快去吧！';
+
+    it('opened stories load, and each is a reviewed story for a grade 1–2 lesson', () => {
+      assert(shippedStories, `could not open ${FIXTURE}: ${unlock.error}`);
+      const all = shippedStories.flatMap(v => v.stories);
+      assertGreater(all.length, 0, 'no stories shipped');
+      all.forEach(st => {
+        assert(/^[12]-[12]-\d+$/.test(st.lesson), `${st.lesson} is not a grade 1–2 lesson`);
+        if (st.reviewed && st.reviewed.by) assert(S().forLesson(st.lesson), `${st.lesson} did not load`);
+      });
+    });
+
+    it('unreviewed stories in the file are not offered', () => {
+      shippedStories.flatMap(v => v.stories).forEach(x => {
+        if (!(x.reviewed && x.reviewed.by)) assert(!S().forLesson(x.lesson), `${x.lesson} is unreviewed but offered`);
+      });
+    });
+
+    it('readingAt: story reading, then allow entry, then the card', () => {
+      assertEqual(S().readingAt(STORY, 1, 2, '子'), 'zi', 'readings entry wins (影子 → zi, card says zǐ)');
+      assertEqual(S().readingAt(STORY, 1, 4, '呱'), 'guā', 'allow entry for a character without a card');
+      assertEqual(S().readingAt(STORY, 1, 1, '影'), 'yǐng', 'otherwise the card');
+    });
+
+    it('the story replaces the card inside 学习: header, sidebar and dropdown stay', () => {
+      withStory(() => {
+        assert(V().isActive(), 'story view active');
+        const view = $('storyView');
+        assert($('learnMode').contains(view), 'story view lives in #learnMode');
+        assert(!view.classList.contains('hidden'), 'story view shown');
+        assertEqual(app.getComputedStyle($('cardContainer')).display, 'none', 'flashcard hidden while reading');
+        ['sidebar', 'lessonFilter'].forEach(id => {
+          assert($(id).getBoundingClientRect().height > 0 || app.innerWidth <= 768, `#${id} must stay visible`);
+        });
+        assert(doc().querySelector('header').getBoundingClientRect().height > 0, 'header stays');
+        assert(doc().querySelector('.mode-tab[data-mode="learn"]').classList.contains('active'), '学习 tab stays active');
+      });
+    });
+
+    it('opens on page 1 with every Chinese character as a button and pinyin hidden', () => {
+      withStory(() => {
+        assertEqual(chars().map(b => b.textContent.charAt(0)).join(''), '影子呀小呱', 'one button per character, punctuation not');
+        assertEqual($('storyCount').textContent, '2 / 3', 'cover is page 1, the story starts on page 2');
+        const rt = chars()[1].querySelector('.story-py');
+        assertEqual(rt.textContent, 'zi', 'pinyin is in the markup with the story reading');
+        assertEqual(app.getComputedStyle(rt).visibility, 'hidden', 'pinyin hidden by default');
+      });
+    });
+
+    it('punctuation stays on the line of its character', () => {
+      withStory(() => {
+        const ya = chars()[2];
+        assert(ya.parentElement.classList.contains('story-w'), 'character not in a group');
+        assert(ya.parentElement.textContent.includes('，'), '，must stay with 呀');
+        V().next();
+        assert(chars()[0].parentElement.textContent.startsWith('\u201c'), 'an opening quote goes with the character after it');
+      });
+    });
+
+    it('tapping a character plays the story reading through its recording', () => {
+      withStory(plays => {
+        chars()[1].click();   // 子 in 影子
+        assertEqual(plays.length, 1, 'one playback');
+        assertEqual(plays[0].text, '子');
+        // 影子 is zi (neutral tone). The card says zǐ; playing zi3 would be
+        // wrong. zi5 has no recording in the source, so TTS speaks the bare
+        // character — no recording at all is the right outcome here.
+        assert(!plays[0].recording || plays[0].recording.endsWith('/zi5.mp3'),
+          `must not play the card reading zǐ, got ${plays[0].recording}`);
+        chars()[0].click();   // 影 → ying3
+        assert(plays[1].recording && plays[1].recording.endsWith('ying3.mp3'), `影 should use ying3, got ${plays[1].recording}`);
+      });
+    });
+
+    it('tapping shows that character\'s pinyin for a moment', () => {
+      withStory(() => {
+        const b = chars()[0];
+        b.click();
+        assert(b.classList.contains('flash'), 'tapped character should flash');
+        assertEqual(app.getComputedStyle(b.querySelector('.story-py')).visibility, 'visible', 'its pinyin should show');
+        assertEqual(app.getComputedStyle(chars()[1].querySelector('.story-py')).visibility, 'hidden', 'others stay hidden');
+      });
+    });
+
+    it('a tapped textbook character goes into 生字本, with its volume', () => {
+      withStory(() => {
+        chars()[0].click();
+        assert(app.FavoriteService.isFavorite('影'), '影 should be in 生字本');
+        const ctx = app.FavoriteService.getContext('影');
+        assert(ctx && ctx.grade === 1 && ctx.semester === 1, `context ${JSON.stringify(ctx)}`);
+      });
+    });
+
+    it('tapping the same character three times keeps it in 生字本 (never toggles out)', () => {
+      withStory(() => {
+        const b = chars()[0];
+        b.click(); b.click(); b.click();
+        assertEqual(app.FavoriteService.getAll().filter(c => c === '影').length, 1, 'exactly once in 生字本');
+        assertEqual(V()._addedForTest().join(''), '影', 'listed once on the finish page');
+      });
+    });
+
+    it('a character without a card (呱) is read but not added', () => {
+      withStory(plays => {
+        chars()[4].click();          // 影子呀小呱: 呱 is the fifth
+        assertEqual(plays.length, 1, '呱 should still be read');
+        assert(plays[0].recording && plays[0].recording.endsWith('gua1.mp3'), `got ${plays[0].recording}`);
+        assert(!app.FavoriteService.isFavorite('呱'), '呱 has no card and must not go into 生字本');
+      });
+    });
+
+    it('a character already in 生字本 is not listed on the finish page', () => {
+      app.FavoriteService.add('影');
+      withStory(() => {
+        chars()[0].click();
+        chars()[1].click();
+        assertEqual(V()._addedForTest().join(''), '子', 'only what this reading added');
+      });
+    });
+
+    it('FavoriteService.add only adds', () => {
+      assert(app.FavoriteService.add('天'), 'first add returns true');
+      assert(!app.FavoriteService.add('天'), 'second add returns false');
+      assert(app.FavoriteService.isFavorite('天'), 'still there');
+    });
+
+    it('finish page: ❤️ toggles a character out of 生字本 and back; 回到字卡 returns', () => {
+      withStory(() => {
+        chars()[0].click();
+        V().next(); V().next();
+        const fav = () => doc().querySelector('#storyBody [data-fav="影"]');
+        assert(fav(), 'finish page lists 影');
+        assertEqual(fav().getAttribute('aria-pressed'), 'true');
+        fav().click();
+        assert(!app.FavoriteService.isFavorite('影'), 'first click removes it');
+        assertEqual(fav().getAttribute('aria-pressed'), 'false', 'still listed, shown as 🤍');
+        fav().click();
+        assert(app.FavoriteService.isFavorite('影'), 'second click adds it back');
+        doc().querySelector('[data-action="story-cards"]').click();
+        assert(!V().isActive(), '回到字卡 leaves the story');
+        assert(app.getComputedStyle($('cardContainer')).display !== 'none', 'cards back');
+      });
+    });
+
+    it('拼音 shows the whole page\'s pinyin and is remembered for the child', () => {
+      withStory(() => {
+        V().togglePinyin();
+        assertEqual(app.getComputedStyle(chars()[0].querySelector('.story-py')).visibility, 'visible');
+        assertEqual(app.State.load('storyPinyin', false), true, 'saved per profile');
+        assert(app.State.exportProfileData().data.hasOwnProperty('storyPinyin'), 'part of 备份与转移');
+        V().togglePinyin();
+        assertEqual(app.State.load('storyPinyin', true), false);
+      });
+    });
+
+    it('pages: cover, buttons, progress bar, and the finish page after the last one', () => {
+      withStory(() => {
+        $('storyPrev').click();
+        assert(doc().querySelector('.story-cover'), 'page 1 is the cover');
+        assertEqual($('storyCount').textContent, '1 / 3');
+        assert($('storyPrev').disabled, 'no page before the cover');
+        $('storyNext').click(); $('storyNext').click();
+        assertEqual($('storyCount').textContent, '3 / 3');
+        assertEqual($('storyProgressFill').style.width, '100%');
+        $('storyNext').click();
+        assert(doc().querySelector('.story-finish'), 'finish page');
+        assert($('storyNext').disabled, 'nothing after the finish page');
+        $('storyPrev').click();
+        assertEqual($('storyCount').textContent, '3 / 3', 'back from the finish page');
+      });
+    });
+
+    it('← → turn story pages, not the cards behind', () => {
+      withStory(() => {
+        const before = app.State.get('currentIndex');
+        doc().dispatchEvent(new app.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+        assertEqual($('storyCount').textContent, '3 / 3', '→ turned the page');
+        assertEqual(app.State.get('currentIndex'), before, 'the card did not move');
+        doc().dispatchEvent(new app.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+        assertEqual($('storyCount').textContent, '2 / 3', '← turned back');
+      });
+    });
+
+    it('phone bottom bar ◀️ ▶️ turn story pages', () => {
+      // The bar is only wired on phone-width screens, and the suite runs at
+      // desktop width, so this drives the handler both buttons call.
+      withStory(() => {
+        const before = app.State.get('currentIndex');
+        app.MobileUI.step(1);
+        assertEqual($('storyCount').textContent, '3 / 3');
+        app.MobileUI.step(-1);
+        assertEqual($('storyCount').textContent, '2 / 3');
+        assertEqual(app.State.get('currentIndex'), before, 'the card did not move');
+      });
+    });
+
+    [[360, 640], [390, 844], [1280, 800]].forEach(([w, h]) => it('a long page wraps onto several lines inside the card (' + w + '×' + h + ')', () => {
+      atSize(w, h, () => {
+      // A 40-character page ran off the card on one line in
+      // Firefox: the characters are buttons with no text between them, so
+      // there was nowhere to break.
+      const LONG = Object.assign({}, STORY, { pages: [{ text: LONG_TEXT }] });
+      S()._setForTest([LONG]);
+      try {
+        inLearn('1-1-31');
+        V().show(true);
+        V().next();
+        const card = $('storyCard').getBoundingClientRect();
+        const tops = new Set(chars().map(b => Math.round(b.getBoundingClientRect().top)));
+        assertGreater(tops.size, 1, 'the page did not wrap');
+        chars().forEach(b => {
+          const r = b.getBoundingClientRect();
+          const g = glyphRect(b);
+          assert(Math.abs((g.left + g.right) / 2 - (r.left + r.right) / 2) <= 1,
+            `「${b.textContent.charAt(0)}」 is drawn off the middle of its box`);
+          assert(r.left >= card.left - PX_SLACK && r.right <= card.right + PX_SLACK,
+            `「${b.textContent.charAt(0)}」 is outside the card (${Math.round(r.left)}–${Math.round(r.right)} vs ${Math.round(card.left)}–${Math.round(card.right)})`);
+        });
+        const body = $('storyBody');
+        assert(body.scrollWidth <= body.clientWidth + 1, `page scrolls sideways: ${body.scrollWidth} > ${body.clientWidth}`);
+        assert(body.scrollHeight <= body.clientHeight + 1, `page scrolls down: ${body.scrollHeight} > ${body.clientHeight}`);
+      } finally {
+        V().show(false);
+        S()._resetForTest(); S().load();
+        app.AppController.switchMode('dailyTask');
+      }
+      });
+    }));
+
+    [[360, 640], [390, 844], [1280, 800]].forEach(([w, h]) => it('with pinyin on, a long page still fits and each syllable sits on its own character (' + w + '×' + h + ')', () => {
+      atSize(w, h, () => {
+      // Firefox: a hidden <rt> widened 上 to the width of "shàng", which
+      // moved the character and its underline. And pinyin placed with its
+      // own em sat a line too high, so the first line's ran into the title.
+      const LONG = Object.assign({}, STORY, { pages: [{ text: LONG_TEXT }] });
+      S()._setForTest([LONG]);
+      try {
+        inLearn('1-1-31');
+        V().show(true);
+        V().next();
+        V().togglePinyin();
+        // At 360×640 this, the longest real page (40 characters), is shrunk
+        // until it fills the card — which is when the first line's pinyin
+        // met the title.
+        const body = $('storyBody'), area = body.getBoundingClientRect();
+        const title = $('storyPinyinBtn').getBoundingClientRect();   // what sits above the text now
+        assert(body.scrollHeight <= body.clientHeight + 1, `page scrolls: ${body.scrollHeight} > ${body.clientHeight}`);
+        if (w === 360) assert(doc().querySelector('.story-page').style.fontSize, 'test setup: expected this page to be shrunk at 360×640');
+        chars().forEach(b => {
+          const ch = b.textContent.charAt(0);
+          const r = b.getBoundingClientRect(), py = b.querySelector('.story-py').getBoundingClientRect();
+          const fs = parseFloat(app.getComputedStyle(b).fontSize);
+          const pad = parseFloat(app.getComputedStyle(b).paddingLeft) + parseFloat(app.getComputedStyle(b).paddingRight);
+          assert(Math.abs(r.width - fs - pad) <= 0.6, `「${ch}」 box is ${r.width}px, not one character wide`);
+          // Nothing inside the box may stick out sideways: a hidden <rt>
+          // wider than its character did, and dragged the glyph with it.
+          [...b.querySelectorAll('*')].forEach(el => {
+            if (el.classList.contains('story-py')) return;
+            const e = el.getBoundingClientRect();
+            assert(e.left >= r.left - 0.6 && e.right <= r.right + 0.6,
+              `「${ch}」 <${el.tagName.toLowerCase()}> is ${Math.round(e.width)}px in a ${Math.round(r.width)}px box`);
+          });
+          const g = glyphRect(b);
+          assert(Math.abs((g.left + g.right) / 2 - (r.left + r.right) / 2) <= 1,
+            `「${ch}」 is drawn ${Math.round((g.left + g.right) / 2 - (r.left + r.right) / 2)}px off the middle of its box`);
+          assert(py.top >= area.top - PX_SLACK && py.top >= title.bottom - PX_SLACK, `「${ch}」 pinyin runs into the 拼音 button`);
+          assert(Math.abs((py.left + py.right) / 2 - (r.left + r.right) / 2) <= 1, `「${ch}」 pinyin is not centred on it`);
+          const glyphTop = (r.top + r.bottom) / 2 - fs / 2;
+          assert(py.bottom <= glyphTop + 1 && glyphTop - py.bottom <= fs * 0.25, `「${ch}」 pinyin is not just above it`);
+        });
+      } finally {
+        if (app.State.load('storyPinyin', false)) V().togglePinyin();
+        V().show(false);
+        S()._resetForTest(); S().load();
+        app.AppController.switchMode('dailyTask');
+      }
+      });
+    }));
+
+    it('punctuation sits on the line with the characters', () => {
+      withStory(() => {
+        const ch = chars()[2].getBoundingClientRect();   // 呀
+        const mark = chars()[2].parentElement.querySelector('.story-punct').getBoundingClientRect();
+        assert(Math.abs(ch.bottom - mark.bottom) <= 1 && Math.abs(ch.top - mark.top) <= 1,
+          `「，」 box ${mark.top}-${mark.bottom} vs 「呀」 ${ch.top}-${ch.bottom}`);
+      });
+    });
+
+    it('a short page after a long one gets the full size back', () => {
+      const MIX = Object.assign({}, STORY, { pages: [
+        { text: LONG_TEXT.repeat(2) },
+        { text: '它是黑的。' }] });
+      S()._setForTest([MIX]);
+      try {
+        inLearn('1-1-31');
+        V().show(true);
+        V().next();
+        const longSize = parseFloat(app.getComputedStyle(doc().querySelector('.story-page')).fontSize);
+        V().next();
+        const shortSize = parseFloat(app.getComputedStyle(doc().querySelector('.story-page')).fontSize);
+        assertGreater(shortSize, longSize, `short page ${shortSize}px should be larger than the shrunk long page ${longSize}px`);
+        assertEqual(doc().querySelector('.story-page').style.fontSize, '', 'short page keeps the CSS size');
+      } finally {
+        V().show(false);
+        S()._resetForTest(); S().load();
+        app.AppController.switchMode('dailyTask');
+      }
+    });
+
+    it('cover: the title without 《》, larger than the story, not in the 生字 colour, then the cast', () => {
+      // 好朋友 are 1-1-31 生字, so the cover must not underline them.
+      withStory(() => {
+        V().prev();
+        const title = doc().querySelector('.story-cover-title');
+        assert(title, 'cover title');
+        assertEqual(title.textContent.replace(/\s/g, '').replace(/[a-zü\u0300-\u036fāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]/g, ''), '好朋友',
+          'title text, no 《》');
+        assertEqual(title.getAttribute('aria-label'), '好朋友');
+        const tSize = parseFloat(app.getComputedStyle(title).fontSize);
+        const tColor = app.getComputedStyle(title.querySelector('.story-ch')).color;
+        assertEqual(app.getComputedStyle(title).fontWeight, '700', 'title is bold');
+        V().next();
+        const page = doc().querySelector('.story-page');
+        const pSize = parseFloat(app.getComputedStyle(page).fontSize);
+        assertGreater(tSize, pSize * 1.3, `title ${tSize}px should be well above the story's ${pSize}px`);
+        const textColor = app.getComputedStyle(chars()[0]).color;
+        assert(tColor !== textColor, `title colour ${tColor} should differ from the story text`);
+        const newColor = doc().querySelector('.story-new') ? app.getComputedStyle(doc().querySelector('.story-new')).color : null;
+        assert(!newColor || tColor !== newColor, 'title must not look like a 生字');
+        // A 生字 in the title (朋友 in 我的新朋友) is not underlined on the cover.
+        V().prev();
+        doc().querySelectorAll('.story-cover-title .story-ch').forEach(b =>
+          assertEqual(app.getComputedStyle(b).textDecorationLine, 'none', `「${b.textContent.charAt(0)}」 underlined on the cover`));
+      }, Object.assign({}, STORY, { title: '好朋友' }));
+    });
+
+    it('cover: the cast is listed; title characters can be tapped like any other', () => {
+      const ST = Object.assign({}, STORY, { title: '影子', cast: ['飞飞', '小天'], readings: { ...STORY.readings, 'p0:2': 'zi' } });
+      const plays = [];
+      app.Speech._setPlaybackForTest((text, done, setCancel, recording) => { plays.push({ text, recording }); done(); });
+      S()._setForTest([ST]);
+      try {
+        inLearn('1-1-31');
+        V().show(true);
+        assertEqual(doc().querySelector('.story-cover-cast').textContent.replace(/\s/g, ''), '飞飞·小天');
+        const t = [...doc().querySelectorAll('.story-cover-title .story-ch')];
+        t[1].click();                       // 子 in the title 影子 → p0:2 zi
+        assert(!plays[0].recording || plays[0].recording.endsWith('/zi5.mp3'), `title reading: ${plays[0].recording}`);
+        t[0].click();
+        assert(app.FavoriteService.isFavorite('影'), 'a tapped title character goes into 生字本');
+      } finally {
+        V().show(false);
+        app.Speech._setPlaybackForTest(null);
+        S()._resetForTest(); S().load();
+        app.AppController.switchMode('dailyTask');
+      }
+    });
+
+    it('cover title fits the card at every size', () => {
+      // The longest title should still be one line on a small phone.
+      // Six characters wrapped as 「小呱的两件 / 宝」 on a phone.
+      const ST = Object.assign({}, STORY, { title: '小呱的两件宝' });
+      S()._setForTest([ST]);
+      try {
+        [[360, 640], [390, 844], [1280, 800]].forEach(([w, h]) => atSize(w, h, () => {
+          inLearn('1-1-31');
+          V().show(true);
+          // Inside the card's border and inner spacing: a title cut off at the
+          // card's padding still "fits the card" by its outer edge.
+          const card = $('storyCard').getBoundingClientRect();
+          const cs = app.getComputedStyle($('storyCard'));
+          const left = card.left + parseFloat(cs.borderLeftWidth), right = card.right - parseFloat(cs.borderRightWidth);
+          const tops = new Set([...doc().querySelectorAll('.story-cover-title .story-ch')].map(b => Math.round(b.getBoundingClientRect().top)));
+          assertEqual(tops.size, 1, `title wraps at ${w}px`);
+          [...doc().querySelectorAll('.story-cover-title .story-ch')].forEach(b => {
+            const r = b.getBoundingClientRect();
+            assert(r.left >= left + 8 && r.right <= right - 8, `「${b.firstChild.textContent}」 runs into the card edge at ${w}px: ${Math.round(r.left)}–${Math.round(r.right)} in ${Math.round(left)}–${Math.round(right)}`);
+          });
+          // Not shrunk to nothing either: still well above the story text.
+          assert(parseFloat(app.getComputedStyle(doc().querySelector('.story-cover-title')).fontSize) >= 36, `title too small at ${w}px`);
+          V().show(false);
+        }));
+      } finally {
+        S()._resetForTest(); S().load();
+        app.AppController.switchMode('dailyTask');
+      }
+    });
+
+    // The intros shared by every story, shown on the page after the cover.
+    const CHARS = {
+      allow: [{ char: '鹅', pinyin: 'é', why: '天鹅' }],
+      characters: {
+        '飞飞': { emoji: '👦', text: '一个会画画的男孩子。', readings: { 'p1:1': 'yí', 'p1:9': 'zi' } },
+        // 好朋友 are lesson 1-1-31's 生字: a shared intro must not mark them.
+        '小天': { emoji: '🦢', text: '一只小天鹅。是好朋友。', readings: { 'p1:1': 'yì' } }
+      }
+    };
+    function withCast(fn) {
+      const ST = Object.assign({}, STORY, { cast: ['飞飞', '小天'] });
+      const plays = [];
+      app.Speech._setPlaybackForTest((text, done, setCancel, recording) => { plays.push({ text, recording }); done(); });
+      S()._setForTest([ST], CHARS);
+      try {
+        inLearn('1-1-31');
+        V().show(true);
+        fn(plays);
+      } finally {
+        V().show(false);
+        app.Speech._setPlaybackForTest(null);
+        S()._resetForTest(); S().load();
+        app.AppController.switchMode('dailyTask');
+      }
+    }
+
+    it('cast: on the back of the cover, not an extra page', () => {
+      withCast(() => {
+        assertEqual($('storyCount').textContent, '1 / 3', 'cover + 2 story pages; the cast adds none');
+        assert(doc().querySelector('.story-cover'), 'opens on the cover');
+        doc().querySelector('[data-action="story-flip"]').click();
+        assert(doc().querySelector('.story-cast'), '👀 认识他们 turns the cover over');
+        assertEqual($('storyCount').textContent, '1 / 3', 'still page 1');
+        const rows = [...doc().querySelectorAll('.story-cast-row')];
+        assertEqual(rows.length, 2);
+        assertEqual(rows[0].querySelector('.story-cast-name').textContent, '飞飞');
+        assertEqual(rows[1].querySelector('.story-cast-emoji').textContent, '🦢', 'no icon given: the emoji');
+        const intro = [...rows[1].querySelectorAll('.story-ch')].map(b => b.firstChild.textContent).join('');
+        assertEqual(intro, '一只小天鹅是好朋友', 'intro text, character by character');
+        doc().querySelector('[data-action="story-flip"]').click();
+        assert(doc().querySelector('.story-cover'), '↩ 翻回封面');
+      });
+    });
+
+    it('cast: our own SVG picture when there is one, the emoji if it cannot load', () => {
+      assert(castIcons && !castIcons.error, `setup: ${castIcons && castIcons.error}`);
+      assertEqual(castIcons.srcs.join(','), 'assets/characters/feifei.svg,assets/characters/no-such-file.svg');
+      assertEqual(castIcons.alts.join(','), ',', 'decorative: the name is right next to it');
+      assertGreater(castIcons.loaded, 0, 'feifei.svg loads');
+      assertEqual(castIcons.fallback, '🦢', 'a missing picture falls back to the emoji');
+      assert(castIcons.missingImgGone, 'and no broken-image box is left');
+    });
+
+    it('cast: every character in the shared file has a picture that loads', () => {
+      assert(characterIcons && !characterIcons.error, `setup: ${characterIcons && characterIcons.error}`);
+      const bad = characterIcons.filter(c => !c.ok).map(c => `${c.name} (${c.icon})`);
+      assertEqual(bad.join('、'), '', 'pictures that do not load');
+      assertGreater(characterIcons.length, 7, 'all eight characters');
+    });
+
+    it('cast: tapping the cover turns it; 下一页 from either side goes to the story', () => {
+      withCast(() => {
+        doc().querySelector('.story-cover').click();
+        assert(doc().querySelector('.story-cast'), 'a tap on the cover turns it over');
+        V().next();
+        assertEqual($('storyCount').textContent, '2 / 3');
+        assertEqual(chars()[0].firstChild.textContent, '影', "story page 1's first character");
+        V().prev();
+        assert(doc().querySelector('.story-cover'), 'back to the front of the cover, not its back');
+        V().flipCover(true);
+        V().prev();
+        assert(doc().querySelector('.story-cover'), '上一页 on the back turns it to the front');
+      });
+    });
+
+    it('cast: tapping an intro character reads it, and does not turn the cover', () => {
+      withCast(plays => {
+        V().flipCover(true);
+        const yi = doc().querySelector('[data-intro="小天"] .story-ch');   // 一 in 一只 → yì
+        yi.click();
+        assert(plays.length && (!plays[0].recording || plays[0].recording.endsWith('/yi4.mp3')),
+          `一只 should read yì: ${plays[0] && plays[0].recording}`);
+        assert(doc().querySelector('.story-cast'), 'still on the back');
+      });
+    });
+
+    it('cast: heading larger than the intros; no flip button without intros', () => {
+      withCast(() => {
+        V().flipCover(true);
+        const h = parseFloat(app.getComputedStyle(doc().querySelector('.story-cast-heading')).fontSize);
+        const i = parseFloat(app.getComputedStyle(doc().querySelector('.story-cast-text')).fontSize);
+        assertGreater(h, i, `heading ${h}px should be larger than intro ${i}px`);
+        doc().querySelectorAll('.story-cast .story-ch').forEach(b =>
+          assertEqual(app.getComputedStyle(b).textDecorationLine, 'none', `「${b.firstChild.textContent}」 marked as a 生字 in a shared intro`));
+      });
+      withStory(() => {
+        V().prev();
+        assert(!doc().querySelector('[data-action="story-flip"]'), 'nothing to turn over');
+        doc().querySelector('.story-cover').click();
+        assert(doc().querySelector('.story-cover'), 'a tap does nothing');
+      });
+    });
+
+    it('no extra page when no cast member has an intro', () => {
+      withStory(() => {
+        V().prev();
+        assertEqual($('storyCount').textContent, '1 / 3', 'cover + 2 story pages');
+      });
+    });
+
+    it('cover and cast heading are centred; story text is left-aligned', () => {
+      withCast(() => {
+        assertEqual(app.getComputedStyle(doc().querySelector('.story-cover')).textAlign, 'center');
+        const title = doc().querySelector('.story-cover-title').getBoundingClientRect();
+        const card = $('storyCard').getBoundingClientRect();
+        const mid = (title.left + title.right) / 2, cardMid = (card.left + card.right) / 2;
+        assert(Math.abs(mid - cardMid) < 4, `title centred: ${mid} vs ${cardMid}`);
+        V().flipCover(true);
+        assertEqual(app.getComputedStyle(doc().querySelector('.story-cast-heading')).textAlign, 'center');
+        V().next();
+        const page = doc().querySelector('.story-page');
+        assertEqual(app.getComputedStyle(page).textAlign, 'left', 'story text');
+      });
+    });
+
+    it('cast page fits the card at every size', () => {
+      const big = { allow: CHARS.allow, characters: {} };
+      ['飞飞', '小天', '小白', '小呱', '乐乐'].forEach(n => {
+        big.characters[n] = { emoji: '🙂', text: '一个会画画的男孩子。最爱小鸟，常常拿着一个本子。', readings: {} };
+      });
+      const ST = Object.assign({}, STORY, { cast: Object.keys(big.characters) });
+      S()._setForTest([ST], big);
+      try {
+        [[360, 640], [390, 844], [1280, 800]].forEach(([w, h]) => atSize(w, h, () => {
+          inLearn('1-1-31');
+          V().show(true);
+          V().flipCover(true);
+          const body = $('storyBody');
+          assert(body.scrollHeight <= body.clientHeight + 1, `cast page scrolls at ${w}×${h}: ${body.scrollHeight} > ${body.clientHeight}`);
+          assert(body.scrollWidth <= body.clientWidth + 1, `cast page too wide at ${w}×${h}`);
+          V().show(false);
+        }));
+      } finally {
+        S()._resetForTest(); S().load();
+        app.AppController.switchMode('dailyTask');
+      }
+    });
+
+    it('every character button is at least 44px tall', () => {
+      withStory(() => {
+        chars().forEach(b => {
+          const h = b.getBoundingClientRect().height;
+          assert(h + PX_SLACK >= 44, `${b.textContent.charAt(0)} is ${h}px tall`);
+        });
+      });
+    });
+
+    it('🃏 字卡 | 📖 故事 shows in 学习 only for a lesson with a story', () => {
+      S()._setForTest([STORY]);
+      try {
+        const sw = () => $('storySwitch');
+        inLearn('1-1-31');
+        assert(sw() && !sw().classList.contains('hidden'), 'should show for 1-1-31');
+        pick('1-1-1');
+        assert(sw().classList.contains('hidden'), 'hidden for a lesson without a story');
+        pick('1-1-31');
+        app.AppController.switchMode('challenge');
+        assert(sw().classList.contains('hidden'), 'hidden in 挑战');
+        app.AppController.switchMode('learn');
+        $('btnViewStory').click();
+        assert(V().isActive(), '📖 故事 opens the story');
+        assert(doc().querySelector('.story-cover'), 'it opens on the cover');
+        $('btnViewCards').click();
+        assert(!V().isActive(), '🃏 字卡 goes back');
+      } finally {
+        S()._resetForTest(); S().load();
+        app.AppController.switchMode('dailyTask');
+      }
+    });
+
+    it('changing to a lesson without a story while reading goes back to the cards', () => {
+      withStory(() => {
+        pick('1-1-1');
+        assert(!V().isActive(), 'story view should close');
+        assert(app.getComputedStyle($('cardContainer')).display !== 'none', 'cards back');
+      });
+    });
+
+    it('leaving 学习 while reading, then coming back, shows the cards', () => {
+      withStory(() => {
+        app.AppController.switchMode('challenge');
+        assert(!V().isActive(), 'story view should close in 挑战');
+        app.AppController.switchMode('learn');
+        assert(!V().isActive(), 'and stay closed back in 学习');
+      });
+    });
+
+    it('Speech.speakReading picks the recording from the reading, for any character', () => {
+      const plays = [];
+      app.Speech._setPlaybackForTest((text, done, setCancel, recording) => { plays.push(recording); done(); });
+      try {
+        app.Speech.speakReading('一', 'yí');
+        app.Speech.speakReading('绿', 'lǜ');
+        assert(plays[0] && plays[0].endsWith('/yi2.mp3'), `一 yí → ${plays[0]}`);
+        // ü must not collapse to u: lu4 is 路.
+        assert(!plays[1] || plays[1].endsWith('/lv4.mp3'), `绿 lǜ → ${plays[1]}`);
+      } finally { app.Speech._setPlaybackForTest(null); }
+    });
+  });
+
   renderResults();
+
+  // Give the developer's own invite code back, and read the real file again.
+  try {
+    app.State.saveShared('storyInvite', savedInvite);
+    app.StoryService._setFileForTest(null);
+    app.StoryService.reload();
+  } catch (e) { /* the results are already shown */ }
 
   // Leave the app in a usable state. Tests narrow filteredChars to tiny
   // collections; without this the page you are looking at after a run has a

@@ -1,0 +1,14 @@
+# Development tools for HanziGo (not needed to run the site, which is static).
+# Install into the project's venv:  python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+#
+# Story checker, review page and writing brief (scripts/check_stories.py …)
+pypinyin==0.55.0
+# Encrypting the 小故事 for the site (scripts/build_stories.py, design §7.5).
+# 45.x is the last series with wheels for Python 3.9.
+cryptography==45.0.7
+# Headless Chrome test runner (scripts/run_tests_headless.py)
+websocket-client==1.9.0
+# Rewriting history when moving files to the private story repo (one-off use)
+git-filter-repo==2.45.0
+# Lint
+pyflakes==3.2.0

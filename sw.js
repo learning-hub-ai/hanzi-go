@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'hanzigo-v111';
+const CACHE_VERSION = 'hanzigo-v127';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -13,6 +13,9 @@ const STATIC_ASSETS = [
   './js/ui.js',
   './js/controllers.js',
   './js/daily-task.js',
+  './js/story-unlock.js',
+  './js/story.js',
+  './js/story-invite.js',
   './js/mobile.js',
   './assets/icon-192.png',
   './assets/icon-512.png',
@@ -32,6 +35,15 @@ for (let g = 1; g <= 9; g++) {
   for (let s = 1; s <= 2; s++) {
     DATA_ASSETS.push(`./data/grade${g}-semester${s}.json`);
   }
+}
+// 小故事, encrypted (design §7.5): the plain story files are not on the site.
+// Pre-cached so stories open offline from the first visit; fetched
+// network-first below so new stories and revoked codes take effect soon.
+const STORY_FILE = './data/stories.enc.json';
+DATA_ASSETS.push(STORY_FILE);
+// The characters' pictures on the cast page (a few KB in all).
+for (const f of ['feifei', 'lele', 'xiaotian', 'xiaobai', 'xiaogua', 'manyeye', 'baba', 'mama']) {
+  DATA_ASSETS.push(`./assets/characters/${f}.svg`);
 }
 
 const ALL_ASSETS = [...STATIC_ASSETS, ...DATA_ASSETS];
@@ -54,6 +66,25 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+/**
+ * Try the network for `timeoutMs`; on success refresh the cache, otherwise
+ * answer from the cache (and from the network after all if nothing is cached).
+ */
+function networkFirst(request, timeoutMs) {
+  // One network request; a server error counts as a failure so a good cached
+  // copy wins over a 404/500.
+  const net = fetch(request).then(response => {
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const clone = response.clone();
+    caches.open(CACHE_VERSION).then(cache => cache.put(request, clone)).catch(() => {});
+    return response;
+  });
+  net.catch(() => {});   // it may settle after the timeout won: never an unhandled rejection
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs));
+  return Promise.race([net, timeout])
+    .catch(() => caches.match(request).then(cached => cached || net.catch(() => fetch(request))));
+}
+
 // Fetch: cache-first for static assets, network-first for API/TTS
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
@@ -63,6 +94,13 @@ self.addEventListener('fetch', (event) => {
 
   // Network-only for TTS (Baidu) — don't cache audio
   if (url.hostname.includes('baidu.com') || url.pathname === '/tts') {
+    return;
+  }
+
+  // Network-first for the encrypted stories, with a short timeout so a slow
+  // network does not keep the 📖 switch hidden; the cached copy otherwise.
+  if (url.origin === self.location.origin && url.pathname.endsWith('/data/stories.enc.json')) {
+    event.respondWith(networkFirst(event.request, 3000));
     return;
   }
 

@@ -6,6 +6,14 @@
 # ============================================
 
 cd "$(dirname "$0")"
+# As the git hook, stdin holds one line per ref being pushed. Keep it for the
+# story-text guard below before any other command could read it; run by hand
+# (stdin a terminal) there is nothing to keep and the guard picks a range.
+PUSH_RANGES=""
+if [ ! -t 0 ]; then PUSH_RANGES="$(cat)"; fi
+# Temporary files of the tests (story fixtures, throwaway git repos, Chrome
+# profiles) go to .tmp/ in this repo, not the shared /tmp. Gitignored.
+mkdir -p .tmp && export TMPDIR="$PWD/.tmp"
 echo "🧪 Running HanziGo pre-push checks..."
 echo "=================================================="
 
@@ -59,7 +67,7 @@ missing_ids = [i for i in critical_ids if i not in html_ids]
 test('HTML: critical IDs', len(missing_ids)==0, f'Missing: {missing_ids}')
 
 # 3. JS syntax (braces balanced)
-for f in ['js/constants.js','js/state.js','js/data.js','js/services.js','js/ui.js','js/controllers.js']:
+for f in ['js/constants.js','js/state.js','js/data.js','js/services.js','js/ui.js','js/controllers.js','js/story.js','js/story-unlock.js','js/story-invite.js']:
     with open(f) as fh: js = fh.read()
     test(f'JS: {f} braces', js.count('{')==js.count('}'), f'{js.count(\"{\")} vs {js.count(\"}\")}')
 
@@ -72,7 +80,7 @@ test('JS: dynamic HTML IDs', len(missing_dyn)==0, f'Missing: {missing_dyn}')
 
 # 5. No dead code
 all_js = ''
-for f in ['js/constants.js','js/state.js','js/data.js','js/services.js','js/ui.js','js/controllers.js']:
+for f in ['js/constants.js','js/state.js','js/data.js','js/services.js','js/ui.js','js/controllers.js','js/story.js','js/story-unlock.js','js/story-invite.js']:
     with open(f) as fh: all_js += fh.read()
 dead = ['semesterStrip','favCardCount','errCardCount','lessonIndicator','flipHint','btnRandom','_showShuffleFeedback']
 found_dead = [r for r in dead if r in all_js]
@@ -544,3 +552,33 @@ python3 scripts/test_shorten_sentences.py 2>/dev/null \
 # TTS; a stale character list silently gives a changed card the wrong audio.
 python3 scripts/gen_syllable_audio.py --check < /dev/null \
   || { echo "  Fix: python3 scripts/gen_syllable_audio.py"; exit 1; }
+
+# 小故事 (private text, see scripts/stories_source.py; skipped when it is not
+# on this machine): every character is in the grade 1–2 生字表 or
+# allowed by name, every 多音字 that a tap would misread has its reading,
+# and the writing styles rotate (docs/story-reading-design.html §11).
+python3 scripts/test_check_stories.py 2>/dev/null >/dev/null \
+  && echo "✅ Story checker: unit tests pass" \
+  || { echo "❌ Story checker tests failed: python3 scripts/test_check_stories.py"; exit 1; }
+python3 scripts/test_stories_source.py 2>/dev/null >/dev/null \
+  && echo "✅ Story source: unit tests pass" \
+  || { echo "❌ Story source tests failed: python3 scripts/test_stories_source.py"; exit 1; }
+python3 scripts/check_stories.py --check \
+  || { echo "  Details: python3 scripts/check_stories.py"; exit 1; }
+
+# 小故事 stay private (design §7.5). The leak guard reads git's push ranges
+# from stdin when run as the hook (pre-push.sh is exec'd by .git/hooks/pre-push),
+# so the commits being pushed are scanned, messages included. The encrypted
+# file must match the current stories (build_stories.py --check); both skip
+# their story checks on a machine without the private repo.
+for t in test_invites test_build_stories test_check_no_story_text; do
+  python3 scripts/$t.py 2>/dev/null >/dev/null \
+    && echo "✅ $t: unit tests pass" \
+    || { echo "❌ $t failed: python3 scripts/$t.py"; exit 1; }
+done
+if [ -n "$PUSH_RANGES" ]; then
+  printf '%s\n' "$PUSH_RANGES" | python3 scripts/check_no_story_text.py || exit 1
+else
+  python3 scripts/check_no_story_text.py < /dev/null || exit 1
+fi
+python3 scripts/build_stories.py --check || exit 1

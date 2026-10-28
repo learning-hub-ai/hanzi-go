@@ -483,6 +483,27 @@ const Speech = (() => {
   }
 
   /**
+   * Speak one character of a story in the reading it has there.
+   *
+   * Unlike speakChar() the reading comes from the story, not a card: 影子
+   * taps as zi although the 子 card says zǐ, 一个 as yí. So the syllable
+   * recording is chosen from that reading for any character — the story's
+   * readings were checked by scripts/check_stories.py and a person, which is
+   * the reason recordings are limited to known cards elsewhere. Online TTS
+   * cannot be told a reading, so it only follows when there is no recording;
+   * for the few neutral-tone syllables the source lacks (le5, de5) that is
+   * the bare character, which every engine reads in its usual reading.
+   * @param {string} char
+   * @param {string} reading - toned pinyin, e.g. 'zi', 'yí'
+   * @param {Function} [onDone] - As speak()
+   */
+  function speakReading(char, reading, onDone) {
+    const key = _syllableKey(reading);
+    const recording = key && SYLLABLES.has(key) ? SYLLABLE_DIR + key + '.mp3' : null;
+    speak(char, onDone, { recording });
+  }
+
+  /**
    * Pick the text that makes a TTS engine produce the annotated reading.
    * Exposed for testing; see speakChar() for why this is needed.
    * @param {Object} charData - Card data: { char, pinyin, words }
@@ -793,7 +814,7 @@ const Speech = (() => {
   }
 
   return {
-    speak, init, speakChar, loadHeteronyms, loadSyllables,
+    speak, init, speakChar, speakReading, loadHeteronyms, loadSyllables,
     getVoicePreference, setVoicePreference, VOICE_RECORDING, VOICE_ONLINE,
     // Exposed so tests can assert the reading choice without playing audio
     _readingContext, _recordingFor, _syllableKey, _sourceOrder, _plan,
@@ -994,7 +1015,26 @@ const FavoriteService = (() => {
     State.save('favContext', ctx);
   }
 
-  return { toggle, isFavorite, getAll, setContext, getContext, remove };
+  /**
+   * Put a character in 生字本 if it is not there yet. Never removes.
+   *
+   * The story reader calls this on every tap, and a child who does not know
+   * a character taps it two or three times to hear it again. toggle() would
+   * take it back out on every second tap — the less familiar the character,
+   * the likelier it ends up missing.
+   * @param {string} char
+   * @returns {boolean} true if it was added now, false if it was already there
+   */
+  function add(char) {
+    const favs = State.get('favorites');
+    if (favs.includes(char)) return false;
+    favs.push(char);
+    State.set('favorites', favs);
+    State.persist('favorites');
+    return true;
+  }
+
+  return { toggle, add, isFavorite, getAll, setContext, getContext, remove };
 })();
 
 /**

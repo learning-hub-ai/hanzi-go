@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="小白">
+  <!-- HanziGo 原创角色图标：小白 -->
+  <g transform="rotate(-10 24 30)">
+    <ellipse cx="24" cy="15" rx="6.5" ry="14" fill="#fff" stroke="#b6c2d1" stroke-width="1.5"/>
+    <ellipse cx="24" cy="16.5" rx="3.2" ry="10" fill="#fbcfe8"/>
+  </g>
+  <g transform="rotate(12 40 30)">
+    <ellipse cx="40" cy="15" rx="6.5" ry="14" fill="#fff" stroke="#b6c2d1" stroke-width="1.5"/>
+    <ellipse cx="40" cy="16.5" rx="3.2" ry="10" fill="#fbcfe8"/>
+  </g>
+  <circle cx="32" cy="42" r="17" fill="#fff" stroke="#b6c2d1" stroke-width="1.5"/>
+  <circle cx="25.5" cy="40" r="2.4" fill="#1f1f24"/>
+  <circle cx="38.5" cy="40" r="2.4" fill="#1f1f24"/>
+  <circle cx="21" cy="47" r="3" fill="#fbcfe8"/>
+  <circle cx="43" cy="47" r="3" fill="#fbcfe8"/>
+  <path d="M30 45.5 H34 L32 48 Z" fill="#f472b6"/>
+  <path d="M32 48 V50 M32 50 Q29.5 52.5 27.5 50.5 M32 50 Q34.5 52.5 36.5 50.5" stroke="#64748b" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+</svg>

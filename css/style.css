@@ -1347,3 +1347,222 @@ main{
 @media (max-width:420px){
   .rep-note{display:block;margin-left:0;margin-top:1px;line-height:1.3}
 }
+
+/* === 小故事阅读 (js/story.js, docs/story-reading-design.html §4) ===
+   The story is a second view of a lesson inside 学习, so it borrows the
+   learn screen's own pieces: the switch is styled like the 任务/学习/挑战
+   tabs, the page is the flashcard's white card (same border, radius and
+   height), and the controls and progress bar are the cards' own classes. */
+.story-switch{
+  display:inline-flex;margin-left:var(--s2);vertical-align:middle;
+  background:var(--border-light);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;
+}
+.story-switch-btn{
+  padding:var(--s2) var(--s4);min-height:36px;border:none;background:transparent;
+  color:var(--text-muted);font-size:var(--text-base);font-weight:var(--weight-medium);cursor:pointer;
+  transition:all var(--duration-fast) ease;
+}
+.story-switch-btn:hover{background:var(--border);color:var(--text)}
+.story-switch-btn.active{background:var(--primary);color:#fff;font-weight:var(--weight-semibold)}
+@media(max-width:768px){
+  /* The dropdown is full width on phones, so the switch gets its own row
+     and splits it in two. */
+  .content-header.has-story .story-switch{display:flex;width:100%;margin:var(--s2) 0 0}
+  .content-header.has-story .story-switch-btn{flex:1;min-height:40px}
+}
+
+/* While reading, the cards and their controls step aside. */
+#learnMode.story-active #cardContainer,
+#learnMode.story-active > .card-controls,
+#learnMode.story-active > .progress-container,
+#learnMode.story-active #dtFloatingBtn{display:none}
+.story-view{display:flex;flex-direction:column;align-items:center;width:100%}
+/* Phone bottom bar: only ◀️ ▶️ mean something for a story. */
+body.story-reading #mbtnFlip,body.story-reading #mbtnSpeak,body.story-reading #mbtnReinforce{visibility:hidden}
+
+.story-card{
+  position:relative;width:100%;margin:var(--s3) 0;
+  border-radius:var(--radius-lg);background:#fff;border:2px solid var(--border);
+  display:flex;flex-direction:column;
+  height:55vh;max-height:500px;min-height:280px;
+}
+@media(max-width:768px){
+  .story-card{min-height:300px;height:calc(100vh - var(--header-height) - 186px);height:calc(100svh - var(--header-height) - 186px);max-height:620px}
+  /* The story switch adds a row above the card on phones. */
+  .content-header.has-story ~ .story-view .story-card{height:calc(100vh - var(--header-height) - 234px);height:calc(100svh - var(--header-height) - 234px)}
+}
+@media(min-width:768px){
+  .story-card{height:var(--card-h);min-height:360px;max-height:760px}
+}
+.story-card .pinyin-toggle.active{background:var(--accent-pinyin-bg);border-color:var(--accent-pinyin);color:var(--accent-pinyin-text)}
+@media(min-width:768px){
+  .story-body{padding:var(--s4) var(--s6) var(--s6)}
+}
+/* The story pages start below the 拼音 pill, now that no title sits there. */
+.story-body{margin-top:52px}
+
+/* Page 1 is a cover, like a picture book's: the title much larger than the
+   story text, in the app's colour (not the orange that marks 生字), and
+   who is in it. Without the 《》 a title is printed with on a cover. */
+.story-page.story-cover{display:flex;flex-direction:column;align-items:center;gap:var(--s5);text-align:center;width:100%;min-width:0}
+.story-cover-title{width:max-content}
+.story-cover-cast{text-align:center}
+.story-cover-title{
+  margin:0;font-size:clamp(52px,15vw,84px);font-weight:var(--weight-bold);
+  color:var(--primary-dark);line-height:1.4;
+  /* One line, shrunk to fit by StoryView._fitTitle (「呱呱的两件 / 宝」). */
+  white-space:nowrap;
+}
+.story-cover-title .story-w{white-space:nowrap}
+.story-cover-title .story-ch{min-height:auto}
+.story-cover-title .story-new{color:var(--primary-dark);text-decoration:none}
+.story-cover-cast{
+  font-family:var(--font-sans);font-size:var(--text-xl);color:var(--text-secondary);
+  font-weight:var(--weight-medium);letter-spacing:.05em;
+}
+.story-cover-dot{margin:0 var(--s2);color:var(--text-muted)}
+@media(min-width:768px){ .story-cover-cast{font-size:var(--text-2xl)} }
+
+/* The back of the cover: who is in the story, one row each — emoji, name,
+   and a one-line intro whose characters can be tapped like the story's. */
+.story-page.story-cast{width:100%;font-size:clamp(18px,5vw,24px);line-height:1.8;display:flex;flex-direction:column;align-items:stretch}
+/* The heading is the largest thing on the back; the intros are smaller
+   than the story text, a list to glance at. */
+.story-cast-heading{
+  margin:0 0 var(--s3);font-family:var(--font-char);font-size:var(--text-2xl);font-weight:var(--weight-bold);
+  color:var(--primary-dark);text-align:center;line-height:1.3;
+}
+@media(min-width:768px){ .story-cast-heading{font-size:var(--text-3xl)} }
+.story-cast-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--s2)}
+.story-cast-row{display:grid;grid-template-columns:auto auto 1fr;column-gap:var(--s3);align-items:start}
+.story-cast-emoji{font-size:1.1em;line-height:1.5;display:flex;align-items:center}
+/* Two lines of intro high, so the picture is easy to see but the list
+   still fits a small phone. */
+.story-cast-icon{width:2.4em;height:2.4em;display:block}
+.story-cast-name{
+  font-weight:var(--weight-bold);color:var(--primary-dark);white-space:nowrap;
+}
+.story-cast-text{min-width:0}
+/* The intros are shared by every story, so this lesson's 生字 are not
+   marked there (「才」 was underlined on 《呱呱的两件宝》's back). */
+.story-cast .story-new{color:inherit;text-decoration:none}
+/* 「👀 认识他们」 on the cover, 「↩ 翻回封面」 on the back: a pill in the
+   top-right corner, opposite 拼音, so it takes none of the page's height. */
+.story-flip-btn{
+  position:absolute;top:var(--s4);right:var(--s4);z-index:2;min-height:32px;padding:4px 12px;
+  font-family:var(--font-sans);font-size:var(--text-base);font-weight:var(--weight-semibold);
+  color:var(--primary-dark);background:var(--primary-100);border:1px solid var(--primary-300);
+  border-radius:var(--radius-full);cursor:pointer;line-height:1.4;
+}
+/* A tap target of 44px around the smaller pill. */
+.story-flip-btn::before{content:'';position:absolute;inset:-6px}
+.story-flip-btn:hover{border-color:var(--primary)}
+.story-flip-btn:focus-visible{outline:3px solid var(--primary);outline-offset:2px}
+/* Turning the cover over: the same quarter-turn feel as a flash card. */
+.story-card--turning{animation:story-turn var(--duration-normal,300ms) ease}
+@keyframes story-turn{0%{transform:perspective(900px) rotateY(0)}50%{transform:perspective(900px) rotateY(90deg)}100%{transform:perspective(900px) rotateY(0)}}
+@media(prefers-reduced-motion:reduce){ .story-card--turning{animation:none} }
+/* On the cast page the characters stay tappable but take only their own
+   line height, so five two-line intros fit a small phone. */
+.story-cast .story-ch,.story-cast .story-punct{height:1.3em}
+.story-page.story-cast{line-height:1.3}
+.story-body{flex:1;overflow-y:auto;display:flex;align-items:center;justify-content:center;padding:var(--s3) var(--s4) var(--s5)}
+.story-controls button:disabled{opacity:.4;cursor:default;box-shadow:none;transform:none}
+
+.story-page{
+  /* min-width:0 so the flex item may be narrower than its text; the line
+     breaks themselves come from the <wbr> between groups (js/story.js). */
+  /* Story text is left-aligned, as in a book; the cover and cast page
+     set their own alignment below. */
+  max-width:760px;min-width:0;text-align:left;font-family:var(--font-char);color:var(--text);
+  font-size:clamp(30px,8.4vw,48px);line-height:2.1;
+}
+.story-w{white-space:nowrap}
+/* Each character is a button, exactly one character wide so the text reads
+   like a book (a 44px minimum width spread a phone line out to 8 widely
+   spaced characters). The text is large instead, and each target is at
+   least 44px tall. Room for the pinyin above is always reserved, so
+   showing it never moves the text. */
+.story-ch,.story-punct{
+  /* Characters and punctuation get the same box and both centre their
+     glyph in it. A <button> centres its text but a <span> sits on the
+     baseline, so 「：」「！」 floated above the characters in Firefox.
+     Full-width punctuation is drawn inside the same em square as a
+     character, so centring the square lines them up. */
+  display:inline-flex;align-items:center;justify-content:center;vertical-align:bottom;
+  height:max(44px,1.25em);line-height:1;
+}
+.story-ch{
+  font:inherit;color:inherit;background:none;border:none;padding:0;margin:0;cursor:pointer;
+  box-sizing:content-box;width:1em;border-radius:6px;
+  -webkit-tap-highlight-color:transparent;position:relative;
+}
+.story-ch:focus-visible{outline:3px solid var(--primary-300);outline-offset:1px}
+/* The pinyin sits above its character, out of the flow. As <ruby> it set
+   the box's width: a hidden "shàng" is wider than a 24px 上, so Firefox
+   widened the box, the character drifted off-centre and its underline
+   with it. The page's line-height leaves the room above. */
+.story-py{
+  /* Just above the glyph, which is centred in the box: half the box plus
+     half the character. --story-ch is the character's size in px, set by
+     StoryView._fit (an em here would be the pinyin's own size). */
+  position:absolute;left:50%;bottom:calc(50% + var(--story-ch, 40px) * .5);transform:translateX(-50%);
+  font-family:var(--font-sans);font-size:max(11px,.32em);line-height:1.2;white-space:nowrap;
+  color:var(--accent-pinyin-text);visibility:hidden;pointer-events:none;text-decoration:none;
+}
+/* With every syllable showing they need room side by side, so the
+   characters move apart a little. */
+.story-page.show-pinyin .story-ch{padding:0 .12em}
+.story-page.show-pinyin .story-py{visibility:visible;color:var(--text-muted)}
+.story-ch.flash{background:var(--accent-pinyin-bg)}
+.story-ch.flash .story-py{visibility:visible;color:var(--accent-pinyin-text);font-weight:var(--weight-semibold)}
+.story-new{color:var(--accent-words-text);text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:.18em}
+/* A small heart rises from a character the first time it goes into 生字本. */
+.story-ch.story-added::after{
+  content:'❤️';position:absolute;right:-4px;top:2px;font-size:var(--text-md);line-height:1;
+  animation:storyHeart 1.2s ease-out forwards;pointer-events:none;
+}
+@keyframes storyHeart{0%{opacity:0;transform:translateY(6px) scale(.6)}25%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-14px)}}
+.story-punct{font-family:var(--font-char);text-decoration:none}
+
+.story-finish{text-align:center;max-width:560px}
+.story-finish-emoji{font-size:var(--text-3xl)}
+.story-finish-title{font-size:var(--text-2xl);font-weight:var(--weight-bold);margin:var(--s2) 0}
+.story-finish-lead{color:var(--text-secondary);font-size:var(--text-md);line-height:1.8;margin:0 0 var(--s4)}
+.story-fav-list{display:flex;flex-wrap:wrap;gap:var(--s2);justify-content:center;margin-bottom:var(--s5)}
+.story-fav{
+  display:flex;align-items:center;gap:6px;min-height:48px;padding:0 var(--s3);
+  border:1px solid var(--border);border-radius:var(--radius-md);background:#fff;cursor:pointer;
+}
+.story-fav[aria-pressed="false"]{opacity:.55}
+.story-fav-char{font-size:var(--text-3xl)}
+.story-fav-heart{font-size:var(--text-xl)}
+.story-finish-actions{display:flex;gap:var(--s3);justify-content:center;flex-wrap:wrap}
+/* The same buttons as .card-controls, for the two actions on the finish page. */
+.story-finish-btn{
+  padding:var(--s2) var(--s4);border-radius:var(--radius-sm);border:1px solid var(--border);
+  background:#fff;color:var(--text);font-size:var(--text-md);cursor:pointer;min-height:44px;
+  box-shadow:var(--shadow-sm);
+}
+.story-finish-btn--primary{background:var(--primary);border-color:var(--primary);color:#fff}
+@media (prefers-reduced-motion:reduce){
+  .story-ch.story-added::after{animation:none;opacity:0}
+}
+
+/* 小故事邀请码 (js/story-invite.js): a quiet line at the bottom of 谁来学习？ */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.story-invite{margin-top:var(--s4);padding-top:var(--s3);border-top:1px solid var(--border-light)}
+.story-invite-toggle{background:none;border:none;color:var(--text-secondary);font-size:var(--text-sm);cursor:pointer;padding:var(--s1) var(--s2);border-radius:var(--radius-sm)}
+.story-invite-toggle:hover{color:var(--primary)}
+.story-invite-toggle:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.story-invite-toggle:disabled{opacity:.5;cursor:default}
+.story-invite-form{display:flex;gap:var(--s2);margin-top:var(--s2)}
+.story-invite-form.hidden{display:none}
+.story-invite-form input{flex:1;min-width:0;padding:var(--s2);border:2px solid var(--border);border-radius:var(--radius-sm);font-size:var(--text-md);text-align:center;letter-spacing:.08em;text-transform:uppercase}
+.story-invite-form input:focus{outline:none;border-color:var(--primary)}
+.story-invite-form .btn-confirm{padding:var(--s2) var(--s4);border-radius:var(--radius-sm);border:none;background:var(--primary);color:#fff;font-size:var(--text-md);font-weight:var(--weight-semibold);cursor:pointer}
+.story-invite-form .btn-confirm:disabled{opacity:.6;cursor:wait}
+.story-invite-msg{min-height:1.4em;margin:var(--s2) 0 0;font-size:var(--text-sm);color:var(--text-secondary)}
+.story-invite-toast{position:fixed;left:50%;bottom:calc(var(--s6) + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:#1e293b;color:#fff;padding:var(--s2) var(--s4);border-radius:var(--radius-lg);font-size:var(--text-base);box-shadow:var(--shadow-lg);opacity:0;pointer-events:none;transition:opacity var(--duration-normal) ease,transform var(--duration-normal) ease;z-index:300}
+.story-invite-toast.show{opacity:1;transform:translate(-50%,0)}
+@media (prefers-reduced-motion:reduce){.story-invite-toast{transition:none}}

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="飞飞">
+  <!-- HanziGo 原创角色图标：飞飞 -->
+  <path d="M13 64 C13 53 21 49 32 49 C43 49 51 53 51 64 Z" fill="#1e3a8a"/>
+  <rect x="28" y="41" width="8" height="9" fill="#efc3a0"/>
+  <g transform="translate(8.96 4.80) scale(0.72)">
+  <circle cx="12.5" cy="36" r="4" fill="#efc3a0"/>
+  <circle cx="51.5" cy="36" r="4" fill="#efc3a0"/>
+  <circle cx="32" cy="35" r="20" fill="#f6d4b4"/>
+  <path d="M11.5 34 C10.5 17 21 10 32 10 C44 10 53.5 17 52.5 33 C49 27 44 23.5 38 23 C33 27.5 22 30.5 11.5 34 Z" fill="#1f1f24"/>
+  <circle cx="25" cy="37.5" r="2.6" fill="#1f1f24"/>
+  <circle cx="39" cy="37.5" r="2.6" fill="#1f1f24"/>
+  <circle cx="20.5" cy="44" r="3" fill="#f4a4a0" opacity=".6"/>
+  <circle cx="43.5" cy="44" r="3" fill="#f4a4a0" opacity=".6"/>
+  <path d="M26 45.5 Q32 50.5 38 45.5" stroke="#8a3b2a" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+  </g>
+  <!-- chest pocket; a small notebook and a pencil stick out of it -->
+  <g transform="rotate(-6 41 58)">
+    <rect x="38.4" y="54.4" width="5.4" height="6.4" rx=".7" fill="#fde68a" stroke="#b45309" stroke-width=".8"/>
+    <path d="M39.6 56.2 H42.6" stroke="#b45309" stroke-width=".65" stroke-linecap="round"/>
+  </g>
+  <rect x="45" y="53.6" width="1.6" height="6" rx=".5" fill="#fbbf24"/>
+  <path d="M45 53.6 L45.8 52 L46.6 53.6 Z" fill="#f6d4b4"/>
+  <path d="M36.6 57.8 H47.6 V62.4 Q47.6 63.4 46.6 63.4 H37.6 Q36.6 63.4 36.6 62.4 Z" fill="#2546b0" stroke="#162f73" stroke-width=".6"/>
+</svg>

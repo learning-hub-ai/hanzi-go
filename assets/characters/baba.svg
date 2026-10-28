@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="爸爸">
+  <!-- HanziGo 原创角色图标：爸爸 -->
+  <path d="M13 64 C13 53 21 49 32 49 C43 49 51 53 51 64 Z" fill="#475569"/>
+  <path d="M27 49.5 L32 55 L37 49.5 Z" fill="#fff"/>
+  <rect x="28" y="41" width="8" height="9" fill="#efc3a0"/>
+  <g transform="translate(7.04 4.26) scale(0.78)">
+  <g transform="rotate(-62 50 30)">
+    <rect x="38" y="28.3" width="20" height="3.4" fill="#fbbf24"/>
+    <rect x="38" y="28.3" width="20" height="1.1" fill="#f59e0b"/>
+    <path d="M58 28.3 L61.6 30 L58 31.7 Z" fill="#f6d4b4"/>
+    <path d="M60.4 29.4 L61.6 30 L60.4 30.6 Z" fill="#1f1f24"/>
+  </g>
+  <circle cx="14.5" cy="34" r="3.6" fill="#efc3a0"/>
+  <circle cx="32" cy="33" r="18" fill="#f6d4b4"/>
+  <path d="M14.2 34 C12.8 19.5 21.2 12.5 32.6 12.5 C43.4 12.5 51.2 18.8 49.8 34 L48.3 34 C48 28.4 46.6 24.8 44 23.2 C37.4 24.3 30.2 22.8 26.4 19 C24 23.2 19.8 26.6 16.8 29 C16.4 30.6 16.3 32.3 16.3 34 Z" fill="#1f1f24"/>
+  <circle cx="49.5" cy="34" r="3.6" fill="#efc3a0"/>
+  <circle cx="25.5" cy="34" r="5" fill="#fff" fill-opacity=".35" stroke="#1f1f24" stroke-width="1.7"/>
+  <circle cx="38.5" cy="34" r="5" fill="#fff" fill-opacity=".35" stroke="#1f1f24" stroke-width="1.7"/>
+  <path d="M30.5 34 H33.5" stroke="#1f1f24" stroke-width="1.7"/>
+  <circle cx="25.5" cy="34" r="1.8" fill="#1f1f24"/>
+  <circle cx="38.5" cy="34" r="1.8" fill="#1f1f24"/>
+  <path d="M26.5 42.5 Q32 46.5 37.5 42.5" stroke="#8a3b2a" stroke-width="2.1" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>

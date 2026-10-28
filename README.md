@@ -15,6 +15,9 @@
 | 🎯 挑战 | 字→音、音→字、字→词、填空、混合五种题型 —— 计分、连对加成、拿徽章 |
 | 📅 每日任务 | 四步流程：认字 → 测验 → 错题 → 收尾，做完算一天 |
 
+**小故事**（一、二年级，试读中）：学习模式里，学完一课可以读一篇用到这课生字的原创小故事，
+每个字都能点、会朗读、会进生字本。故事不公开：网站上只有加密的文件，凭邀请码打开（见「小故事」）。
+
 答错的字自动进**错题本**，连对两次才移出去（`config.json` 可调）。喜欢的字可以❤️收藏，单独复习。
 **智能复习**按间隔重复安排该复习的字。
 
@@ -67,13 +70,39 @@ hanzi-go/
 │   ├── ui.js          只改 DOM，不含逻辑
 │   ├── controllers.js 事件，把 state↔data↔UI 接起来
 │   ├── daily-task.js  每日任务四步流程
+│   ├── story.js       小故事阅读（封面、人物介绍、点字朗读）
+│   ├── story-unlock.js 打开加密的故事（WebCrypto）
+│   ├── story-invite.js 邀请码：链接和「谁来学习？」里的入口
 │   ├── constants.js   常量和共用小工具
 │   └── mobile.js      移动端适配
-├── data/              18 个学期文件 grade{N}-semester{M}.json，加多音字表 heteronyms.json
+├── data/              18 个学期文件 grade{N}-semester{M}.json，多音字表 heteronyms.json，
+│                      加密的小故事 stories.enc.json
+├── assets/characters/ 小故事角色的图标（SVG）
 ├── audio/syllables/   字卡的音节录音（公共领域，见「版权」）
 ├── scripts/           生成和清理数据的脚本，见「加数据」
 └── docs/              数据生成规范
 ```
+
+## 小故事
+
+故事原文在**私有**仓库 `learning-hub-ai/hanzi-go-stories`，克隆在本仓库旁边
+（`../hanzi-go-stories/`），或者用环境变量 `HANZIGO_STORIES` 指向它的 `stories/`。
+本仓库只放加密后的 `data/stories.enc.json`：AES-256-GCM，每个邀请码各包一份内容密钥
+（格式见 `scripts/story_crypto.py`）。浏览器凭邀请码在本机解开，码存在这台设备上，
+不进用户的导出备份。
+
+```bash
+python3 scripts/check_stories.py              # 检查故事：用字、读音、写法轮换
+python3 scripts/build_stories.py              # 打包加密（先检查，私有仓库要先提交）
+python3 scripts/build_stories.py --add-invite 名字   # 新邀请码，打印要发的链接
+python3 scripts/build_stories.py --list       # 查看（不显示码）；--revoke <id> 取消
+```
+
+没有私有仓库的机器上，这些检查会说明后跳过；网站和浏览器测试不需要原文
+（测试用 `test/fixtures/stories.enc.json`，里面是编的故事，测试码公开）。
+
+pre-push 会拦住原文：被跟踪的明文故事文件、任何文件或要推送的提交（改动和说明）里
+出现故事里连续 6 个字或《标题》，都不能推送（`scripts/check_no_story_text.py`）。
 
 ## 加数据
 
@@ -138,11 +167,11 @@ bash pre-push.sh        # 静态检查 + 数据检查 + 例句截短脚本的单
 ```
 
 ```bash
-# 浏览器测试：451 项，用隐藏 iframe 加载真实 app
+# 浏览器测试：533 项，用隐藏 iframe 加载真实 app
 python3 -m http.server 8080     # 然后开 http://localhost:8080/test.html 点 Run
 
-# 或者无头跑（需要 websocket-client；pre-push 的拼音检查还要 pypinyin）
-python3 -m venv .venv && .venv/bin/pip install websocket-client pypinyin
+# 或者无头跑。开发用的包都在 requirements-dev.txt（固定版本）
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 # 重新生成音节录音还需要：.venv/bin/pip install imageio-ffmpeg==0.6.0
 .venv/bin/python scripts/run_tests_headless.py
 ```
