@@ -96,6 +96,7 @@ python3 scripts/check_stories.py              # 检查故事：用字、读音�
 python3 scripts/build_stories.py              # 打包加密（先检查，私有仓库要先提交）
 python3 scripts/build_stories.py --add-invite 名字   # 新邀请码，打印要发的链接
 python3 scripts/build_stories.py --list       # 查看（不显示码）；--revoke <id> 取消
+python3 scripts/story_brief.py 1-2-12 --text  # 写一课故事前的提要
 ```
 
 没有私有仓库的机器上，这些检查会说明后跳过；网站和浏览器测试不需要原文

@@ -563,6 +563,9 @@ python3 scripts/test_check_stories.py 2>/dev/null >/dev/null \
 python3 scripts/test_stories_source.py 2>/dev/null >/dev/null \
   && echo "✅ Story source: unit tests pass" \
   || { echo "❌ Story source tests failed: python3 scripts/test_stories_source.py"; exit 1; }
+python3 scripts/test_story_brief.py 2>/dev/null >/dev/null \
+  && echo "✅ Story brief: unit tests pass" \
+  || { echo "❌ Story brief tests failed: python3 scripts/test_story_brief.py"; exit 1; }
 python3 scripts/check_stories.py --check \
   || { echo "  Details: python3 scripts/check_stories.py"; exit 1; }
 
