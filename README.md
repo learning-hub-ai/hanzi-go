@@ -168,7 +168,7 @@ bash pre-push.sh        # 静态检查 + 数据检查 + 例句截短脚本的单
 ```
 
 ```bash
-# 浏览器测试：533 项，用隐藏 iframe 加载真实 app
+# 浏览器测试：534 项，用隐藏 iframe 加载真实 app
 python3 -m http.server 8080     # 然后开 http://localhost:8080/test.html 点 Run
 
 # 或者无头跑。开发用的包都在 requirements-dev.txt（固定版本）

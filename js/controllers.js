@@ -1805,7 +1805,7 @@ const AppController = (() => {
         // 🃏 字卡 | 📖 故事 under the lesson dropdown (js/story.js). A link with
         // #invite=… opens the stories first (js/story-invite.js); its code is
         // removed from the address bar before anything else.
-        if (typeof StoryInvite !== 'undefined') StoryInvite.fromUrl();
+        if (typeof StoryInvite !== 'undefined') StoryInvite.init();
         if (typeof StoryView !== 'undefined') StoryView.init();
 
         // Render daily task (default mode)

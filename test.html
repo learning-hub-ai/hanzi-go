@@ -418,6 +418,13 @@ async function runTests() {
     unlock.linkResult = await app.StoryInvite.fromUrl();
     unlock.linkHash = app.location.hash; unlock.linkStatus = SS.status();
     unlock.noLink = await app.StoryInvite.fromUrl();
+    // The same link opened while the site is already showing: only the hash
+    // changes (no reload). The hashchange listener must take it.
+    await app.StoryInvite.leave();
+    app.location.hash = 'invite=' + FIXTURE_CODE;
+    for (let i = 0; i < 40 && !(SS.status() === '' && SS.forLesson('1-1-31')); i++) await new Promise(r => setTimeout(r, 50));
+    unlock.hashChangeStatus = SS.status(); unlock.hashChangeHash = app.location.hash;
+    unlock.hashChangeStory = !!SS.forLesson('1-1-31');
     // Nothing above may have put the code into the error log.
     unlock.logged = JSON.stringify(app.ErrorLog.entries());
     // Leave the trial.
@@ -7365,6 +7372,12 @@ async function runTests() {
       assertEqual(unlock.linkStatus, '');
       assertEqual(unlock.linkHash, '', 'code removed from the address bar');
       assertEqual(unlock.noLink, null, 'no #invite: nothing happens');
+    });
+
+    it('a link opened in a tab that already shows the site (only the hash changes) works too', () => {
+      assertEqual(unlock.hashChangeStatus, '', 'opened without a reload');
+      assert(unlock.hashChangeStory, 'stories available');
+      assertEqual(unlock.hashChangeHash, '', 'code removed from the address bar');
     });
 
     it('the code never reaches the error log', () => {

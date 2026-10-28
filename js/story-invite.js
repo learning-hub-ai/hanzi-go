@@ -2,8 +2,10 @@
  * 小故事邀请码的界面 (design §7.5.7).
  *
  * Two ways in:
- * - a link …/hanzi-go/#invite=XXXX-XXXX-XXXX, handled once at start-up by
- *   fromUrl(): the code is taken out of the address bar first, then tried;
+ * - a link …/hanzi-go/#invite=XXXX-XXXX-XXXX, handled by fromUrl() at start-up
+ *   and again on every hashchange (the link opened in a tab that already shows
+ *   the site only changes the fragment, so the page does not reload): the code
+ *   is taken out of the address bar first, then tried;
  * - 「🔑 小故事邀请码」 at the bottom of the 谁来学习？ picker: panelHtml()
  *   renders it, bind() wires it. When stories are open the same place shows
  *   「退出小故事试读」.
@@ -71,6 +73,12 @@ const StoryInvite = (() => {
     const why = code ? await tryCode(code) : 'notCode';
     toast(why ? MSG[why] : MSG.opened);
     return why;
+  }
+
+  /** Start-up: handle a link now, and any link opened later in this tab. */
+  function init() {
+    window.addEventListener('hashchange', () => { fromUrl(); });
+    return fromUrl();
   }
 
   /** Leave the trial: forget the code and hide the stories. */
@@ -143,5 +151,5 @@ const StoryInvite = (() => {
     });
   }
 
-  return { fromUrl, tryCode, leave, panelHtml, bind, toast, MSG };
+  return { init, fromUrl, tryCode, leave, panelHtml, bind, toast, MSG };
 })();
