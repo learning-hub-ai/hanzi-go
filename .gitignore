@@ -38,6 +38,8 @@ audio-preview/
 # 角色图标预览页，本地用
 docs/character-icons.html
 docs/icon-drafts/
+# 小故事审阅页（故事不公开）
+docs/story-review.html
 # 小故事私有化方案（内部方案，不公开）
 docs/story-privacy-proposal.html
 # Temporary files of the tests (pre-push sets TMPDIR here)
