@@ -606,6 +606,37 @@ const ModalUI = (() => {
     'error_killer': '#7c3aed'
   };
 
+  /**
+   * 我的书架 (design §3.1.10): the stories this child has read, newest first.
+   * Only where stories are open; no total (a "5/19" would make it a task)
+   * and nothing about stories not read yet.
+   */
+  /**
+   * 我的书架 on the 成就墙: how many stories were read, a little title that
+   * grows with them (StoryService.readerLevel), and one spine per book up to
+   * SHELF_SPINES. No titles, no total, no "N more to the next one".
+   * Only where stories are open (with an invite code).
+   */
+  const SHELF_SPINES = 20;
+  function _bookshelfHtml() {
+    if (typeof StoryService === 'undefined' || StoryService.status() !== '') return '';
+    const n = StoryService.shelf().length;
+    if (!n) {
+      return `<section class="shelf" aria-label="我的书架">
+      <h4 class="shelf-head">📚 我的书架</h4>
+      <p class="shelf-empty">书架还空着，<strong>完成</strong>每日任务，就会有故事放进来</p>
+    </section>`;
+    }
+    const level = StoryService.readerLevel(n);
+    const spines = Array.from({ length: Math.min(n, SHELF_SPINES) },
+      (_, i) => `<span class="shelf-spine shelf-spine--${i % 5}"></span>`).join('');
+    return `<section class="shelf" aria-label="我的书架：${n} 本，${escapeHtml(level.title)}">
+      <h4 class="shelf-head">📚 我的书架 · <strong class="shelf-count">${n}</strong> 本
+        <span class="shelf-level"><span aria-hidden="true">${level.icon}</span> ${escapeHtml(level.title)}</span></h4>
+      <div class="shelf-spines" aria-hidden="true">${spines}</div>
+    </section>`;
+  }
+
   function renderBadges(allBadges, stats) {
     let html = allBadges.map(b => {
       const earned = BadgeService.isEarned(b.id);
@@ -616,6 +647,7 @@ const ModalUI = (() => {
         ${earned ? '<span>✅</span>' : '<span>🔒</span>'}
       </div>`;
     }).join('');
+    html += _bookshelfHtml();
     html += `<hr style="margin:16px 0"><p style="font-size:13px;color:#999">累计: ${stats.totalRounds}轮 | ${stats.totalCorrect}/${stats.totalAnswered}题 | 连续${stats.consecutiveDays}天</p>`;
     html += `<p style="font-size:10px;color:#ccc;margin-top:8px" id="versionTag">v1.0</p>`;
     return html;

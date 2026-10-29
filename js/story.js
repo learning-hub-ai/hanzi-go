@@ -164,6 +164,87 @@ const StoryService = (() => {
     return added;
   }
 
+  // ---- 礼物故事 and 我的书架 (design §3.1.10) ----
+
+  const READ_KEY = 'storiesRead';   // per child: lesson ids in the order first finished
+
+  /** [grade, semester, number] of a lesson id, for textbook order. */
+  function _order(lessonId) {
+    return String(lessonId).split('-').map(n => parseInt(n, 10) || 0);
+  }
+
+  /** Whether lesson a comes after lesson b in the textbook. */
+  function _later(a, b) {
+    const x = _order(a), y = _order(b);
+    for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i];
+    return false;
+  }
+
+  /** @returns {string[]} lessons whose story this child has read to the end, oldest first */
+  function readList() {
+    const list = State.load(READ_KEY, []);
+    return Array.isArray(list) ? list.filter(l => typeof l === 'string') : [];
+  }
+
+  function isRead(lessonId) { return readList().includes(lessonId); }
+
+  /**
+   * Record that this child read a story to the last page.
+   * @returns {boolean} true the first time for this story
+   */
+  function markRead(lessonId) {
+    const list = readList();
+    if (!lessonId || list.includes(lessonId)) return false;
+    list.push(lessonId);
+    State.save(READ_KEY, list);
+    return true;
+  }
+
+  /**
+   * The gift after finishing a lesson's daily task (design §3.1.10): the
+   * nearest unread story of a lesson not after it — so that lesson's own
+   * story when it has one and it is unread, since its characters were just
+   * learned; never a later lesson's (characters not learned yet); none when
+   * all are read (a story already read is no surprise). Only stories that
+   * are loaded (so: an invite code, and reviewed).
+   * @param {string} lessonId - the lesson just finished
+   * @returns {Object|null} the story
+   */
+  function rewardFor(lessonId) {
+    if (!lessonId) return null;
+    const read = new Set(readList());
+    // The latest unread lesson not after this one is the nearest.
+    const nearest = Object.keys(_byLesson)
+      .filter(l => !read.has(l) && !_later(l, lessonId))
+      .reduce((best, l) => (best === null || _later(l, best) ? l : best), null);
+    return nearest === null ? null : _byLesson[nearest];
+  }
+
+  /**
+   * 书架的称号: the little bookworm grows as the shelf fills (design §3.1.13).
+   * From the badge 📖 小书虫 on: it grows, gets wings, becomes a butterfly.
+   * The child is never told how far the next one is; a new title is a surprise.
+   * Ordered by `from`, ascending; extend by adding a row.
+   */
+  const READER_LEVELS = [
+    { from: 1,  title: '小书虫',     icon: '🐛' },
+    { from: 10, title: '大书虫',     icon: '🐛' },
+    { from: 20, title: '会飞的书虫', icon: '🦋' },
+    { from: 50, title: '故事蝴蝶',   icon: '🦋' },
+  ];
+
+  /** The title for n stories read, or null for none. */
+  function readerLevel(n) {
+    let level = null;
+    READER_LEVELS.forEach(l => { if (n >= l.from) level = l; });
+    return level;
+  }
+
+  /** Stories this child has read, newest first, for the bookshelf (only loaded ones). */
+  function shelf() {
+    return readList().slice().reverse().map(l => _byLesson[l]).filter(Boolean);
+  }
+
   /**
    * ❤️/🤍 on the finish page: the same toggle as the card's ❤️.
    * @returns {boolean} whether it is in 生字本 now
@@ -177,6 +258,7 @@ const StoryService = (() => {
 
   return {
     load, reload, status, forLesson, isHan, readingAt, newChars, addTapped, toggleFavorite,
+    rewardFor, markRead, isRead, readList, shelf, readerLevel, READER_LEVELS,
     character, introReadingAt,
     // Test-only: install stories (and optionally character intros) without fetching.
     _setForTest: (stories, characters) => {
@@ -211,6 +293,10 @@ const StoryView = (() => {
   let _coverBack = false;   // the cover is turned over to the cast
   let _added = [];          // characters this reading put into 生字本, in tap order
   let _newSet = new Set();
+  // Opened as the daily task's gift (open(..., {onBack})): the finish page
+  // says it went onto the bookshelf and offers the way back to the task.
+  let _onBack = null;
+  let _firstRead = false;    // this reading put the story on the shelf
 
   function _showPinyin() { return State.load('storyPinyin', false) === true; }
   const _learn = () => document.getElementById('learnMode');
@@ -308,11 +394,18 @@ const StoryView = (() => {
     if (story) _render();
   }
 
-  function _openStory(story) {
+  /**
+   * Start a reading of `story` at its cover. Any reading not started by
+   * open(..., {onBack}) is an ordinary one: picking another lesson in the
+   * dropdown while reading a gift must not carry 「回到今天的任务」 over.
+   */
+  function _openStory(story, onBack) {
     _story = story;
     _page = 0;
     _coverBack = false;
     _added = [];
+    _firstRead = false;
+    _onBack = onBack || null;
     _newSet = StoryService.newChars(story.lesson);
     _render();
   }
@@ -356,7 +449,46 @@ const StoryView = (() => {
     if (!_active || !_story || _page >= _finishAt()) return;
     _coverBack = false;
     _page++;
+    if (_page >= _finishAt()) _finished();
     _render();
+  }
+
+  /** The last page was turned: the story goes onto this child's bookshelf. */
+  function _finished() {
+    if (!StoryService.markRead(_story.lesson)) return;
+    _firstRead = true;
+    // The first story ever earns 📖 小书虫 (BadgeService); show it like any new badge.
+    if (typeof BadgeService !== 'undefined') {
+      const fresh = BadgeService.checkAndAward();
+      if (fresh.length && typeof BadgePopupUI !== 'undefined') fresh.forEach(b => BadgePopupUI.show(b));
+    }
+  }
+
+  /**
+   * Open a lesson's story directly, at its cover (the daily task's gift,
+   * the bookshelf). Switches to 学习 and selects that lesson.
+   * @param {string} lessonId
+   * @param {Object} [opts]
+   * @param {Function} [opts.onBack] - shown as 「回到今天的任务」 on the finish page
+   * @returns {boolean} false when there is no such story
+   */
+  function open(lessonId, opts) {
+    const st = StoryService.forLesson(lessonId);
+    if (!st) return false;
+    const [g, s] = lessonId.split('-');
+    // The same path as a child picking the volume and then the lesson, so
+    // the dropdown, the cards behind the story and the sidebar all agree.
+    if (State.get('mode') !== 'learn') AppController.switchMode('learn');
+    AppController.selectSemester(s, g);
+    const sel = document.getElementById('lessonFilter');
+    if (!sel || ![...sel.options].some(o => o.value === lessonId)) return false;
+    sel.value = lessonId;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    // A fresh reading from the cover, with this gift's way back.
+    _openStory(st, opts && opts.onBack);
+    _setActive(true);
+    _render();
+    return true;
   }
 
   function prev() {
@@ -478,16 +610,21 @@ const StoryView = (() => {
         aria-label="${escapeHtml(ch)}，${fav ? '在生字本里，点一下取消' : '不在生字本里，点一下加入'}">
         <span class="story-fav-char char-display">${escapeHtml(ch)}</span><span class="story-fav-heart">${fav ? '❤️' : '🤍'}</span></button>`;
     }).join('');
+    const shelved = _firstRead
+      ? '<p class="story-finish-shelf">这个故事放进你的书架啦 📚<br><small>在 🏆 成就墙里能找到它</small></p>' : '';
     return `<div class="story-finish">
       <div class="story-finish-emoji">🎉</div>
       <div class="story-finish-title">读完了！</div>
+      ${shelved}
       ${_added.length
         ? `<p class="story-finish-lead">这次点过的 ${_added.length} 个字，已经放进 ❤️ 生字本，在「练生字」里练。<br>只是好奇点了一下的，点 ❤️ 去掉。</p>
            <div class="story-fav-list">${list}</div>`
         : '<p class="story-finish-lead">这次没有点字。不认识的字，点一下就能听读音。</p>'}
       <div class="story-finish-actions">
         <button class="story-finish-btn" data-action="story-again">🔁 再读一遍</button>
-        <button class="story-finish-btn story-finish-btn--primary" data-action="story-cards">🃏 回到字卡</button>
+        ${_onBack
+          ? '<button class="story-finish-btn story-finish-btn--primary" data-action="story-back">回到今天的任务 →</button>'
+          : '<button class="story-finish-btn story-finish-btn--primary" data-action="story-cards">🃏 回到字卡</button>'}
       </div>
     </div>`;
   }
@@ -576,6 +713,11 @@ const StoryView = (() => {
     // A tap on the cover's empty space turns it over too, like a card.
     if (_page === 0 && !_coverBack && e.target.closest('.story-cover')) { flipCover(true); return; }
     if (action && action.dataset.action === 'story-cards') { show(false); return; }
+    if (action && action.dataset.action === 'story-back') {
+      const back = _onBack;
+      show(false);
+      if (back) back();
+    }
   }
 
   function _tap(btn) {
@@ -652,7 +794,7 @@ const StoryView = (() => {
   }
 
   return {
-    init, refresh, show, isActive, next, prev, togglePinyin, flipCover,
+    init, refresh, show, open, isActive, next, prev, togglePinyin, flipCover,
     // Test-only: what this reading has put into 生字本.
     _addedForTest: () => [..._added]
   };

@@ -906,6 +906,18 @@ const BadgeService = (() => {
       get desc() { return `已认识 ${typeof SpacedRepService !== 'undefined' ? SpacedRepService.getTotalCount() : 0}/1000 字`; },
       check: () => typeof SpacedRepService !== 'undefined' && SpacedRepService.getTotalCount() >= 1000
     },
+    // 小故事 (design §3.1.10): only listed where stories are open, so a child
+    // without an invite code never sees its lock. Earned by the first story
+    // read to the end; deliberately no 5- or 10-story badges (reading must
+    // not turn into a count).
+    {
+      id: 'bookworm',
+      emoji: '📖',
+      name: '小书虫',
+      get desc() { return typeof StoryService !== 'undefined' && StoryService.readList().length ? '读完了第一个小故事' : '读完一个小故事'; },
+      check: () => typeof StoryService !== 'undefined' && StoryService.readList().length >= 1,
+      visible: () => typeof StoryService !== 'undefined' && StoryService.status() === ''
+    },
     {
       id: 'growth_2000',
       emoji: '🏆',
@@ -937,8 +949,11 @@ const BadgeService = (() => {
     return newBadges;
   }
 
-  /** @returns {Array} All badge definitions */
-  function getAll() { return BADGE_DEFS; }
+  /**
+   * @returns {Array} The badges to list: every definition, except those
+   * whose visible() says not here (📖 小书虫 without an invite code).
+   */
+  function getAll() { return BADGE_DEFS.filter(b => !b.visible || b.visible()); }
 
   /** @returns {boolean} Whether badge has been earned */
   function isEarned(id) { return State.get('badges').includes(id); }

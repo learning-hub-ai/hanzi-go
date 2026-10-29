@@ -217,8 +217,9 @@ const State = (() => {
   const EXPORT_KEYS = [
     'favorites', 'errorBook', 'stats', 'badges', 'spacedRep', 'customCards', 'favContext',
     'lessonProgress', 'dailyTask', 'growthPoints', 'completedLessonsHistory',
-    // 小故事: whether this child reads with pinyin shown (js/story.js)
-    'storyPinyin'
+    // 小故事: whether this child reads with pinyin shown, and which stories
+    // they have read to the end (their bookshelf, js/story.js)
+    'storyPinyin', 'storiesRead'
   ];
 
   /**

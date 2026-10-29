@@ -70,7 +70,7 @@ missing_ids = [i for i in critical_ids if i not in html_ids]
 test('HTML: critical IDs', len(missing_ids)==0, f'Missing: {missing_ids}')
 
 # 3. JS syntax (braces balanced)
-for f in ['js/constants.js','js/state.js','js/data.js','js/services.js','js/ui.js','js/controllers.js','js/story.js','js/story-unlock.js','js/story-invite.js']:
+for f in ['js/constants.js','js/state.js','js/data.js','js/services.js','js/ui.js','js/controllers.js','js/story.js','js/story-unlock.js','js/story-invite.js','js/story-gift.js']:
     with open(f) as fh: js = fh.read()
     test(f'JS: {f} braces', js.count('{')==js.count('}'), f'{js.count(\"{\")} vs {js.count(\"}\")}')
 
@@ -83,7 +83,7 @@ test('JS: dynamic HTML IDs', len(missing_dyn)==0, f'Missing: {missing_dyn}')
 
 # 5. No dead code
 all_js = ''
-for f in ['js/constants.js','js/state.js','js/data.js','js/services.js','js/ui.js','js/controllers.js','js/story.js','js/story-unlock.js','js/story-invite.js']:
+for f in ['js/constants.js','js/state.js','js/data.js','js/services.js','js/ui.js','js/controllers.js','js/story.js','js/story-unlock.js','js/story-invite.js','js/story-gift.js']:
     with open(f) as fh: all_js += fh.read()
 dead = ['semesterStrip','favCardCount','errCardCount','lessonIndicator','flipHint','btnRandom','_showShuffleFeedback']
 found_dead = [r for r in dead if r in all_js]
@@ -93,7 +93,8 @@ test('Clean: no console.log', all_js.count('console.log')==0, f'{all_js.count(\"
 # 6. Badges
 with open('js/services.js') as f: svc = f.read()
 badge_ids = re.findall(r\"id: '([^']+)'\", svc)
-test('Badges: 11 defined', len(badge_ids)==11, f'Found {len(badge_ids)}')
+# 12 = 11 + 📖 小书虫 (only listed where stories are open, design §3.1.10)
+test('Badges: 12 defined', len(badge_ids)==12, f'Found {len(badge_ids)}')
 
 # 7. Config valid
 test('Config: valid JSON', True if json.load(open('config.json')) else False)

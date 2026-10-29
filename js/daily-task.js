@@ -245,6 +245,10 @@ const DailyTaskService = (() => {
   /** Complete the quiz step and calculate rewards */
   function completeQuiz(score, total) {
     const state = getTaskState();
+    // The lesson this task was for, kept before _advanceLesson moves on: the
+    // completion page's gift story is chosen from it (story.js rewardFor).
+    const lesson = getCurrentLesson();
+    state.lessonId = lesson ? lesson.id : '';
     state.quizDone = true;
     state.quizScore = score;
     state.quizTotal = total;
@@ -657,7 +661,15 @@ const DailyTaskController = (() => {
           ${!state.quizDone && state.step === 'quiz' ? '<button class="dt-step-btn" id="dtStartQuiz">开始</button>' : ''}
         </div>
       </div>
+      <div id="dtGiftTeaser" class="dt-gift-teaser hidden" aria-live="polite"></div>
     `;
+
+    // 礼物故事 (js/story-gift.js): a small promise under the steps, only when
+    // there will be a present; the task stays the main thing on this page.
+    if (typeof StoryGift !== 'undefined') {
+      const left = ['reviewDone', 'recapDone', 'learnDone', 'quizDone'].filter(k => !state[k]).length;
+      StoryGift.renderTeaser(state, lesson.id, left);
+    }
 
     // Bind buttons
     const reviewBtn = document.getElementById('dtStartReview');
@@ -703,6 +715,7 @@ const DailyTaskController = (() => {
           </div>
           <div class="dt-growth-next">下一站: ${growth.nextEmoji} ${growth.nextName} (${growth.nextMin}字)</div>
         </div>
+        <div id="dtGiftSlot" class="dt-gift-slot hidden" aria-live="polite"></div>
         <div class="dt-complete-actions">
           ${advanced ? '<button class="dt-btn-primary" id="dtBtnNextLesson">📖 继续学下一课</button>' : ''}
           <button class="dt-btn-secondary" id="dtBtnRedo">🔄 重新挑战这课</button>
@@ -711,6 +724,12 @@ const DailyTaskController = (() => {
         </div>
       </div>
     `;
+
+    // 礼物故事 (js/story-gift.js): only with an invite code; fills itself in
+    // once the stories are unlocked. Back from the story = this page again.
+    if (typeof StoryGift !== 'undefined') {
+      StoryGift.render(state, () => { AppController.switchMode('dailyTask'); });
+    }
 
     const nextLessonBtn = document.getElementById('dtBtnNextLesson');
     if (nextLessonBtn) {

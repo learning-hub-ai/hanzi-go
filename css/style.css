@@ -1577,3 +1577,68 @@ body.story-reading #mbtnFlip,body.story-reading #mbtnSpeak,body.story-reading #m
 .story-invite-toast{position:fixed;left:50%;bottom:calc(var(--s6) + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:#1e293b;color:#fff;padding:var(--s2) var(--s4);border-radius:var(--radius-lg);font-size:var(--text-base);box-shadow:var(--shadow-lg);opacity:0;pointer-events:none;transition:opacity var(--duration-normal) ease,transform var(--duration-normal) ease;z-index:300}
 .story-invite-toast.show{opacity:1;transform:translate(-50%,0)}
 @media (prefers-reduced-motion:reduce){.story-invite-toast{transition:none}}
+
+/* 礼物故事 on the daily task's completion page (js/story-gift.js, design §3.1.10).
+   The present is the bright thing on the page; the task's own buttons stay below it. */
+.dt-gift-slot{margin:var(--s5) auto 0;max-width:360px}
+.dt-gift-slot.hidden{display:none}
+.gift{background:linear-gradient(160deg,var(--primary-50),var(--accent-words-bg));border:2px solid var(--primary-300);border-radius:var(--radius-lg);padding:var(--s5) var(--s4);text-align:center;box-shadow:var(--shadow-md)}
+.gift--closed{animation:giftArrive var(--duration-normal) var(--ease-bounce)}
+.gift-box{font-size:clamp(48px,14vw,64px);line-height:1;display:inline-block;animation:giftWiggle 2.4s ease-in-out 1s infinite}
+.gift-title{font-size:var(--text-xl);font-weight:var(--weight-bold);color:var(--text);margin-top:var(--s2)}
+.gift-from{font-size:var(--text-md);color:var(--text-secondary);margin:var(--s2) 0 var(--s4);display:flex;align-items:center;justify-content:center;gap:var(--s2);flex-wrap:wrap}
+.gift-icons{display:inline-flex;gap:var(--s1);align-items:center}
+.gift-icon{width:2.2em;height:2.2em}
+.gift-icon--emoji{width:auto;height:auto;font-size:var(--text-2xl)}
+.gift-icons--cover .gift-icon{width:3em;height:3em}
+.gift-btn{padding:var(--s3) var(--s6);border:none;border-radius:var(--radius-full);background:var(--primary);color:#fff;font-size:var(--text-lg);font-weight:var(--weight-bold);cursor:pointer;box-shadow:var(--shadow-md)}
+.gift-btn:hover{filter:brightness(1.08)}
+.gift-btn:focus-visible{outline:3px solid var(--primary-300);outline-offset:3px}
+.gift-btn--small{padding:var(--s2) var(--s4);font-size:var(--text-md);box-shadow:none}
+.gift-label{font-size:var(--text-sm);color:var(--text-secondary);letter-spacing:.1em}
+.gift-cover-title{font-size:var(--text-2xl);font-weight:var(--weight-bold);color:var(--text);margin:var(--s2) 0 var(--s3)}
+.gift--open{display:flex;flex-direction:column;align-items:center;animation:giftArrive var(--duration-normal) var(--ease-out)}
+.gift--open .gift-icons{margin-bottom:var(--s4)}
+.gift--done{display:flex;align-items:center;justify-content:center;gap:var(--s3);flex-wrap:wrap;padding:var(--s3) var(--s4);background:var(--primary-50);box-shadow:none}
+.gift-done-text{font-size:var(--text-md);color:var(--text)}
+.gift--unwrapping .gift-box{animation:giftOpen .7s ease-in forwards}
+@keyframes giftArrive{from{opacity:0;transform:translateY(12px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes giftWiggle{0%,86%,100%{transform:rotate(0)}89%{transform:rotate(-10deg)}92%{transform:rotate(9deg)}95%{transform:rotate(-6deg)}}
+@keyframes giftOpen{0%{transform:rotate(0) scale(1)}25%{transform:rotate(-12deg)}50%{transform:rotate(12deg) scale(1.1)}100%{transform:scale(1.5);opacity:0}}
+@media (prefers-reduced-motion:reduce){
+  .gift,.gift-box,.gift--unwrapping .gift-box{animation:none}
+}
+/* 读完页 from a gift: where the story went */
+.story-finish-shelf{font-size:var(--text-md);color:var(--text);margin:var(--s2) 0}
+.story-finish-shelf small{font-size:var(--text-sm);color:var(--text-secondary)}
+
+/* 我的书架 on the 成就墙 (js/ui.js _bookshelfHtml) */
+.shelf{margin-top:var(--s5);padding-top:var(--s4);border-top:1px solid var(--border)}
+.shelf-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2);font-size:var(--text-lg);font-weight:var(--weight-bold);margin:0}
+.shelf-empty{font-size:var(--text-md);color:var(--text-secondary);margin:var(--s2) 0 0}
+.shelf-empty strong{color:var(--text);font-weight:var(--weight-semibold)}
+.shelf-count{font-size:var(--text-2xl);color:var(--accent-words-text);line-height:1}
+/* The title chip (StoryService.READER_LEVELS): warm, like 礼物 on the task page. */
+.shelf-level{display:inline-flex;align-items:center;gap:var(--s1);padding:2px var(--s3);border-radius:var(--radius-full);background:var(--accent-words-bg);color:var(--accent-words-text);font-size:var(--text-md);font-weight:var(--weight-semibold);white-space:nowrap}
+/* One spine per book read (max 20): the shelf fills up, no titles. */
+.shelf-spines{display:flex;align-items:flex-end;gap:3px;height:32px;margin-top:var(--s3);padding-bottom:3px;border-bottom:3px solid var(--accent-words)}
+.shelf-spine{width:9px;height:26px;border-radius:2px 2px 0 0;background:var(--primary)}
+.shelf-spine--1{height:30px;background:var(--accent-words)}
+.shelf-spine--2{height:22px;background:var(--success)}
+.shelf-spine--3{height:28px;background:var(--primary-300)}
+.shelf-spine--4{height:24px;background:var(--warning)}
+/* The task page's promise (js/story-gift.js renderTeaser): small and quiet,
+   under the steps; the steps stay the main thing (design §3.1.11). */
+/* 16px text: readable for a first-grader, one step below the page title (18px) so the task stays first. */
+.dt-gift-teaser{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:var(--s2);margin:var(--s6) auto 0;font-size:var(--text-lg);color:var(--text);text-align:center}
+.dt-gift-teaser.hidden{display:none}
+.gift-teaser-box{font-size:var(--text-2xl);line-height:1;display:inline-block;animation:giftWiggle 3.2s ease-in-out 1.5s infinite}
+.gift-teaser-icons{display:inline-flex;gap:2px}
+.gift-teaser-icons .gift-icon{width:1.6em;height:1.6em}
+.gift-teaser-text{white-space:nowrap}
+/* Emphasis (design §3.1.11): 礼物 in warm colour + semibold in every line;
+   what to do (完成 / 2 步 / 最后一步) semibold in the body colour. Never the whole line. */
+.gift-teaser-word{font-style:normal;font-weight:var(--weight-semibold);color:var(--accent-words-text)}
+.gift-teaser-left{font-weight:var(--weight-semibold)}   /* wraps as a whole line under the icons on narrow phones, never mid-sentence */
+.gift--read{background:var(--card)}
+@media (prefers-reduced-motion:reduce){.gift-teaser-box{animation:none}}

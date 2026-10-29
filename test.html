@@ -451,6 +451,9 @@ async function runTests() {
     // Back on, for the story tests below.
     await SS.reload(FIXTURE_CODE);
   } catch (e) { unlock.error = String(e && e.stack || e); }
+  // 礼物故事 and 我的书架 (design §3.1.10), driven here once with the fixture
+  // unlocked (1-1-31 and 1-2-26 reviewed; 1-2-27 not), so the group below
+  // can assert synchronously. Each child's data is put back afterwards.
   // 选年级 → 选学期 → 选课文: the step line and the back button, run for real.
   const setup = { error: null };
   try {
@@ -487,6 +490,346 @@ async function runTests() {
     setup.back2 = view();
     ST.save('lessonProgress', savedProg); ST.save('dailyTask', savedTask);
   } catch (e) { setup.error = e.message; }
+
+  const gift = { error: null };
+  {
+    const ST = app.State, SS = app.StoryService, D = app.DailyTaskService;
+    const keep = {};
+    ['storiesRead', 'dailyTask', 'lessonProgress', 'badges', 'growthPoints'].forEach(k => { keep[k] = ST.load(k, null); });
+    const keepBadges = (ST.get('badges') || []).slice();
+    const doc = () => frame.contentDocument;
+    const settle = async () => { await SS.load(); await new Promise(r => setTimeout(r, 30)); };
+    // Finish the daily task for the lesson at index `i` of 一上 with a score; return the slot's state.
+    const finish = async (i, score) => {
+      D.initProgress(1, 1, i);
+      ST.save('dailyTask', { date: '', step: 'review' });
+      D.getTaskState(); D.completeReview(0); D.completeRecap(0); D.completeLearn();
+      D.completeQuiz(score, 10);
+      app.AppController.switchMode('dailyTask');
+      await settle();
+      const slot = doc().getElementById('dtGiftSlot');
+      return { slot: !!slot, hidden: !slot || slot.classList.contains('hidden'), html: slot ? slot.innerHTML : '',
+               state: D.getTaskState() };
+    };
+    try {
+      ST.save('storiesRead', []);
+      // The rule, directly.
+      gift.rule = {
+        own: (SS.rewardFor('1-1-31') || {}).lesson,          // the lesson's own story
+        after: (SS.rewardFor('1-1-35') || {}).lesson,        // none of its own: the nearest before it
+        before: SS.rewardFor('1-1-30'),                      // every story is later: none
+        nextVol: (SS.rewardFor('1-2-30') || {}).lesson,      // nearest is 1-2-26 (1-2-27 is unreviewed)
+        none: SS.rewardFor(''),
+      };
+      SS.markRead('1-2-26');
+      gift.rule.skipRead = (SS.rewardFor('1-2-30') || {}).lesson;   // 1-2-26 read: the next nearest, 1-1-31
+      SS.markRead('1-1-31');
+      gift.rule.allRead = SS.rewardFor('1-2-30');
+      gift.rule.markAgain = SS.markRead('1-1-31');
+      gift.rule.list = SS.readList().join(',');
+      ST.save('storiesRead', []);
+
+      // The completion page. 1-1-31 is index 30 of 一上.
+      const pass = await finish(30, 8);
+      gift.pass = { hidden: pass.hidden, lessonId: pass.state.lessonId, chosen: pass.state.gift,
+        closed: /礼物来啦/.test(pass.html) && /拆开看看/.test(pass.html),
+        titleHidden: !pass.html.includes('测试一'), givers: /飞飞和小天给你带来了一个惊喜/.test(pass.html),
+        icons: (pass.html.match(/class="gift-icon"/g) || []).length,
+        noTaskWords: !/任务|完成|奖励|说到做到/.test(pass.html) };
+      gift.pass.order = (() => {
+        const kids = [...doc().querySelector('.dt-complete').children].map(e => e.id || e.className);
+        return kids.indexOf('dtGiftSlot') < kids.findIndex(c => /dt-complete-actions/.test(c));
+      })();
+      gift.pass.actionsKept = ['dtBtnNextLesson', 'dtBtnRedo', 'dtBtnFreePractice', 'dtBtnDone'].every(id => doc().getElementById(id));
+      const growthBefore = ST.load('growthPoints', 0), streakBefore = JSON.stringify(app.StatsService.get());
+
+      // 拆开看看 (the test frame is not reduced-motion: wait for the 0.7 s unwrap).
+      doc().querySelector('[data-gift="unwrap"]').click();
+      gift.unwrapSaved = D.getTaskState().giftOpened;
+      await new Promise(r => setTimeout(r, 800));
+      const open = doc().getElementById('dtGiftSlot').innerHTML;
+      gift.cover = { title: open.includes('测试一'), read: /开始读/.test(open) };
+      // A picture that cannot load becomes its emoji on the cover too.
+      {
+        const coverImg = doc().querySelector('#dtGiftSlot img.gift-icon');
+        if (coverImg) {
+          coverImg.src = 'assets/characters/no-such-file.svg';
+          await new Promise(r => { coverImg.addEventListener('error', r, { once: true }); setTimeout(r, 1000); });
+          await new Promise(r => setTimeout(r, 20));
+        }
+        gift.coverFallback = { hadImg: !!coverImg, gone: !coverImg || !coverImg.isConnected,
+          emoji: coverImg ? doc().getElementById('dtGiftSlot').textContent.includes(coverImg.dataset.fallback) : false };
+      }
+      gift.focus = doc().activeElement && doc().activeElement.dataset.gift;
+
+      // 开始读 → the story in 学习, from its cover; read to the end.
+      doc().querySelector('[data-gift="read"]').click();
+      await new Promise(r => setTimeout(r, 30));
+      gift.reading = { mode: ST.get('mode'), active: app.StoryView.isActive(), lesson: doc().getElementById('lessonFilter').value };
+      const unreadBefore = SS.isRead('1-1-31');
+      for (let i = 0; i < 10 && !doc().querySelector('.story-finish'); i++) app.StoryView.next();
+      const fin = doc().querySelector('.story-finish');
+      gift.finish = { shown: !!fin, shelf: !!(fin && /放进你的书架/.test(fin.textContent)),
+        back: !!(fin && fin.querySelector('[data-action="story-back"]')), cards: !!(fin && fin.querySelector('[data-action="story-cards"]')),
+        markedOnFinish: !unreadBefore && SS.isRead('1-1-31'), badge: (ST.get('badges') || []).includes('bookworm') };
+      // 回到今天的任务 → the completion page, the present now opened.
+      fin.querySelector('[data-action="story-back"]').click();
+      await settle();
+      const after = doc().getElementById('dtGiftSlot');
+      gift.back = { mode: ST.get('mode'), opened: !!after && /放进书架啦/.test(after.innerHTML) && after.innerHTML.includes('测试一'),
+        again: !!after && /再读一遍/.test(after.innerHTML),
+        growthSame: ST.load('growthPoints', 0) === growthBefore, statsSame: JSON.stringify(app.StatsService.get()) === streakBefore };
+      // Reload: the same present, still opened.
+      app.DailyTaskController.render();
+      await settle();
+      gift.reloaded = /放进书架啦/.test(doc().getElementById('dtGiftSlot').innerHTML);
+
+      // From 学习 itself (not a gift): the finish page keeps 「回到字卡」, no shelf line the second time.
+      app.StoryView.open('1-1-31');
+      for (let i = 0; i < 10 && !doc().querySelector('.story-finish'); i++) app.StoryView.next();
+      const fin2 = doc().querySelector('.story-finish');
+      gift.plain = { cards: !!(fin2 && fin2.querySelector('[data-action="story-cards"]')), back: !!(fin2 && fin2.querySelector('[data-action="story-back"]')),
+        shelfAgain: !!(fin2 && /放进你的书架/.test(fin2.textContent)) };
+      app.StoryView.show(false);
+
+      // Reading a gift, the child picks another lesson with a story in the same
+      // volume (the dropdown keeps the story open): that is an ordinary
+      // reading — its finish page offers 回到字卡, not the task. The fixture has
+      // one story per volume, so a second one is added for this case only.
+      let backCalls = 0;
+      const extra = Object.assign({}, SS.forLesson('1-1-31'), { lesson: '1-1-32', title: '测试三' });
+      SS._setForTest([SS.forLesson('1-1-31'), SS.forLesson('1-2-26'), extra]);
+      app.StoryView.open('1-1-31', { onBack: () => { backCalls++; } });
+      const sel2 = doc().getElementById('lessonFilter');
+      sel2.value = '1-1-32'; sel2.dispatchEvent(new app.Event('change', { bubbles: true }));
+      const stillReading = app.StoryView.isActive();
+      for (let i = 0; i < 10 && !doc().querySelector('.story-finish'); i++) app.StoryView.next();
+      const fin3 = doc().querySelector('.story-finish');
+      gift.switched = { reading: stillReading, finish: !!fin3,
+        cards: !!(fin3 && fin3.querySelector('[data-action="story-cards"]')),
+        back: !!(fin3 && fin3.querySelector('[data-action="story-back"]')), calls: backCalls };
+      app.StoryView.show(false);
+      // Changing the volume instead closes the story (back to the cards): also no way back left.
+      app.StoryView.open('1-1-31', { onBack: () => { backCalls++; } });
+      app.AppController.selectSemester('2', '1');
+      gift.switched.volumeClosed = !app.StoryView.isActive();
+      await SS.reload(FIXTURE_CODE);
+
+      // With reduced motion the present opens at once, no animation.
+      ST.save('storiesRead', []);
+      D.initProgress(1, 1, 30);
+      ST.save('dailyTask', { date: '', step: 'review' });
+      D.getTaskState(); D.completeReview(0); D.completeRecap(0); D.completeLearn(); D.completeQuiz(8, 10);
+      app.AppController.switchMode('dailyTask');
+      await settle();
+      const realMM = app.matchMedia;
+      app.matchMedia = (q) => ({ matches: /reduce/.test(q) });
+      try {
+        doc().querySelector('[data-gift="unwrap"]').click();
+        gift.reducedNow = /开始读/.test(doc().getElementById('dtGiftSlot').innerHTML);
+      } finally { app.matchMedia = realMM; }
+
+      // The stories unlock only after the page is drawn, and the child unwraps
+      // before that: the late redraw must not put the present back (or skip
+      // to the opened line) under their finger.
+      D.initProgress(1, 1, 30);
+      ST.save('dailyTask', { date: '', step: 'review' });
+      D.getTaskState(); D.completeReview(0); D.completeRecap(0); D.completeLearn(); D.completeQuiz(8, 10);
+      ST.save('storiesRead', []);
+      let release;
+      const realLoad = SS.load;
+      const late = new Promise(r => { release = r; });
+      SS.load = () => late.then(() => realLoad());
+      try {
+        app.AppController.switchMode('dailyTask');
+        app.matchMedia = (q) => ({ matches: /reduce/.test(q) });
+        doc().querySelector('[data-gift="unwrap"]').click();
+        release(); await late; await realLoad(); await new Promise(r => setTimeout(r, 30));
+        const html = doc().getElementById('dtGiftSlot').innerHTML;
+        gift.race = { cover: /开始读/.test(html) && /一个小故事/.test(html) && !/你的礼物/.test(html),
+          focus: doc().activeElement && doc().activeElement.dataset.gift };
+      } finally { SS.load = realLoad; app.matchMedia = realMM; }
+
+      // The task page's promise (design §3.1.11): under the steps, from the
+      // story's characters, changing with the steps left; the same story the
+      // done page then gives, even if the child reads it in 学习 meanwhile.
+      ST.save('storiesRead', []);
+      D.initProgress(1, 1, 30);
+      ST.save('dailyTask', { date: '', step: 'review' });
+      app.AppController.switchMode('dailyTask'); await settle();
+      const teaser = () => doc().getElementById('dtGiftTeaser');
+      const steps = doc().querySelector('.dt-steps');
+      gift.teaser = { shown: !!teaser() && !teaser().classList.contains('hidden'),
+        afterSteps: !!steps && steps.nextElementSibling === teaser(),
+        start: teaser() ? teaser().textContent.replace(/\s+/g, ' ').trim() : '',
+        icons: teaser() ? teaser().querySelectorAll('.gift-icon').length : 0,
+        noTitle: teaser() ? !teaser().textContent.includes('测试一') : false,
+        marks: teaser() ? [...teaser().querySelectorAll('strong, em')].map(e => e.textContent).join('|') : '',
+        promised: D.getTaskState().gift };
+      D.completeReview(0); D.completeRecap(0);
+      app.DailyTaskController.render(); await settle();
+      gift.teaser.two = teaser().textContent.replace(/\s+/g, ' ').trim();
+      gift.teaser.twoMarks = [...teaser().querySelectorAll('strong, em')].map(e => e.textContent).join('|');
+      D.completeLearn();
+      app.DailyTaskController.render(); await settle();
+      gift.teaser.last = teaser().textContent.replace(/\s+/g, ' ').trim();
+      gift.teaser.lastMarks = [...teaser().querySelectorAll('strong, em')].map(e => e.textContent).join('|');
+      gift.teaser.stepsKept = D.getTaskState().learnDone && D.getTaskState().reviewDone;
+      SS.markRead('1-1-31');             // read in 学习 while the task is going on
+      D.completeQuiz(8, 10);
+      app.AppController.switchMode('dailyTask'); await settle();
+      gift.teaser.kept = D.getTaskState().gift === '1-1-31' && !doc().getElementById('dtGiftSlot').classList.contains('hidden');
+      // Opened but not read yet: 你的礼物 + 开始读.
+      ST.save('storiesRead', []);
+      const ts = D.getTaskState(); ts.giftOpened = true; ST.save('dailyTask', ts);
+      app.DailyTaskController.render(); await settle();
+      const op = doc().getElementById('dtGiftSlot').innerHTML;
+      gift.openedUnread = /你的礼物：《测试一》/.test(op) && /开始读/.test(op) && !/放进书架/.test(op);
+
+      // The task page is drawn, then a step is finished elsewhere, and only
+      // then do the stories finish unlocking and the gift get decided from the
+      // page's older copy of the state. Deciding must not undo that step.
+      ST.save('storiesRead', []);
+      D.initProgress(1, 1, 30);
+      ST.save('dailyTask', { date: '', step: 'review' });
+      D.getTaskState();
+      {
+        let release;
+        const realLoad = SS.load;
+        const late = new Promise(r => { release = r; });
+        const realStatus = SS.status;
+        SS.status = () => 'none';                 // still locked when the page is drawn
+        SS.load = () => late.then(() => realLoad());
+        try {
+          app.AppController.switchMode('dailyTask');
+          D.completeReview(0);                    // finished while the page's copy is old
+          SS.status = realStatus;
+          release(); await late; await realLoad(); await new Promise(r => setTimeout(r, 30));
+          const s = D.getTaskState();
+          gift.staleSafe = { reviewDone: s.reviewDone === true, gift: s.gift };
+        } finally { SS.load = realLoad; SS.status = realStatus; }
+      }
+
+      // Grades 3+: no promise and no present, even with a story there.
+      const g3 = Object.assign({}, SS.forLesson('1-1-31'), { lesson: '3-1-1', title: '三年级' });
+      SS._setForTest([SS.forLesson('1-1-31'), SS.forLesson('1-2-26'), g3]);
+      gift.grade3 = { rule: (SS.rewardFor('3-1-1') || {}).lesson };
+      D.initProgress(3, 1, 0);
+      ST.save('dailyTask', { date: '', step: 'review' });
+      app.AppController.switchMode('dailyTask'); await settle();
+      gift.grade3.teaserHidden = !teaser() || teaser().classList.contains('hidden');
+      D.getTaskState(); D.completeReview(0); D.completeRecap(0); D.completeLearn(); D.completeQuiz(8, 10);
+      app.AppController.switchMode('dailyTask'); await settle();
+      gift.grade3.giftHidden = doc().getElementById('dtGiftSlot').classList.contains('hidden');
+      await SS.reload(FIXTURE_CODE);
+
+      // A failed quiz still gets a present (another lesson, so it is new): 1-2-26 is index 25 of 一下.
+      ST.save('storiesRead', []);
+      D.initProgress(1, 2, 25);
+      ST.save('dailyTask', { date: '', step: 'review' });
+      D.getTaskState(); D.completeReview(0); D.completeRecap(0); D.completeLearn();
+      D.completeQuiz(3, 10);
+      app.AppController.switchMode('dailyTask');
+      await settle();
+      const fail = doc().getElementById('dtGiftSlot');
+      gift.failed = { shown: !!fail && !fail.classList.contains('hidden'), lesson: D.getTaskState().gift, advanced: D.getTaskState().advanced };
+
+      // Before the first story (一上 lesson 1): no present at all.
+      ST.save('storiesRead', []);
+      D.initProgress(1, 1, 0);
+      ST.save('dailyTask', { date: '', step: 'review' });
+      app.AppController.switchMode('dailyTask'); await settle();
+      gift.earlyTeaserHidden = doc().getElementById('dtGiftTeaser').classList.contains('hidden');
+      const early = await finish(0, 8);
+      gift.early = { hidden: early.hidden, html: early.html };
+
+      // Everything read: no present (a story read already is no surprise).
+      ST.save('storiesRead', ['1-1-31', '1-2-26']);
+      const done = await finish(30, 8);
+      gift.allRead = done.hidden;
+
+      // Old task data without lessonId: no present, no guess.
+      ST.save('storiesRead', []);
+      const legacy = Object.assign({}, D.getTaskState()); delete legacy.lessonId; delete legacy.gift;
+      ST.save('dailyTask', legacy);
+      app.DailyTaskController.render(); await settle();
+      gift.legacyHidden = doc().getElementById('dtGiftSlot').classList.contains('hidden');
+
+      // 成就墙: the shelf (read stories only, no total) and 小书虫.
+      ST.save('storiesRead', ['1-1-31']);
+      app.AppController.showBadges ? app.AppController.showBadges() : doc().getElementById('btnBadges').click();
+      await new Promise(r => setTimeout(r, 30));
+      const wall = doc().getElementById('modalContent');
+      gift.wall = { shelf: !!wall.querySelector('.shelf'), buttons: wall.querySelectorAll('.shelf button, [data-shelf]').length,
+        head: ((wall.querySelector('.shelf-head') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
+        spines: wall.querySelectorAll('.shelf-spine').length,
+        noTitles: !wall.textContent.includes('测试一') && !wall.textContent.includes('测试二'),
+        bookworm: /小书虫/.test(wall.textContent) };
+      app.ModalUI.close();
+      ST.save('storiesRead', []);
+      doc().getElementById('btnBadges').click(); await new Promise(r => setTimeout(r, 30));
+      gift.wallEmpty = /书架还空着，完成每日任务，就会有故事放进来/.test(doc().getElementById('modalContent').textContent);
+      // The title grows with the shelf; spines stop at 20; never a hint of the next one.
+      const many = n => Array.from({ length: n }, (_, i) => '1-1-' + (100 + i));
+      const realShelf = SS.shelf;
+      gift.levels = {};
+      try {
+        for (const n of [9, 10, 19, 20, 49, 50, 80]) {
+          SS.shelf = () => many(n);
+          doc().getElementById('btnBadges').click(); await new Promise(r => setTimeout(r, 30));
+          const w = doc().getElementById('modalContent');
+          gift.levels[n] = { head: w.querySelector('.shelf-head').textContent.replace(/\s+/g, ' ').trim(),
+            spines: w.querySelectorAll('.shelf-spine').length, hint: /还差|再读|升级|下一/.test(w.querySelector('.shelf').textContent) };
+          app.ModalUI.close();
+        }
+      } finally { SS.shelf = realShelf; }
+      gift.levelRule = [0, 1, 9, 10, 19, 20, 49, 50, 999].map(n => (SS.readerLevel(n) || { title: '-' }).title).join(',');
+      app.ModalUI.close();
+
+      // Without an invite code: completion page and 成就墙 exactly as before.
+      const saved = ST.loadShared('storyInvite', '');
+      app.StoryUnlock.clear(); await SS.reload();
+      D.initProgress(1, 1, 30);
+      ST.save('dailyTask', { date: '', step: 'review' });
+      app.AppController.switchMode('dailyTask'); await settle();
+      const tz = doc().getElementById('dtGiftTeaser');
+      gift.noCodeTeaser = { hidden: tz.classList.contains('hidden'), empty: tz.innerHTML === '' };
+      const noCode = await finish(30, 8);
+      gift.noCode = { hidden: noCode.hidden, empty: noCode.html === '' };
+      doc().getElementById('btnBadges').click(); await new Promise(r => setTimeout(r, 30));
+      const wall2 = doc().getElementById('modalContent').textContent;
+      gift.noCodeWall = { shelf: /书架/.test(wall2), bookworm: /小书虫/.test(wall2), count: app.BadgeService.getAll().length };
+      app.ModalUI.close();
+      ST.saveShared('storyInvite', saved);
+      await SS.reload(FIXTURE_CODE);
+
+      // Stories still in memory but the code no longer works (status 'bad'):
+      // the present must not appear. Simulated without a reload: install the
+      // fixture's stories directly, then mark the service as locked.
+      ST.save('storiesRead', []);
+      D.initProgress(1, 1, 30);
+      ST.save('dailyTask', { date: '', step: 'review' });
+      D.getTaskState(); D.completeReview(0); D.completeRecap(0); D.completeLearn(); D.completeQuiz(8, 10);
+      const realStatus = SS.status;
+      SS.status = () => 'bad';
+      try {
+        app.AppController.switchMode('dailyTask');
+        await new Promise(r => setTimeout(r, 30));
+        gift.lockedHidden = doc().getElementById('dtGiftSlot').classList.contains('hidden');
+      } finally { SS.status = realStatus; }
+
+      // storiesRead travels with a child's export, the invite code does not.
+      ST.save('storiesRead', ['1-1-31']);
+      const exp = ST.exportProfileData();
+      gift.exported = { read: JSON.stringify(exp.data.storiesRead), code: /TEST.?2026/.test(JSON.stringify(exp)) };
+    } catch (e) { gift.error = String(e && e.stack || e); }
+    finally {
+      Object.entries(keep).forEach(([k, v]) => ST.save(k, v));
+      ST.set('badges', keepBadges);
+      app.AppController.switchMode('dailyTask');
+    }
+  }
+
   const shippedStories = unlock.direct ? unlock.direct.volumes : null;
 
   // === 1. Data Files ===
@@ -1059,8 +1402,14 @@ async function runTests() {
       assert(pick === '爪子', `expected 爪子, got ${pick}`);
     });
 
-    it('BadgeService has 11 badges', () => {
-      assertEqual(app.BadgeService.getAll().length, 11, 'Should have 11 badges');
+    it('BadgeService has 11 badges, plus 📖 小书虫 only where stories are open', () => {
+      // This group runs before the 🔑 setup unlocks the fixture, so nothing is open yet.
+      if (app.StoryService.status() !== '') {
+        assertEqual(app.BadgeService.getAll().length, 11, 'without an invite code: 11, no 小书虫');
+        assert(!app.BadgeService.getAll().some(b => b.id === 'bookworm'), 'its lock is not shown');
+      } else {
+        assertEqual(app.BadgeService.getAll().length, 12, 'with stories open: 12');
+      }
     });
 
     it('LearnController loaded', () => {
@@ -7489,6 +7838,7 @@ async function runTests() {
     });
   });
 
+  // === 礼物故事 and 我的书架 (js/story-gift.js; design §3.1.10) ===
   describe('🧭 选年级、学期、课文', () => {
     it('ran', () => assertEqual(setup.error, null));
 
@@ -7525,6 +7875,191 @@ async function runTests() {
 
     it('the old small texts are gone', () => {
       [setup.s1, setup.s2, setup.s3].forEach(s => assert(!s.oldWords, '第一步 / 返回选…'));
+    });
+  });
+
+  describe('🎁 礼物故事和书架', () => {
+    it('setup ran without errors', () => { assert(!gift.error, gift.error); });
+
+    it('which story: nearest unread, never a later lesson, none when all are read', () => {
+      assertEqual(gift.rule.own, '1-1-31', 'the lesson\u2019s own story');
+      assertEqual(gift.rule.after, '1-1-31', 'no story of its own: the nearest before it');
+      assertEqual(gift.rule.before, null, 'every story is later: none');
+      assertEqual(gift.rule.nextVol, '1-2-26', 'the unreviewed 1-2-27 is never chosen');
+      assertEqual(gift.rule.skipRead, '1-1-31', 'a read story is skipped, even across volumes');
+      assertEqual(gift.rule.allRead, null, 'all read: none');
+      assertEqual(gift.rule.none, null);
+    });
+
+    it('the unwrapped cover: a picture that cannot load becomes its emoji', () => {
+      assert(gift.coverFallback.hadImg, 'the cover shows the characters\u2019 pictures');
+      assert(gift.coverFallback.gone && gift.coverFallback.emoji, 'broken picture replaced by its emoji');
+    });
+
+    it('read list: once per story, in the order read', () => {
+      assertEqual(gift.rule.markAgain, false);
+      assertEqual(gift.rule.list, '1-2-26,1-1-31');
+    });
+
+    it('completion page: a wrapped present from the story\u2019s characters, title hidden', () => {
+      assertEqual(gift.pass.hidden, false);
+      assertEqual(gift.pass.lessonId, '1-1-31', 'the lesson just finished, kept before advancing');
+      assertEqual(gift.pass.chosen, '1-1-31');
+      assert(gift.pass.closed, '礼物来啦 / 拆开看看');
+      assert(gift.pass.titleHidden, 'a surprise: no title before unwrapping');
+      assert(gift.pass.givers, '飞飞和小天给你带来了一个惊喜');
+      assertEqual(gift.pass.icons, 2, 'their pictures');
+      assert(gift.pass.noTaskWords, 'no 任务/完成/奖励 on the present');
+    });
+
+    it('the present sits above the task\u2019s own buttons, which all stay', () => {
+      assert(gift.pass.order, 'above the buttons');
+      assert(gift.pass.actionsKept, '继续学下一课 / 重新挑战 / 自由练习 / 明天见');
+    });
+
+    it('拆开看看 shows the cover, remembers it was opened, and focuses 开始读', () => {
+      assertEqual(gift.unwrapSaved, true);
+      assert(gift.cover.title && gift.cover.read, 'title and 开始读');
+      assertEqual(gift.focus, 'read');
+    });
+
+    it('开始读 opens the story in 学习 at that lesson', () => {
+      assertEqual(gift.reading.mode, 'learn');
+      assertEqual(gift.reading.active, true);
+      assertEqual(gift.reading.lesson, '1-1-31');
+    });
+
+    it('finish page from a gift: on the shelf, 小书虫, and the way back to the task', () => {
+      assert(gift.finish.shown);
+      assert(gift.finish.markedOnFinish, 'read only once the last page is reached');
+      assert(gift.finish.shelf, '这个故事放进你的书架啦');
+      assert(gift.finish.back && !gift.finish.cards, '回到今天的任务 instead of 回到字卡');
+      assert(gift.finish.badge, '📖 小书虫 for the first story');
+    });
+
+    it('back on the completion page: the present is opened; streak and growth untouched', () => {
+      assertEqual(gift.back.mode, 'dailyTask');
+      assert(gift.back.opened && gift.back.again, '📚 放进书架啦 ·《测试一》 再读一遍');
+      assert(gift.back.growthSame, 'growth points unchanged');
+      assert(gift.back.statsSame, 'stats and streak unchanged');
+      assert(gift.reloaded, 'the same present after a reload');
+    });
+
+    it('read from 学习 (not a gift): 回到字卡 as before, no shelf line the second time', () => {
+      assert(gift.plain.cards && !gift.plain.back);
+      assertEqual(gift.plain.shelfAgain, false);
+    });
+
+    it('reading a gift, then another lesson from the dropdown: an ordinary reading', () => {
+      assert(gift.switched.reading && gift.switched.finish, 'still reading, reached the end');
+      assert(gift.switched.cards && !gift.switched.back, '回到字卡, not 回到今天的任务');
+      assert(gift.switched.volumeClosed, 'another volume closes the story');
+      assertEqual(gift.switched.calls, 0, 'the gift\u2019s way back is not called');
+    });
+
+    it('with reduced motion the present opens at once', () => {
+      assert(gift.reducedNow, 'the cover right after the tap');
+    });
+
+    it('unwrapped before the stories finished unlocking: the late redraw keeps the cover', () => {
+      assert(gift.race.cover, 'still the cover with 开始读');
+      assertEqual(gift.race.focus, 'read', 'focus stays on 开始读');
+    });
+
+    it('task page: a small promise under the steps, from the story\u2019s characters, no title', () => {
+      assert(gift.teaser.shown, 'shown when there will be a present');
+      assert(gift.teaser.afterSteps, 'right after the four steps');
+      assertEqual(gift.teaser.start, '🎁 完成任务，飞飞和小天有礼物给你');
+      assertEqual(gift.teaser.marks, '完成|礼物', 'emphasis: what to do, and 礼物');
+      assertEqual(gift.teaser.icons, 2);
+      assert(gift.teaser.noTitle, 'the title stays a surprise');
+      assertEqual(gift.teaser.promised, '1-1-31', 'decided when it is promised');
+    });
+
+    it('task page: the promise comes closer with each step, and steps are not undone', () => {
+      assertEqual(gift.teaser.two, '🎁 还有 2 步，礼物就到啦');
+      assertEqual(gift.teaser.last, '🎁 最后一步！礼物在等你');
+      assertEqual(gift.teaser.twoMarks, '2 步|礼物');
+      assertEqual(gift.teaser.lastMarks, '最后一步！|礼物');
+      assert(gift.teaser.stepsKept, 'saving the gift did not undo finished steps');
+    });
+
+    it('deciding the gift late never undoes a step finished meanwhile', () => {
+      assert(gift.staleSafe.reviewDone, 'the review step is still done');
+      assertEqual(gift.staleSafe.gift, '1-1-31', 'and the gift was decided');
+    });
+
+    it('what was promised is given, even if read in 学习 meanwhile', () => {
+      assert(gift.teaser.kept);
+    });
+
+    it('opened but not read yet: 你的礼物《…》 and 开始读', () => {
+      assert(gift.openedUnread);
+    });
+
+    it('grades 3 and up: no promise and no present (designed for young readers)', () => {
+      assertEqual(gift.grade3.rule, '3-1-1', 'the reading rule itself would allow it');
+      assert(gift.grade3.teaserHidden, 'no promise');
+      assert(gift.grade3.giftHidden, 'no present');
+    });
+
+    it('a failed quiz still gets a present', () => {
+      assertEqual(gift.failed.advanced, false);
+      assert(gift.failed.shown);
+      assertEqual(gift.failed.lesson, '1-2-26');
+    });
+
+    it('no present before the first story, when all are read, or for old task data', () => {
+      assertEqual(gift.early.hidden, true);
+      assertEqual(gift.early.html, '');
+      assert(gift.earlyTeaserHidden, 'and nothing promised: only what will be given');
+      assertEqual(gift.allRead, true);
+      assertEqual(gift.legacyHidden, true);
+    });
+
+    it('成就墙: 我的书架 is one line, how many were read; no titles, no total', () => {
+      assert(gift.wall.shelf);
+      assertEqual(gift.wall.head, '📚 我的书架 · 1 本 🐛 小书虫');
+      assertEqual(gift.wall.spines, 1, 'one spine per book');
+      assert(!/\/|共/.test(gift.wall.head), 'no total');
+      assert(gift.wall.noTitles, 'no story titles on the wall');
+      assertEqual(gift.wall.buttons, 0, 'no book list');
+      assert(gift.wall.bookworm, '小书虫 listed where stories are open');
+      assert(gift.wallEmpty, 'an empty shelf says how books arrive');
+    });
+
+    it('书架的称号 grows: 小书虫 → 大书虫 (10) → 会飞的书虫 (20) → 故事蝴蝶 (50)', () => {
+      assertEqual(gift.levelRule, '-,小书虫,小书虫,大书虫,大书虫,会飞的书虫,会飞的书虫,故事蝴蝶,故事蝴蝶');
+      assertEqual(gift.levels[9].head, '📚 我的书架 · 9 本 🐛 小书虫');
+      assertEqual(gift.levels[10].head, '📚 我的书架 · 10 本 🐛 大书虫');
+      assertEqual(gift.levels[19].head, '📚 我的书架 · 19 本 🐛 大书虫');
+      assertEqual(gift.levels[20].head, '📚 我的书架 · 20 本 🦋 会飞的书虫');
+      assertEqual(gift.levels[49].head, '📚 我的书架 · 49 本 🦋 会飞的书虫');
+      assertEqual(gift.levels[50].head, '📚 我的书架 · 50 本 🦋 故事蝴蝶');
+    });
+
+    it('书架: a spine per book up to 20, and never a hint of how far the next title is', () => {
+      assertEqual(gift.levels[19].spines, 19);
+      assertEqual(gift.levels[20].spines, 20);
+      assertEqual(gift.levels[80].spines, 20);
+      Object.values(gift.levels).forEach(l => assert(!l.hint, 'no 还差 / 再读 / 升级'));
+    });
+
+    it('without an invite code: no present, no shelf, no 小书虫 lock', () => {
+      assert(gift.noCode.hidden && gift.noCode.empty);
+      assert(gift.noCodeTeaser.hidden && gift.noCodeTeaser.empty, 'no promise on the task page');
+      assertEqual(gift.noCodeWall.shelf, false);
+      assertEqual(gift.noCodeWall.bookworm, false);
+      assertEqual(gift.noCodeWall.count, 11);
+    });
+
+    it('stories still in memory but the code stopped working: no present', () => {
+      assertEqual(gift.lockedHidden, true);
+    });
+
+    it('the read list goes with the child\u2019s export; the invite code never does', () => {
+      assertEqual(gift.exported.read, '["1-1-31"]');
+      assertEqual(gift.exported.code, false);
     });
   });
 

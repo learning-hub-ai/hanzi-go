@@ -16,6 +16,7 @@ const STATIC_ASSETS = [
   './js/story-unlock.js',
   './js/story.js',
   './js/story-invite.js',
+  './js/story-gift.js',
   './js/mobile.js',
   './assets/icon-192.png',
   './assets/icon-512.png',
