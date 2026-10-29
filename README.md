@@ -94,7 +94,8 @@ hanzi-go/
 ```bash
 python3 scripts/check_stories.py              # 检查故事：用字、读音、写法轮换
 python3 scripts/build_stories.py              # 打包加密（先检查，私有仓库要先提交）
-python3 scripts/build_stories.py --add-invite 名字   # 新邀请码，打印要发的链接
+scripts/new_invite.sh 名字                     # 发一个新码：生成、提交、打包、推送、上线验证
+python3 scripts/build_stories.py --add-invite 名字   # 只生成新码（不提交、不打包）
 python3 scripts/build_stories.py --list       # 查看（不显示码）；--revoke <id> 取消
 python3 scripts/story_brief.py 1-2-12 --text  # 写一课故事前的提要
 ```
