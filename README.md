@@ -94,12 +94,14 @@ hanzi-go/
 ```bash
 python3 scripts/check_stories.py              # 检查故事：用字、读音、写法轮换
 python3 scripts/build_stories.py              # 打包加密（先检查，私有仓库要先提交）
-scripts/new_invite.sh 名字                     # 发一个新码：生成、提交、打包、推送、上线验证
 python3 scripts/build_stories.py --add-invite 名字   # 只生成新码（不提交、不打包）
 python3 scripts/build_stories.py --list       # 查看（不显示码）；--revoke <id> 取消
 python3 scripts/build_stories.py --card <id>  # 重新生成要发的卡片（私有仓库 cards/，不提交）
 python3 scripts/story_brief.py 1-2-12 --text  # 写一课故事前的提要
 ```
+
+发一个新码（生成、两边提交推送、上线验证）用私有仓库里的 `scripts/new_invite.sh 名字`。
+家长的评价（`reviews.json`）、设计文档和要发的卡片也都在私有仓库。
 
 没有私有仓库的机器上，这些检查会说明后跳过；网站和浏览器测试不需要原文
 （测试用 `test/fixtures/stories.enc.json`，里面是编的故事，测试码公开）。

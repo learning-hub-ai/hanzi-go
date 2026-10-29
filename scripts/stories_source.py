@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Where the 小故事 text lives, and how to read it (docs/story-reading-design.html §7.4).
+"""Where the 小故事 text lives, and how to read it (hanzi-go-stories/docs/story-reading-design.html §7.4).
 
 The story text is private. It is kept in the repo learning-hub-ai/hanzi-go-stories,
 cloned next to this one; the public repo only ships the encrypted
@@ -19,6 +19,7 @@ Layout of that directory (one file per volume, all optional except the intros):
     grade<g>-semester<s>.json          one per volume in VOLUMES
 and next to it, in the private repo's root:
     invites.json                       who may read (build_stories.py manages it)
+    reviews.json                       the parent's verdict per story (story_review_page.py)
     cards/<id>.txt                     the card to send for one code; made from
                                        invites.json on demand, never committed
 """
@@ -30,6 +31,7 @@ ENV = 'HANZIGO_STORIES'
 PRIVATE_REPO = 'learning-hub-ai/hanzi-go-stories'
 CHARACTERS_FILE = 'characters.json'
 INVITES_FILE = 'invites.json'
+REVIEWS_FILE = 'reviews.json'
 CARDS_DIR = 'cards'          # invite cards to send, one per code; gitignored in the private repo
 # Volumes that may have stories (grades 1–2). Adding a volume = adding it here.
 VOLUMES = [(1, 1), (1, 2), (2, 1), (2, 2)]
@@ -54,6 +56,17 @@ def repo_dir(d=None):
 def invites_file(d=None):
     """Where the invite list is (it may not exist yet)."""
     return os.path.join(repo_dir(d), INVITES_FILE)
+
+
+def load_reviews(d=None):
+    """{lesson: status} from reviews.json; {} when there is none."""
+    path = os.path.join(repo_dir(d), REVIEWS_FILE)
+    if not os.path.isfile(path):
+        return {}
+    data = _read(path)
+    if data.get('format') != 'hanzigo-reviews' or data.get('version') != 1:
+        raise ValueError(f'{REVIEWS_FILE}: format/version 应是 hanzigo-reviews/1')
+    return dict(data.get('reviews') or {})
 
 
 def cards_dir(d=None):

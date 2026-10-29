@@ -7,7 +7,7 @@ the lesson and its 生字, the cast, the pages (生字 highlighted, the readings
 marked on 多音字 when "显示读音" is on), the writing style, mood and review note.
 
 The page goes in docs/, which is gitignored for this file: the stories are not
-public (docs/story-reading-design.html §7.4).
+public (hanzi-go-stories/docs/story-reading-design.html §7.4).
 
 Usage: python3 scripts/story_review_page.py [--out PATH]
 """
@@ -21,28 +21,29 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_stories as C  # noqa: E402  (Textbook, page_chars)
 import stories_source  # noqa: E402
 
-# Status labels, from the parent's verdict in the design doc §7.3. A story's
-# `review` field may set it; otherwise it is "待审阅" (to review).
+# Status labels. The parent's verdict per story is private (which lessons have
+# stories, and how she rated them): it lives in the private repo's
+# reviews.json (stories_source.load_reviews); a story not listed is 待审阅.
 STATUS = {
     'liked':   ('喜欢', '#15803d', '#dcfce7'),
     'ok':      ('还行', '#1d4ed8', '#dbeafe'),
     'rewrite': ('需要改进', '#b45309', '#fef3c7'),
     'new':     ('待审阅', '#7c3aed', '#ede9fe'),
 }
-# The parent's verdict on 2026-10-27, by lesson. Lessons rewritten after that
-# and approved are 'liked'; rewrites not yet reviewed are 'new'.
-VERDICT = {
-    '1-1-28': 'liked', '1-1-20': 'liked', '1-1-27': 'liked', '1-1-23': 'liked',
-    '1-1-24': 'ok', '1-1-25': 'ok', '1-1-30': 'ok', '1-1-31': 'ok',
-    '1-1-26': 'liked', '1-1-34': 'liked', '1-1-37': 'liked', '1-1-32': 'liked', '1-1-33': 'liked', '1-1-29': 'liked', '1-1-21': 'liked', '1-1-22': 'liked', '1-1-35': 'liked', '1-1-36': 'liked',   # rewritten, approved
-}
 VOLUME_NAME = {(1, 1): '一年级上册', (1, 2): '一年级下册', (2, 1): '二年级上册', (2, 2): '二年级下册'}
 MOOD_NAME = {'funny': '好笑', 'warm': '温暖', 'quiet': '安静', 'tense': '紧张'}
 
 
+_reviews = None
+
+
 def status_of(story):
-    """The review status key for a story: its VERDICT, else 待审阅 (new)."""
-    return VERDICT.get(story['lesson'], 'new')
+    """The review status key for a story: from reviews.json, else 待审阅 (new)."""
+    global _reviews
+    if _reviews is None:
+        _reviews = stories_source.load_reviews()
+    s = _reviews.get(story['lesson'], 'new')
+    return s if s in STATUS else 'new'
 
 
 def page_html(story, index, book, new_chars):

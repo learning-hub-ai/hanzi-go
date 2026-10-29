@@ -1,7 +1,7 @@
 /**
  * 小故事阅读 — one short original story per lesson, grades 1–2.
  *
- * Design: docs/story-reading-design.html. The story text is private: the site
+ * Design: hanzi-go-stories/docs/story-reading-design.html. The story text is private: the site
  * ships data/stories.enc.json, opened with a child's invite code by
  * StoryUnlock (js/story-unlock.js, design §7.5); the plain files live in the
  * private repo and are checked by scripts/check_stories.py.

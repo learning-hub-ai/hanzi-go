@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Check the 小故事 data (docs/story-reading-design.html §11).
+Check the 小故事 data (hanzi-go-stories/docs/story-reading-design.html §11).
 
 The story text is private (§7.4); scripts/stories_source.py says where it is
 and loads it. Without it on this machine there is nothing to check: the

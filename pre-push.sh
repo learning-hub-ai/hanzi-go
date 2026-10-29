@@ -556,7 +556,7 @@ python3 scripts/gen_syllable_audio.py --check < /dev/null \
 # 小故事 (private text, see scripts/stories_source.py; skipped when it is not
 # on this machine): every character is in the grade 1–2 生字表 or
 # allowed by name, every 多音字 that a tap would misread has its reading,
-# and the writing styles rotate (docs/story-reading-design.html §11).
+# and the writing styles rotate (hanzi-go-stories/docs/story-reading-design.html §11).
 python3 scripts/test_check_stories.py 2>/dev/null >/dev/null \
   && echo "✅ Story checker: unit tests pass" \
   || { echo "❌ Story checker tests failed: python3 scripts/test_check_stories.py"; exit 1; }

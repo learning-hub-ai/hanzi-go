@@ -45,8 +45,11 @@ class Location(unittest.TestCase):
 
 class Loading(unittest.TestCase):
     def setUp(self):
+        # A private repo of its own: <tmp>/stories is the story directory, so
+        # repo-level files (reviews.json, invites.json) stay inside <tmp>.
         self.tmp = tempfile.TemporaryDirectory()
-        self.d = self.tmp.name
+        self.d = os.path.join(self.tmp.name, 'stories')
+        os.makedirs(self.d)
         self.env = mock.patch.dict(os.environ, {S.ENV: self.d})
         self.env.start()
 
@@ -78,6 +81,19 @@ class Loading(unittest.TestCase):
             write(other, S.CHARACTERS_FILE, {'characters': {}})
             self.assertFalse(S.available())
             self.assertTrue(S.available(other))
+
+    def test_reviews_are_read_from_the_private_repo_root(self):
+        self.assertEqual(S.load_reviews(), {}, 'no file: every story is still to review')
+        self.assertEqual(S.repo_dir(), self.tmp.name)
+        path = os.path.join(S.repo_dir(), S.REVIEWS_FILE)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump({'format': 'hanzigo-reviews', 'version': 1, 'reviews': {'1-1-31': 'liked'}}, f)
+        self.assertEqual(S.load_reviews(), {'1-1-31': 'liked'})
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump({'reviews': {}}, f)
+        with self.assertRaises(ValueError):
+            S.load_reviews()
+        os.remove(path)
 
     def test_file_names(self):
         self.assertEqual(S.volume_file((2, 1)), 'grade2-semester1.json')

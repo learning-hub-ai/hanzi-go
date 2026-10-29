@@ -33,6 +33,7 @@ docs/cloud-sync-proposal.html
 docs/requirements-next.md
 # 与 data-generation-spec.md 内容重复；.md 保留公开，LICENSE/README 引用它
 docs/data-generation-spec.html
+# 小故事设计文档和私有化方案已移到私有仓库 hanzi-go-stories/docs/；这两行防止有人复制回来
 docs/story-reading-design.html
 audio-preview/
 # 角色图标预览页，本地用
@@ -47,3 +48,7 @@ docs/story-privacy-proposal.html
 # 小故事原文只在私有仓库 hanzi-go-stories（design §7.5），这里只放 data/stories.enc.json。
 # 以防万一有人把明文放回这里。
 data/stories/
+# 邀请码和要发的卡片只在私有仓库（scripts/invites.py）；防止被复制进来。
+# pre-push 的 check_no_story_text.py 也会拦任何一个码。
+invites.json
+cards/
