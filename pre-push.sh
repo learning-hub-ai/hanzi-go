@@ -14,6 +14,9 @@ if [ ! -t 0 ]; then PUSH_RANGES="$(cat)"; fi
 # Temporary files of the tests (story fixtures, throwaway git repos, Chrome
 # profiles) go to .tmp/ in this repo, not the shared /tmp. Gitignored.
 mkdir -p .tmp && export TMPDIR="$PWD/.tmp"
+# The checks print Chinese; under a bare locale (env -i, CI) Python would
+# fail to encode it and exit non-zero for the wrong reason.
+export PYTHONIOENCODING=utf-8
 echo "🧪 Running HanziGo pre-push checks..."
 echo "=================================================="
 
@@ -321,6 +324,7 @@ INSTRUCTION = re.compile(
     r'|识字表|写字表|词语表|不计入生字总数)'
 )
 
+FOOTNOTE = re.compile('[〔〕\\f]|（[a-zāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜüɡ]+）|任务[一二三四五]|第[一二三四五六]单元')
 bad = []
 for path in sorted(glob.glob('data/grade*.json')):
     data = json.load(open(path))
@@ -334,6 +338,11 @@ for path in sorted(glob.glob('data/grade*.json')):
             # Section heading or exercise glued onto the text.
             if INSTRUCTION.search(s):
                 why = 'teaching apparatus'
+            # Footnote or page residue from the PDF: 〔注释〕, a pinyin note
+            # with its letters lost (殷（ā）), a page break, a 任务/单元 header,
+            # a stray list dot. 33 such sentences were found in 七下.
+            elif FOOTNOTE.search(s) or s.startswith('.'):
+                why = 'footnote or page residue'
             # Three or more typeset lines joined into one 'sentence'.
             elif s.count('\n') >= 2:
                 why = 'joined lines'
@@ -545,6 +554,22 @@ print('✅ Example sentences: usable prose, no 生字表 rows or exercise text')
 python3 scripts/test_shorten_sentences.py 2>/dev/null \
   && echo "✅ Sentence trimmer: unit tests pass" \
   || { echo "❌ Sentence trimmer tests failed: python3 scripts/test_shorten_sentences.py"; exit 1; }
+
+# 多音字 cards in grades 1–5: every word and the example sentence read the
+# character the way the card is annotated (背 bèi was worded 背着, which is
+# bēi). Grades 6–9 have no 识字表 to settle the reading against yet.
+python3 scripts/test_check_word_readings.py 2>/dev/null >/dev/null \
+  && echo "✅ Word readings: unit tests pass" \
+  || { echo "❌ Word reading tests failed: python3 scripts/test_check_word_readings.py"; exit 1; }
+python3 scripts/check_word_readings.py || exit 1
+
+# 注音 = the book's (家长 2026-10-29): every grade 1–5 card against the 识字表
+# of its textbook PDF. The PDFs are not in the repo; without them the check
+# says so and is skipped.
+python3 scripts/test_book_pinyin.py 2>/dev/null >/dev/null \
+  && echo "✅ Book pinyin reader: unit tests pass" \
+  || { echo "❌ Book pinyin tests failed: python3 scripts/test_book_pinyin.py"; exit 1; }
+python3 scripts/check_book_pinyin.py || exit 1
 
 # Recorded syllables: every syllable in the index has its file, there are no
 # stray files, and the list of characters that use them matches the data.

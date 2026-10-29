@@ -1648,6 +1648,25 @@ async function runTests() {
         'the grade-3 card with the other reading gets its own syllable');
     });
 
+    it('cards whose pinyin was set to the book (2026-10-29) play the new syllable', () => {
+      // Real cards from the data, not made-up ones: the recording follows the
+      // card's pinyin, so a corrected 注音 must play its corrected syllable.
+      // Cards carry the lesson title, not its id; look the title up by id.
+      const lessons = app.State.get('lessons') || [];
+      const all = app.State.get('allChars') || [];
+      const find = (id, ch) => {
+        const l = lessons.find(x => x.id === id);
+        return l && all.find(c => c.char === ch && c.lesson === l.title);
+      };
+      const want = [['2-1-2', '没', 'mo4'], ['2-1-17', '萄', 'tao2'], ['2-1-17', '干', 'gan1'],
+        ['2-2-19', '倒', 'dao3'], ['2-2-21', '倒', 'dao4'], ['2-1-26', '似', 'shi4'], ['2-1-28', '似', 'si4']];
+      for (const [lesson, ch, key] of want) {
+        const c = find(lesson, ch);
+        assert(c, `card ${lesson} ${ch} not found`);
+        assertEqual(S()._recordingFor(c), `audio/syllables/${key}.mp3`, `${lesson} ${ch}`);
+      }
+    });
+
     it('ü is never played as u (lu4 is 路, not 绿)', () => {
       assertEqual(S()._syllableKey('l\u01dc'), 'lv4');
       assertEqual(S()._syllableKey('l\u00fc\u00e8'), 'lve4');
