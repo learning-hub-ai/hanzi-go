@@ -452,7 +452,7 @@ const DailyTaskController = (() => {
         <div class="dt-setup-header">
           <div class="dt-setup-emoji">👋</div>
           <h2>欢迎！你现在学到哪里了？</h2>
-          <p class="dt-setup-subtitle">第一步：选择年级</p>
+          ${_setupStepHtml(1, '选择年级')}
         </div>
         <div class="dt-setup-grades" id="dtSetupGrades">
           ${availableGrades.map(o => `
@@ -496,7 +496,7 @@ const DailyTaskController = (() => {
       <div class="dt-setup">
         <div class="dt-setup-header">
           <h2>${GRADE_NAMES[grade]} — 哪个学期？</h2>
-          <p class="dt-setup-subtitle">第二步：选择学期</p>
+          ${_setupStepHtml(2, '选择学期')}
         </div>
         <div class="dt-setup-grades">
           ${semesters.map(o => `
@@ -507,7 +507,7 @@ const DailyTaskController = (() => {
             </button>
           `).join('')}
         </div>
-        <button class="dt-setup-back" id="dtSetupBack">← 返回选年级</button>
+        <button type="button" class="dt-setup-back" id="dtSetupBack" aria-label="上一步：选择年级">← 上一步</button>
       </div>
     `;
 
@@ -536,7 +536,7 @@ const DailyTaskController = (() => {
       <div class="dt-setup">
         <div class="dt-setup-header">
           <h2>${GRADE_NAMES[grade]}${SEM_NAMES[semester]} — 从哪一课开始？</h2>
-          <p class="dt-setup-subtitle">第三步：选择起始课文</p>
+          ${_setupStepHtml(3, '选择课文')}
         </div>
         <div class="dt-setup-lessons">
           <button class="dt-setup-lesson highlighted" data-lesson-idx="0">
@@ -552,7 +552,7 @@ const DailyTaskController = (() => {
             </button>
           `).join('')}
         </div>
-        <button class="dt-setup-back" id="dtSetupBack">← 返回选学期</button>
+        <button type="button" class="dt-setup-back" id="dtSetupBack" aria-label="上一步：选择学期">← 上一步</button>
       </div>
     `;
 
@@ -576,6 +576,20 @@ const DailyTaskController = (() => {
     }
     DailyTaskService.initProgress(grade, semester, idx);
     render();
+  }
+
+  const SETUP_STEPS = 3;
+  /**
+   * Where the child is in the three setup steps: dots a first-grader can read
+   * without 「第一步」, and the step's name as the screen's instruction.
+   * @param {number} n - this step, 1-based
+   * @param {string} label - what to do here, e.g. 选择年级
+   */
+  function _setupStepHtml(n, label) {
+    const dots = Array.from({ length: SETUP_STEPS }, (_, i) =>
+      `<span class="dt-setup-dot${i + 1 === n ? ' current' : i + 1 < n ? ' done' : ''}"></span>`).join('');
+    return `<p class="dt-setup-step"><span class="dt-setup-dots" aria-hidden="true">${dots}</span>
+      <span class="sr-only">第 ${n} 步，共 ${SETUP_STEPS} 步：</span><span class="dt-setup-step-label">${label}</span></p>`;
   }
 
   /** Render the active task screen */

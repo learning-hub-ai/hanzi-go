@@ -1086,7 +1086,14 @@ main{
 .dt-setup-header{margin-bottom:var(--s5)}
 .dt-setup-emoji{font-size:48px;margin-bottom:var(--s2)}
 .dt-setup-header h2{font-size:var(--text-xl);font-weight:var(--weight-bold);margin-bottom:var(--s2)}
-.dt-setup-subtitle{font-size:var(--text-base);color:var(--text-muted)}
+/* Setup steps (daily-task.js _setupStepHtml): dots show where the child is,
+   the label is the instruction: 14px semibold body colour (parent: 16px was a bit big). */
+.dt-setup-step{display:flex;flex-direction:column;align-items:center;gap:var(--s2);margin:0}
+.dt-setup-dots{display:flex;gap:var(--s2)}
+.dt-setup-dot{width:10px;height:10px;border-radius:var(--radius-full);background:var(--border)}
+.dt-setup-dot.done{background:var(--primary-300)}
+.dt-setup-dot.current{width:24px;background:var(--primary)}
+.dt-setup-step-label{font-size:var(--text-md);font-weight:var(--weight-semibold);color:var(--text)}
 
 .dt-setup-grades,.dt-setup-semesters{display:flex;flex-direction:column;gap:var(--s2);max-width:320px;margin:0 auto}
 .dt-setup-grade,.dt-setup-sem{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) var(--s4);border:2px solid var(--border);border-radius:var(--radius-md);background:#fff;cursor:pointer;transition:all var(--duration-fast) ease;text-align:left}
@@ -1104,8 +1111,12 @@ main{
 .dt-setup-lesson-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
 .dt-setup-lesson-info{font-size:var(--text-xs);color:var(--text-muted);flex-shrink:0}
 
-.dt-setup-back{margin-top:var(--s4);padding:var(--s2) var(--s4);border:none;background:transparent;color:var(--text-muted);font-size:var(--text-base);cursor:pointer}
-.dt-setup-back:hover{color:var(--primary)}
+/* Back: looks like a button, same words on every step. The frame is a compact 36px
+   (parent: 44px looked too big); ::after keeps the touch target 44px tall. */
+.dt-setup-back{position:relative;display:inline-flex;align-items:center;justify-content:center;min-height:36px;margin-top:var(--s5);padding:var(--s1) var(--s4);border:2px solid var(--border);border-radius:var(--radius-full);background:#fff;color:var(--text);font-size:var(--text-md);font-weight:var(--weight-semibold);cursor:pointer}
+.dt-setup-back::after{content:'';position:absolute;left:0;right:0;top:-4px;bottom:-4px}
+.dt-setup-back:hover{border-color:var(--primary);color:var(--primary)}
+.dt-setup-back:focus-visible{outline:3px solid var(--primary-300);outline-offset:2px}
 .dt-change-level-btn{margin-top:var(--s2);padding:6px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;color:var(--text-muted);font-size:var(--text-sm);cursor:pointer;transition:all var(--duration-fast) ease}
 .dt-change-level-btn:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-50)}
 

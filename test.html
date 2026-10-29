@@ -451,6 +451,42 @@ async function runTests() {
     // Back on, for the story tests below.
     await SS.reload(FIXTURE_CODE);
   } catch (e) { unlock.error = String(e && e.stack || e); }
+  // 选年级 → 选学期 → 选课文: the step line and the back button, run for real.
+  const setup = { error: null };
+  try {
+    const D = app.DailyTaskService, ST = app.State, doc = () => app.document;
+    const savedProg = ST.load('lessonProgress', null), savedTask = ST.load('dailyTask', null);
+    const view = () => {
+      const c = doc().getElementById('dailyTaskMode');
+      const step = c.querySelector('.dt-setup-step'), back = c.querySelector('#dtSetupBack');
+      const label = step && step.querySelector('.dt-setup-step-label');
+      return { label: label ? label.textContent : '',
+        cur: step ? [...step.querySelectorAll('.dt-setup-dot')].findIndex(d => d.classList.contains('current')) + 1 : 0,
+        done: step ? step.querySelectorAll('.dt-setup-dot.done').length : -1,
+        dots: step ? step.querySelectorAll('.dt-setup-dot').length : 0,
+        spoken: step ? step.textContent.replace(/\s+/g, '') : '',
+        size: label ? app.getComputedStyle(label).fontSize : '',
+        weight: label ? parseInt(app.getComputedStyle(label).fontWeight, 10) : 0,
+        back: back ? { text: back.textContent.trim(), name: back.getAttribute('aria-label'), type: back.type,
+          h: back.getBoundingClientRect().height, size: app.getComputedStyle(back).fontSize,
+          // the touch area: ::after reaches 4px above and below the frame (44px in all)
+          touch: (() => { const a = app.getComputedStyle(back, '::after');
+            return [a.content, a.position, a.top, a.bottom, app.getComputedStyle(back).position].join(' '); })() } : null,
+        oldWords: /第[一二三]步|返回选/.test(c.textContent) };
+    };
+    ST.save('lessonProgress', null);
+    app.AppController.switchMode('dailyTask');
+    setup.s1 = view();
+    doc().querySelector('[data-setup-grade="1"]').click();
+    setup.s2 = view();
+    doc().querySelector('[data-setup-sem="2"]').click();
+    setup.s3 = view();
+    doc().getElementById('dtSetupBack').click();
+    setup.back3 = view();
+    doc().getElementById('dtSetupBack').click();
+    setup.back2 = view();
+    ST.save('lessonProgress', savedProg); ST.save('dailyTask', savedTask);
+  } catch (e) { setup.error = e.message; }
   const shippedStories = unlock.direct ? unlock.direct.volumes : null;
 
   // === 1. Data Files ===
@@ -7431,6 +7467,45 @@ async function runTests() {
         const p = d.getElementById('profilePicker'); if (p) p.remove();
         app.State.saveShared('storyInvite', saved);
       }
+    });
+  });
+
+  describe('🧭 选年级、学期、课文', () => {
+    it('ran', () => assertEqual(setup.error, null));
+
+    it('each step: dots show where you are, the label says what to do', () => {
+      assertEqual([setup.s1.label, setup.s2.label, setup.s3.label].join('|'), '选择年级|选择学期|选择课文');
+      assertEqual([setup.s1.cur, setup.s2.cur, setup.s3.cur].join(','), '1,2,3');
+      assertEqual([setup.s1.done, setup.s2.done, setup.s3.done].join(','), '0,1,2', 'earlier steps marked done');
+      assertEqual(setup.s1.dots, 3);
+      assert(setup.s2.spoken.includes('第2步，共3步：选择学期'), 'screen readers hear the step');
+    });
+
+    it('the instruction is readable: 14px semibold (was 13px grey; 16px felt a bit big)', () => {
+      assertEqual(setup.s1.size, '14px');
+      assert(setup.s1.weight >= 600, 'semibold, got ' + setup.s1.weight);
+    });
+
+    it('back: 「← 上一步」 on every step, a compact 36px frame with a 44px touch target, named for where it goes', () => {
+      assertEqual(setup.s1.back, null, 'no back on the first step');
+      assertEqual(setup.s2.back.text, '← 上一步');
+      assertEqual(setup.s3.back.text, '← 上一步');
+      assertEqual(setup.s2.back.name, '上一步：选择年级');
+      assertEqual(setup.s3.back.name, '上一步：选择学期');
+      assertEqual(setup.s3.back.type, 'button');
+      assert(setup.s3.back.h >= 36 && setup.s3.back.h < 44, 'frame height ' + setup.s3.back.h);
+      assertEqual(setup.s3.back.touch, '"" absolute -4px -4px relative', 'touch area 4px beyond the frame on both sides');
+      assert(setup.s3.back.h + 8 >= 44, 'touch area at least 44px: ' + (setup.s3.back.h + 8));
+      assertEqual(setup.s3.back.size, '14px');
+    });
+
+    it('back goes one step back each time', () => {
+      assertEqual(setup.back3.label, '选择学期');
+      assertEqual(setup.back2.label, '选择年级');
+    });
+
+    it('the old small texts are gone', () => {
+      [setup.s1, setup.s2, setup.s3].forEach(s => assert(!s.oldWords, '第一步 / 返回选…'));
     });
   });
 
