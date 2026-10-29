@@ -2,15 +2,18 @@
 """Build data/stories.enc.json from the private stories, and manage invite codes (design §7.5.4).
 
     python3 scripts/build_stories.py                 # check, then encrypt the reviewed stories
-    python3 scripts/build_stories.py --add-invite 名字  # new code; prints the link to send
-    python3 scripts/build_stories.py --revoke <id>   # stop a code (takes effect on the next build)
+    python3 scripts/build_stories.py --add-invite 名字  # new code; writes its card (link + code)
+    python3 scripts/build_stories.py --card <id>     # write the card again
+    python3 scripts/build_stories.py --revoke <id>   # stop a code (next build); deletes its card
     python3 scripts/build_stories.py --list          # ids, names, dates, status
     python3 scripts/build_stories.py --check         # is data/stories.enc.json up to date? (pre-push)
     python3 scripts/build_stories.py --fixture       # rewrite test/fixtures/stories.enc.json (made-up stories)
 
 The story text and invites.json live in the private repo (scripts/stories_source.py).
 Only the encrypted file goes into this public repo. Invite codes are secrets:
-they are printed once, by --add-invite, and are otherwise only in invites.json.
+they are in invites.json and, for sending, in the card
+hanzi-go-stories/cards/<id>.txt (mode 600, gitignored there). They are never
+printed: terminal scrollback and logs are not private.
 
 invites.json: format and rules in scripts/invites.py (the only code that reads it).
 
@@ -139,6 +142,46 @@ def invite_link(code):
     return f'{SITE}#invite={code}'
 
 
+def card_text(entry):
+    """What to send a parent for one invite: the link, the code, how to use them."""
+    return (f"小故事邀请码：{entry['name']}（编号 {entry['id']}，{entry['added']}）\n"
+            f"\n"
+            f"发给家长的链接：{invite_link(entry['code'])}\n"
+            f"手动输入的码：{entry['code']}\n"
+            f"\n"
+            f"用法：点链接即可开启；添加到主屏幕的用户，请在 App 里点右上角头像 →\n"
+            f"「谁来学习？」底部「🔑 小故事邀请码」，输入上面的 12 位码。\n")
+
+
+def card_path(kid, d=None):
+    return os.path.join(stories_source.cards_dir(d), f'{kid}.txt')
+
+
+def write_card(entry, d=None):
+    """Write the card for an active invite (mode 600, its folder 700). Returns the path."""
+    if entry.get('revoked'):
+        raise ValueError(f"{entry['id']} 已取消，不能再发")
+    folder = stories_source.cards_dir(d)
+    os.makedirs(folder, mode=0o700, exist_ok=True)
+    os.chmod(folder, 0o700)
+    path = card_path(entry['id'], d)
+    tmp = path + '.tmp'
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        f.write(card_text(entry))
+    os.replace(tmp, path)
+    return path
+
+
+def remove_card(kid, d=None):
+    """Delete the card of a revoked code, so a dead code cannot be sent by mistake."""
+    try:
+        os.remove(card_path(kid, d))
+        return True
+    except FileNotFoundError:
+        return False
+
+
 # ---------- build and check ----------
 
 def private_repo_state(d=None):
@@ -227,7 +270,8 @@ def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     g = ap.add_mutually_exclusive_group()
     g.add_argument('--add-invite', metavar='NAME', help='add an invite code for NAME and print the link')
-    g.add_argument('--revoke', metavar='ID', help='revoke the invite with this id')
+    g.add_argument('--revoke', metavar='ID', help='revoke the invite with this id (deletes its card)')
+    g.add_argument('--card', metavar='ID', help='write the card to send for this invite again')
     g.add_argument('--list', action='store_true', help='list invites (codes are not shown)')
     g.add_argument('--check', action='store_true', help='is data/stories.enc.json up to date?')
     g.add_argument('--fixture', action='store_true', help='rewrite test/fixtures/stories.enc.json')
@@ -266,9 +310,21 @@ def _run(args):
             print(f'❌ {err}', file=sys.stderr)
             return 2
         save_invites(inv)
+        path = write_card(e)
         print(f"✅ 新邀请码 {e['id']}（{e['name']}）。重新打包后生效：python3 scripts/build_stories.py")
-        print(f"   发给家长的链接：{invite_link(e['code'])}")
-        print(f"   手动输入的码：{e['code']}")
+        print(f"   要发的链接和码在：{path}")
+        return 0
+    if args.card:
+        entry = next((i for i in load_invites()['invites'] if i['id'] == args.card), None)
+        if not entry:
+            print(f'❌ 没有这个编号：{args.card}（--list 查看）', file=sys.stderr)
+            return 2
+        try:
+            path = write_card(entry)
+        except ValueError as err:
+            print(f'❌ {err}', file=sys.stderr)
+            return 2
+        print(f"✅ {entry['id']}（{entry['name']}）的链接和码在：{path}")
         return 0
     if args.revoke:
         inv = load_invites()
@@ -278,7 +334,8 @@ def _run(args):
             print(f'❌ 没有这个编号：{args.revoke}（--list 查看）', file=sys.stderr)
             return 2
         save_invites(inv)
-        print(f"✅ 已取消 {e['id']}（{e['name']}）。重新打包后生效：python3 scripts/build_stories.py")
+        gone = '，卡片已删除' if remove_card(e['id']) else ''
+        print(f"✅ 已取消 {e['id']}（{e['name']}）{gone}。重新打包后生效：python3 scripts/build_stories.py")
         return 0
     return build(allow_dirty=args.allow_dirty)
 

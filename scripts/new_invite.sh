@@ -8,7 +8,8 @@
 # 3. re-encrypt data/stories.enc.json, commit + push it here (pre-push runs)
 # 4. wait for the site to serve it and check the new code opens it
 #
-# The link and the code are written to ~/hanzigo-invites/<id>.txt (mode 600)
+# The link and the code go into the card hanzi-go-stories/cards/<id>.txt
+# (mode 600, gitignored there; build_stories.py --card <id> makes it again)
 # and are never printed: terminal scrollback and logs are not private.
 # Neither commit message contains the name. --no-push stops after the local
 # commits (nothing leaves this machine).
@@ -20,7 +21,6 @@ cd "$(dirname "$0")/.."
 HERE="$PWD"
 PRIVATE="${HANZIGO_STORIES:-$(dirname "$HERE")/hanzi-go-stories/stories}"
 PRIVATE_REPO="$(dirname "$PRIVATE")"
-OUT_DIR="${HANZIGO_INVITE_DIR:-$HOME/hanzigo-invites}"
 SITE="https://learning-hub-ai.github.io/hanzi-go"
 PY="python3"; [ -x .venv/bin/python3 ] && PY=".venv/bin/python3"
 export TMPDIR="$HERE/.tmp"; mkdir -p "$TMPDIR"
@@ -49,26 +49,14 @@ for repo in "$HERE" "$PRIVATE_REPO"; do
     || { echo "❌ $repo 有未提交的改动，先处理再发码" >&2; exit 2; }
 done
 
-# ---- 1. the code (the CLI prints link + code: capture them into the private file only)
+# ---- 1. the code; build_stories.py writes the card and prints only the id and path
 step "1/4 生成邀请码"
-mkdir -p "$OUT_DIR"; chmod 700 "$OUT_DIR"
-TMP_OUT="$(umask 077; mktemp "$OUT_DIR/.new.XXXXXX")"
 ARGS=(--add-invite "$NAME"); [ -n "$NOTE" ] && ARGS+=(--note "$NOTE")
-if ! "$PY" scripts/build_stories.py "${ARGS[@]}" > "$TMP_OUT" 2>&1; then
-  sed 's/[0-9A-Z]\{4\}-[0-9A-Z]\{4\}-[0-9A-Z]\{4\}/XXXX-XXXX-XXXX/g' "$TMP_OUT" >&2; rm -f "$TMP_OUT"; exit 1
-fi
-KID="$(grep -o '新邀请码 [0-9a-f]\{8\}' "$TMP_OUT" | awk '{print $2}')"
-[ -n "$KID" ] || { rm -f "$TMP_OUT"; fail "没读到新邀请码的编号"; }
-CARD="$OUT_DIR/$KID.txt"
-{
-  echo "小故事邀请码：$NAME（编号 $KID，$(date +%F)）"
-  echo
-  grep -E '链接|手动输入' "$TMP_OUT" | sed 's/^ *//'
-  echo
-  echo "用法：点链接即可开启；添加到主屏幕的用户，请在 App 里点右上角头像 →"
-  echo "「谁来学习？」底部「🔑 小故事邀请码」，输入上面的 12 位码。"
-} > "$CARD"
-rm -f "$TMP_OUT"; chmod 600 "$CARD"
+OUT="$("$PY" scripts/build_stories.py "${ARGS[@]}" 2>&1)" || { echo "$OUT" >&2; exit 1; }
+KID="$(printf '%s\n' "$OUT" | grep -o '新邀请码 [0-9a-f]\{8\}' | awk '{print $2}')"
+[ -n "$KID" ] || fail "没读到新邀请码的编号"
+CARD="$PRIVATE_REPO/cards/$KID.txt"
+[ -f "$CARD" ] || fail "没有生成卡片 $CARD"
 echo "✅ 编号 $KID；链接和码写在 $CARD（只有你能读）"
 
 # ---- 2. private repo: the invite list

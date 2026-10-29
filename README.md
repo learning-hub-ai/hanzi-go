@@ -97,14 +97,16 @@ python3 scripts/build_stories.py              # 打包加密（先检查，私�
 scripts/new_invite.sh 名字                     # 发一个新码：生成、提交、打包、推送、上线验证
 python3 scripts/build_stories.py --add-invite 名字   # 只生成新码（不提交、不打包）
 python3 scripts/build_stories.py --list       # 查看（不显示码）；--revoke <id> 取消
+python3 scripts/build_stories.py --card <id>  # 重新生成要发的卡片（私有仓库 cards/，不提交）
 python3 scripts/story_brief.py 1-2-12 --text  # 写一课故事前的提要
 ```
 
 没有私有仓库的机器上，这些检查会说明后跳过；网站和浏览器测试不需要原文
 （测试用 `test/fixtures/stories.enc.json`，里面是编的故事，测试码公开）。
 
-pre-push 会拦住原文：被跟踪的明文故事文件、任何文件或要推送的提交（改动和说明）里
-出现故事里连续 6 个字或《标题》，都不能推送（`scripts/check_no_story_text.py`）。
+pre-push 会拦住原文和邀请码：被跟踪的明文故事文件、任何文件或要推送的提交（改动和说明）里
+出现故事里连续 6 个字、《标题》或任何一个邀请码，都不能推送（`scripts/check_no_story_text.py`）。
+邀请码从不打印到终端，只写进私有仓库的卡片文件。
 
 ## 加数据
 

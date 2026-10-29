@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stop story text from reaching the public repo (design §7.5.10).
+"""Stop story text and invite codes from reaching the public repo (design §7.5.10).
 
     python3 scripts/check_no_story_text.py                 # scan tracked files and HEAD's unpushed commits
     python3 scripts/check_no_story_text.py < push-ranges   # as the git pre-push hook: ranges on stdin
@@ -11,7 +11,10 @@ Checks, in order:
    characters from any story page or cast intro, and no story title in
    《》, appears in a tracked file, or in the diff or message of a commit
    being pushed.
-3. Without the private text only check 1 runs, and it says so.
+3. When the private invite list is on this machine: no invite code from it
+   (any spelling: with or without dashes) appears in those same places.
+   The fixture's code (build_stories.FIXTURE_CODE) is public by design.
+4. Without the private text only check 1 runs, and it says so.
 
 Push ranges: git gives the hook one line per ref,
 "<local ref> <local sha> <remote ref> <remote sha>". Commits in
@@ -75,6 +78,30 @@ def find(text, grams, titles):
     return sorted(hits)
 
 
+def invite_codes():
+    """{canonical code: key id} of every invite (revoked ones too: a revoked
+    code is still private). Empty when the list is not on this machine."""
+    path = stories_source.invites_file()
+    if not os.path.isfile(path):
+        return {}
+    import invites            # late: validating needs the cryptography package
+    return {re.sub('-', '', e['code']): e['id'] for e in invites.load(path)['invites']}
+
+
+def find_codes(text, codes):
+    """Key ids whose code appears in `text` as XXXX-XXXX-XXXX, XXXX XXXX XXXX
+    or XXXXXXXXXXXX, any case. Reports the id, never the code itself."""
+    if not codes:
+        return []
+    up = text.upper()
+    found = set()
+    for code, kid in codes.items():
+        g = [code[i:i + 4] for i in range(0, 12, 4)]
+        if re.search(r'(?<![0-9A-Z])' + r'[-\s]?'.join(g) + r'(?![0-9A-Z])', up):
+            found.add(kid)
+    return sorted(found)
+
+
 def plain_story_files(files):
     """Tracked paths that look like plain story data."""
     out = []
@@ -132,6 +159,11 @@ def main(argv, stdin=None):
         return report(problems)
 
     grams, titles = secrets_from_stories()
+    try:
+        codes = invite_codes()
+    except Exception as e:          # a broken list is reported by build_stories --check
+        print(f'⚠️ 邀请码清单读不了（{type(e).__name__}），跳过邀请码检查')
+        codes = {}
     for f in files:
         if f in SKIP_FILES:
             continue
@@ -143,6 +175,8 @@ def main(argv, stdin=None):
         hits = find(text, grams, titles)
         if hits:
             problems.append(f'{f}：含故事原文 {"、".join(hits[:5])}' + (' …' if len(hits) > 5 else ''))
+        for kid in find_codes(text, codes):
+            problems.append(f'{f}：含邀请码 {kid} 的码')
 
     try:
         interactive = stdin is None or stdin.isatty()
@@ -159,16 +193,18 @@ def main(argv, stdin=None):
             if hits:
                 problems.append(f'提交 {sha[:7]} 的{where}：含故事原文 {"、".join(hits[:5])}'
                                 + (' …' if len(hits) > 5 else ''))
+            for kid in find_codes(text, codes):
+                problems.append(f'提交 {sha[:7]} 的{where}：含邀请码 {kid} 的码')
     return report(problems)
 
 
 def report(problems):
     if problems:
-        print('❌ 故事原文不能进公开仓库（design §7.5）：')
+        print('❌ 故事原文和邀请码不能进公开仓库（design §7.5）：')
         for p in problems:
             print('   ' + p)
         return 1
-    print('✅ 公开仓库里没有故事原文')
+    print('✅ 公开仓库里没有故事原文和邀请码')
     return 0
 
 

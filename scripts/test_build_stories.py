@@ -246,8 +246,23 @@ class Build(unittest.TestCase):
         with mock.patch('sys.stdout') as out:
             self.assertEqual(B.main(['--add-invite', '丙', '--note', '朋友']), 0)
         printed = ''.join(c.args[0] for c in out.write.call_args_list)
-        code = I.load(S.invites_file())['invites'][0]['code']
-        self.assertIn(B.invite_link(code), printed, 'the link is printed once, for sending')
+        entry = I.load(S.invites_file())['invites'][0]
+        code = entry['code']
+        self.assertNotIn(code, printed, 'the code is never printed')
+        self.assertNotIn(code.replace('-', ''), printed)
+        card = B.card_path(entry['id'])
+        self.assertIn(card, printed, 'it says where the card is')
+        with open(card, encoding='utf-8') as f:
+            text = f.read()
+        self.assertIn(B.invite_link(code), text)
+        self.assertIn(code, text)
+        self.assertEqual(os.stat(card).st_mode & 0o777, 0o600)
+        self.assertEqual(os.stat(os.path.dirname(card)).st_mode & 0o777, 0o700)
+        self.assertEqual(os.path.dirname(os.path.dirname(card)), self.repo, 'cards/ is in the private repo')
+        os.remove(card)
+        self.assertEqual(B.main(['--card', entry['id']]), 0, 'the card can be made again')
+        with open(card, encoding='utf-8') as f:
+            self.assertEqual(f.read(), text, 'and it is the same card')
         with mock.patch('sys.stdout') as out:
             self.assertEqual(B.main(['--list']), 0)
         listed = ''.join(c.args[0] for c in out.write.call_args_list)
@@ -255,6 +270,10 @@ class Build(unittest.TestCase):
         self.assertNotIn(code, listed, '--list never shows a code')
         kid = I.load(S.invites_file())['invites'][0]['id']
         self.assertEqual(B.main(['--revoke', kid]), 0)
+        self.assertFalse(os.path.exists(card), 'revoking deletes the card')
+        self.assertEqual(B.main(['--card', kid]), 2, 'no card for a revoked code')
+        self.assertFalse(os.path.exists(card))
+        self.assertEqual(B.main(['--card', 'ffffffff']), 2)
         self.assertEqual(B.main(['--revoke', 'ffffffff']), 2)
         with open(S.invites_file(), 'w') as f:
             f.write('{"invites": [}')

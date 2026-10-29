@@ -19,6 +19,8 @@ Layout of that directory (one file per volume, all optional except the intros):
     grade<g>-semester<s>.json          one per volume in VOLUMES
 and next to it, in the private repo's root:
     invites.json                       who may read (build_stories.py manages it)
+    cards/<id>.txt                     the card to send for one code; made from
+                                       invites.json on demand, never committed
 """
 import json
 import os
@@ -28,6 +30,7 @@ ENV = 'HANZIGO_STORIES'
 PRIVATE_REPO = 'learning-hub-ai/hanzi-go-stories'
 CHARACTERS_FILE = 'characters.json'
 INVITES_FILE = 'invites.json'
+CARDS_DIR = 'cards'          # invite cards to send, one per code; gitignored in the private repo
 # Volumes that may have stories (grades 1–2). Adding a volume = adding it here.
 VOLUMES = [(1, 1), (1, 2), (2, 1), (2, 2)]
 
@@ -51,6 +54,11 @@ def repo_dir(d=None):
 def invites_file(d=None):
     """Where the invite list is (it may not exist yet)."""
     return os.path.join(repo_dir(d), INVITES_FILE)
+
+
+def cards_dir(d=None):
+    """Where the invite cards are written (build_stories.py --card)."""
+    return os.path.join(repo_dir(d), CARDS_DIR)
 
 
 def available(d=None):

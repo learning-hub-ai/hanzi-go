@@ -22,6 +22,8 @@ import stories_source as S  # noqa: E402
 STORY_LINE = '小天在湖边找到一只红色的风筝。'   # made up; its 6-grams are the "secret"
 INTRO = '一只最爱唱歌的小鸟儿。'
 TITLE = '红风筝'
+CODE = 'ABCD-EFGH-JKMN'       # made-up invite codes in the made-up private list
+OLD_CODE = 'PQRS-TVWX-YZ23'   # revoked: still private
 
 
 def sh(cwd, *args):
@@ -52,6 +54,12 @@ class Guard(unittest.TestCase):
         self.commit('README.md', '公开的说明。\n', '第一个提交')
         sh(self.repo, 'git', 'remote', 'add', 'origin', self.remote)
         sh(self.repo, 'git', 'push', '-q', '-u', 'origin', 'main')
+        # a private invite list next to the stories
+        with open(os.path.join(base, 'private', 'invites.json'), 'w', encoding='utf-8') as f:
+            json.dump({'format': 'hanzigo-invites', 'version': 1, 'invites': [
+                {'id': 'a1b2c3d4', 'code': CODE, 'name': '测', 'added': '2026-10-29', 'revoked': None},
+                {'id': 'b2c3d4e5', 'code': OLD_CODE, 'name': '旧', 'added': '2026-10-01', 'revoked': '2026-10-02'}]},
+                f, ensure_ascii=False)
         self.patches = [mock.patch.object(S, 'ROOT', self.repo),
                         mock.patch.object(G.stories_source, 'ROOT', self.repo),
                         mock.patch.dict(os.environ, {S.ENV: self.stories})]
@@ -153,6 +161,35 @@ class Guard(unittest.TestCase):
             grams, _ = G.secrets_from_stories()
         self.assertNotIn(STORY_LINE[0:6], grams)
         self.assertIn(STORY_LINE[1:7], grams)
+
+    def test_an_invite_code_in_a_file_or_a_commit_blocks_the_push(self):
+        for spelling in (CODE, CODE.replace('-', ''), CODE.lower().replace('-', ' ')):
+            with self.subTest(spelling=spelling):
+                self.commit('x.md', f'link #invite={spelling}\n', 'x')
+                code, out = self.run_guard()
+                self.assertEqual(code, 1)
+                self.assertIn('a1b2c3d4', out, 'the id is reported')
+                self.assertNotIn(CODE.replace('-', ''), out.replace('-', '').upper(), 'never the code')
+                sh(self.repo, 'git', 'reset', '-q', '--hard', 'origin/main')
+        self.commit('y.md', f'{OLD_CODE}\n', 'x')
+        self.assertEqual(self.run_guard()[0], 1, 'a revoked code is still private')
+        sh(self.repo, 'git', 'reset', '-q', '--hard', 'origin/main')
+        self.commit('z.md', '编的。\n', f'发码 {CODE}')
+        code, out = self.run_guard()
+        self.assertEqual(code, 1)
+        self.assertIn('提交说明', out)
+
+    def test_a_code_in_an_already_pushed_file_is_still_caught(self):
+        # Pushed before the check existed: no new commit has it, the file does.
+        self.commit('old.md', f'{CODE}\n', 'x')
+        sh(self.repo, 'git', 'push', '-q', 'origin', 'main')
+        code, out = self.run_guard()
+        self.assertEqual(code, 1)
+        self.assertIn('old.md', out)
+
+    def test_code_like_text_is_not_a_false_alarm(self):
+        self.commit('w.md', 'Z' + CODE.replace('-', '') + '\nAB CD EFGH JKMN\n', 'x')
+        self.assertEqual(self.run_guard()[0], 0)
 
     def test_without_private_text_only_the_file_check_runs(self):
         self.commit('h.js', f'// {STORY_LINE}\n', 'x')
